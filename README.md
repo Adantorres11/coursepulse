@@ -43,7 +43,7 @@ Stop with `Ctrl+C`. Wipe the database and start fresh with `docker compose down 
 ## Repository layout
 ```
 backend/    Django + Django REST Framework API
-frontend/   React (Vite) + Tailwind CSS
+frontend/   React (Vite) + TypeScript + Tailwind CSS
 docs/       Developer docs that live next to the code (API contract)
 .github/    PR template and CI workflows
 ```
@@ -52,7 +52,7 @@ Project-level documentation (product overview, tech stack, architecture, sprint 
 ## Tech stack
 | Layer      | Tech                          |
 |------------|--------------------------------|
-| Frontend   | React (Vite) + Tailwind CSS   |
+| Frontend   | React (Vite) + TypeScript + Tailwind CSS |
 | Backend    | Django REST Framework          |
 | Database   | PostgreSQL                     |
 
