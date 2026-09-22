@@ -11,21 +11,34 @@ Run `docker compose up`, open the React app, see the hardcoded quiz served by th
 and play through all 5 questions with a score.
 
 ## Quick start
-Prerequisites: Docker Desktop, Git.
+**Prerequisites:** Docker Desktop, Git.
 
-```bash
-git clone <repo-url> && cd coursepulse
-cp .env.example .env
-docker compose up --build
-```
+1. **Clone the repo and move into it**
+   ```bash
+   git clone <repo-url> && cd coursepulse
+   ```
 
-| Service  | URL                                   |
-|----------|---------------------------------------|
-| Frontend | http://localhost:5173                 |
-| API      | http://localhost:8000/api/health/     |
-| Postgres | localhost:5432 (see `.env`)           |
+2. **Create your local environment file**
+   ```bash
+   cp .env.example .env
+   ```
+   This holds your local DB credentials and secrets — it's gitignored, so it's yours alone and never gets committed.
 
-Stop with `Ctrl+C`, reset the database with `docker compose down -v`.
+3. **Build and start everything**
+   ```bash
+   docker compose up --build
+   ```
+   Spins up Postgres, the Django API, and the React frontend together, wired to talk to each other.
+
+4. **Open it up**
+
+   | Service  | URL                                |
+   |----------|-------------------------------------|
+   | Frontend | http://localhost:5173              |
+   | API      | http://localhost:8000/api/health/  |
+   | Postgres | localhost:5432 (see `.env`)        |
+
+Stop with `Ctrl+C`. Wipe the database and start fresh with `docker compose down -v`.
 
 ## Repository layout
 ```
@@ -37,25 +50,32 @@ docs/       Developer docs that live next to the code (API contract)
 Project-level documentation (product overview, tech stack, architecture, sprint notes) lives in our Confluence team space.
 
 ## Tech stack
-React (Vite) + Tailwind, Django REST Framework, PostgreSQL.
-
-## Team workflow
-1. Pick a Jira ticket and move it to **In Progress**.
-2. Branch from `main` using `type/name/SCRUM-XX/short-description`, for example `feat/adan/SCRUM-18/docker-compose`.
-   The ticket key in the branch name is what links your code to Jira.
-3. Commit small and often. Include the ticket key in commit messages, e.g. `SCRUM-18 add postgres healthcheck`.
-4. Open a Pull Request using the template and move the ticket to **In Review**.
-5. A teammate reviews it (at least 1 approval). Never commit directly to `main`.
-6. Squash-merge, then move the ticket to **Done**.
-
-**AI usage:** allowed, but you must disclose it in the PR and be able to explain every line without notes.
+| Layer      | Tech                          |
+|------------|--------------------------------|
+| Frontend   | React (Vite) + Tailwind CSS   |
+| Backend    | Django REST Framework          |
+| Database   | PostgreSQL                     |
 
 ## Running without Docker (optional)
+**Backend**
+
+1. Create a virtual environment and install dependencies:
+   ```bash
+   cd backend
+   python -m venv .venv && source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+2. Run migrations and start the server:
+   ```bash
+   python manage.py migrate && python manage.py runserver
+   ```
+   No `DB_HOST` set means it falls back to SQLite automatically — no Postgres needed for this path.
+
+**Frontend**
+
 ```bash
-cd backend && python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python manage.py migrate && python manage.py runserver   # uses SQLite when DB_HOST is unset
-cd ../frontend && npm install && npm run dev
+cd frontend
+npm install && npm run dev
 ```
 
 ## Tests
