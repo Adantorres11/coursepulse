@@ -22,7 +22,7 @@ and play through all 5 questions with a score.
    ```bash
    cp .env.example .env
    ```
-   This holds your local DB credentials and secrets — it's gitignored, so it's yours alone and never gets committed.
+   This holds your local DB credentials and secrets. It's gitignored, so it's yours alone and never gets committed.
 
 3. **Build and start everything**
    ```bash
@@ -42,7 +42,7 @@ Stop with `Ctrl+C`. Wipe the database and start fresh with `docker compose down 
 
 ## Repository layout
 ```
-backend/    Django + Django REST Framework API
+backend/    Python (Django + Django REST Framework) API
 frontend/   React (Vite) + TypeScript + Tailwind CSS
 docs/       Developer docs that live next to the code (API contract)
 .github/    PR template and CI workflows
@@ -53,7 +53,7 @@ Project-level documentation (product overview, tech stack, architecture, sprint 
 | Layer      | Tech                          |
 |------------|--------------------------------|
 | Frontend   | React (Vite) + TypeScript + Tailwind CSS |
-| Backend    | Django REST Framework          |
+| Backend    | Python (Django REST Framework) |
 | Database   | PostgreSQL                     |
 
 ## Running without Docker (optional)
@@ -69,7 +69,7 @@ Project-level documentation (product overview, tech stack, architecture, sprint 
    ```bash
    python manage.py migrate && python manage.py runserver
    ```
-   No `DB_HOST` set means it falls back to SQLite automatically — no Postgres needed for this path.
+   No `DB_HOST` set means it falls back to SQLite automatically, so no Postgres is needed for this path.
 
 **Frontend**
 
