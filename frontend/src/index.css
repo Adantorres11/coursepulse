@@ -1,1 +1,16 @@
 @import "tailwindcss";
+
+.quiz-button {
+  padding: 10px 20px;
+  margin: 5px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: white;
+  color: #222;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.quiz-button:hover {
+  background: #f3f3f3;
+}
