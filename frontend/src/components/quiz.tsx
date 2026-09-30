@@ -37,6 +37,15 @@ export default function MathQuiz() {
     setQuestionIndex(questionIndex + 1);
   }
 
+// returns the maximum possible score for the results screen
+  function getMaxScore(): number {
+    let maxScore = 0;
+    for (let i = 0; i < questions.length; i++) {
+      maxScore += 1;
+    }
+    return maxScore;
+  }
+
   if (questionIndex < questions.length) {
     // QUIZ in progress
     return (
@@ -61,6 +70,7 @@ export default function MathQuiz() {
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
       <h1>Quiz Complete!</h1>
+      <p>Score: {score}/{getMaxScore()}</p>
     </div>
   );
 }
