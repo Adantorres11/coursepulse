@@ -10,6 +10,7 @@ export default function MathQuiz() {
   const [score, setScore] = useState<number>(0);
   const [questionIndex, setQuestionIndex] = useState<number>(0);
 
+
 // QUIZ questions, can be easily adjusted later. Will need to connect to question database / AI creating questions.
   const questions: QuizQuestion[] = [
     {
@@ -29,12 +30,38 @@ export default function MathQuiz() {
     }
   ];
 
+  // keeps track of which questions have been answered
+  const [answeredQuestions, setAnsweredQuestions] = useState<boolean[]>(
+    questions.map(() => false)
+  );
+
 // adjusts score based on which quiz answer selected
   function handleAnswer(answerIndex: number) {
+    if(answeredQuestions[questionIndex]) {
+      return;
+    }
+
     if (answerIndex === questions[questionIndex].correctAnswer) {
       setScore(score + 1);
     }
-    setQuestionIndex(questionIndex + 1);
+
+    setAnsweredQuestions((previous) => {
+      const updated = [...previous];
+      updated[questionIndex] = true;
+      return updated;
+    });
+  }
+
+  function nextQuestion() {
+    if(questionIndex < questions.length) {
+      setQuestionIndex(questionIndex + 1);
+    }
+  }
+
+  function previousQuestion() {
+    if (questionIndex > 0) {
+      setQuestionIndex(questionIndex - 1);
+    }
   }
 
   if (questionIndex < questions.length) {
@@ -52,6 +79,19 @@ export default function MathQuiz() {
           </button>
           <button className = "quiz-button" onClick={() => handleAnswer(2)}>
             {questions[questionIndex].answers[2]}
+          </button>
+        </div>
+        <div>
+          Question {questionIndex + 1} / {questions.length}
+        </div>
+        <div>
+          <button className = "quiz-button" onClick={() => previousQuestion()}>
+            Prev Question
+          </button>
+          <button className = "quiz-button" onClick={() => nextQuestion()}>
+            {questionIndex === questions.length - 1
+              ? "Submit"
+              : "Next Question"}
           </button>
         </div>
       </div>
