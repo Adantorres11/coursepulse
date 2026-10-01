@@ -20,7 +20,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "core",
-    # Sprint 1 (backend ticket): add "classrooms" and "quizzes" apps here.
+    "classrooms",
+    "quizzes",
 ]
 
 MIDDLEWARE = [
