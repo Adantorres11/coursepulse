@@ -29,11 +29,33 @@ export default function MathQuiz() {
     }
   ];
 
+  const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>(
+    Array(questions.length).fill(null)
+  );
+
+  // sets color of buttons based on user input
+  function getAnswerColor(answerIndex: number) {
+    if (selectedAnswers[questionIndex] !== null && answerIndex === questions[questionIndex].correctAnswer) {
+      return "green";
+    }
+    else if(selectedAnswers[questionIndex] === answerIndex) {
+      return "red";
+    }
+    return "white";
+  }
+
 // adjusts score based on which quiz answer selected
   function handleAnswer(answerIndex: number) {
+    setSelectedAnswers((prev) => {
+      const updated = [...prev];
+      updated[questionIndex] = answerIndex;
+      return updated;
+    });
+
     if (answerIndex === questions[questionIndex].correctAnswer) {
       setScore(score + 1);
     }
+
     setQuestionIndex(questionIndex + 1);
   }
 
@@ -44,13 +66,13 @@ export default function MathQuiz() {
         <h1>{questions[questionIndex].question}</h1>
         <p>Score: {score}</p>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button className = "quiz-button" onClick={() => handleAnswer(0)}>
+          <button className = "quiz-button" onClick={() => handleAnswer(0)} style = {{backgroundColor: getAnswerColor(0)}}>
             {questions[questionIndex].answers[0]}
           </button>
-          <button className = "quiz-button" onClick={() => handleAnswer(1)}>
+          <button className = "quiz-button" onClick={() => handleAnswer(1)} style = {{backgroundColor: getAnswerColor(1)}}>
             {questions[questionIndex].answers[1]}
           </button>
-          <button className = "quiz-button" onClick={() => handleAnswer(2)}>
+          <button className = "quiz-button" onClick={() => handleAnswer(2)} style = {{backgroundColor: getAnswerColor(2)}}>
             {questions[questionIndex].answers[2]}
           </button>
         </div>
