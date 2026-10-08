@@ -83,3 +83,30 @@ npm install && npm run dev
 cd backend && python manage.py test
 cd frontend && npm run build
 ```
+
+## Demo quiz
+
+With Docker Desktop running, start the database and backend from the
+repository root:
+
+```bash
+docker compose up --build -d db backend
+```
+
+Load the demo content:
+
+```bash
+docker compose exec backend python manage.py seed_demo
+```
+
+The command creates one demo classroom, one published lecture, and five
+questions about Scrum and Git, covering easy, medium, and hard difficulties.
+Running it again updates the same demo questions without creating duplicates.
+
+For local development without Docker, install the backend dependencies,
+then run these commands from `backend` using your virtual environment's Python:
+
+```bash
+python manage.py migrate
+python manage.py seed_demo
+```
