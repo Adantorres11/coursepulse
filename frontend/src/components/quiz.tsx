@@ -77,15 +77,6 @@ export default function MathQuiz() {
     });
   }
 
-// returns the maximum possible score for the results screen
-  function getMaxScore(): number {
-    let maxScore = 0;
-    for (let i = 0; i < questions.length; i++) {
-      maxScore += 1;
-    }
-    return maxScore;
-  }
-
   function nextQuestion() {
     if(questionIndex < questions.length) {
       setQuestionIndex(questionIndex + 1);
