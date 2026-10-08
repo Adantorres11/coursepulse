@@ -4,6 +4,7 @@ interface QuizQuestion {
   question: string;
   answers: string[];
   correctAnswer: number;
+  questionDifficulty: number;
 }
 
 export default function MathQuiz() {
@@ -16,17 +17,20 @@ export default function MathQuiz() {
     {
       question: "What's 2 + 2?",
       answers: ["3", "4", "5"],
-      correctAnswer: 1
+      correctAnswer: 1,
+      questionDifficulty: 1
     },
     {
       question: "What's 4 + 3?",
       answers: ["3", "6", "7"],
-      correctAnswer: 2
+      correctAnswer: 2,
+      questionDifficulty: 2
     },
     {
       question: "What's 10 + 10?",
       answers: ["20", "13", "19"],
-      correctAnswer: 0
+      correctAnswer: 0,
+      questionDifficulty: 3
     }
   ];
 
@@ -63,7 +67,7 @@ export default function MathQuiz() {
     });
 
     if (answerIndex === questions[questionIndex].correctAnswer) {
-      setScore(score + 1);
+      setScore(score + questions[questionIndex].questionDifficulty);
     }
 
     setAnsweredQuestions((previous) => {
@@ -92,6 +96,15 @@ export default function MathQuiz() {
     if (questionIndex > 0) {
       setQuestionIndex(questionIndex - 1);
     }
+  }
+
+// returns the maximum possible score for the results screen
+  function getMaxScore(): number {
+    let maxScore = 0;
+    for (let i = 0; i < questions.length; i++) {
+      maxScore += questions[i].questionDifficulty;
+    }
+    return maxScore;
   }
 
   if (questionIndex < questions.length) {
@@ -135,3 +148,4 @@ export default function MathQuiz() {
     </div>
   );
 }
+
