@@ -22,7 +22,8 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "accounts",
     "core",
-    # Sprint 1 (backend ticket): add "classrooms" and "quizzes" apps here.
+    "classrooms",
+    "quizzes",
 ]
 
 MIDDLEWARE = [
