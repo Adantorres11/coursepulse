@@ -223,3 +223,70 @@ Rules:
 Errors:
 - `401`: Missing or invalid authentication token.
 - `403`: Authenticated user does not have the student role.
+
+## Class access codes
+
+Each classroom has a unique six-character access code.
+Generated codes use uppercase letters and numbers.
+Code input is case-insensitive; surrounding whitespace is ignored.
+The demo classroom's code is `DEMO01`.
+
+Both endpoints below require a student account and this header:
+
+```text
+Authorization: Token <token>
+```
+
+### GET /api/classes/lookup/?code=ABC123
+
+Previews a classroom without enrolling the student.
+
+Success: `200 OK`
+```json
+{
+  "id": 1,
+  "name": "Software Engineering",
+  "course_code": "CS 3398",
+  "professor": {
+    "id": 2,
+    "name": "Alex Smith"
+  },
+  "quiz_count": 5,
+  "new_quiz_count": 3
+}
+```
+
+Fields and quiz-count rules match GET /api/classes/.
+Professor may be null when no professor is assigned.
+
+### POST /api/classes/join/
+
+Enrolls the logged-in student in the classroom.
+
+Send `Content-Type: application/json`.
+
+Request:
+```json
+{
+  "code": "ABC123"
+}
+```
+
+Success:
+- `201 Created` for a new enrollment.
+- `200 OK` if already enrolled; no duplicate is created.
+- Both return the same classroom response structure as lookup.
+
+### Lookup and join errors
+
+Unknown six-character code: `404 Not Found`
+```json
+{
+  "detail": "We couldn't find a class with that code"
+}
+```
+
+Other errors:
+- `400`: Missing or malformed code; errors appear under `code`.
+- `401`: Missing or invalid authentication token.
+- `403`: Authenticated user does not have the student role.
