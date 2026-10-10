@@ -178,3 +178,48 @@ Invalid token: `401 Unauthorized`
 
 Tokens are reused on login and do not automatically expire.
 Existing users without a role profile receive `"role": null`.
+
+## GET /api/classes/
+
+Returns only the logged-in student's enrolled classrooms.
+Requires a student account and this header:
+
+```text
+Authorization: Token <token>
+```
+
+Success: `200 OK`
+```json
+[
+  {
+    "id": 1,
+    "name": "Software Engineering",
+    "course_code": "CS 3398",
+    "professor": {
+      "id": 2,
+      "name": "Alex Smith"
+    },
+    "quiz_count": 5,
+    "new_quiz_count": 3
+  }
+]
+```
+
+Rules:
+- Classes are ordered by name, then ID.
+- No enrollments returns `[]` with `200 OK`.
+- Professor is `null` if no professor is assigned.
+- Professor name falls back to username when their full name is empty.
+- Course code may be empty for existing classrooms.
+- Each lecture with questions counts as one quiz if its publication
+  time has arrived.
+- Drafts, future publications, and lectures without questions are excluded.
+- New quizzes are available quizzes the current student has not completed.
+- Completion is recorded through QuizCompletion. The quiz-submission
+  handler must create this record when a student completes a quiz;
+  this endpoint only reads completion records.
+- Duplicate enrollment in the same classroom is prevented by the database.
+
+Errors:
+- `401`: Missing or invalid authentication token.
+- `403`: Authenticated user does not have the student role.
