@@ -17,6 +17,8 @@ Liveness check for Docker and CI.
 
 ## GET /api/lectures/
 Lectures with a published quiz, newest first. Powers the Student Hub.
+A lecture is published when its `published_at` is set. Unpublished lectures are never returned.
+When no lecture is published, the response is an empty list: `[]`.
 ```json
 [
   {
