@@ -1,10 +1,10 @@
 import { useState } from "react";
 
 interface QuizQuestion {
-  question: string;
-  answers: string[];
-  correctAnswer: number;
-  questionDifficulty: number;
+  prompt: string;
+  choices: string[];
+  correct_index: number;
+  difficulty: number;
 }
 
 export default function MathQuiz() {
@@ -15,22 +15,16 @@ export default function MathQuiz() {
 // QUIZ questions, can be easily adjusted later. Will need to connect to question database / AI creating questions.
   const questions: QuizQuestion[] = [
     {
-      question: "What's 2 + 2?",
-      answers: ["3", "4", "5"],
-      correctAnswer: 1,
-      questionDifficulty: 1
+      prompt: "What's 2 + 2?",
+      choices: ["3", "4", "5", "8"],
+      correct_index: 1,
+      difficulty: 1
     },
     {
-      question: "What's 4 + 3?",
-      answers: ["3", "6", "7"],
-      correctAnswer: 2,
-      questionDifficulty: 2
-    },
-    {
-      question: "What's 10 + 10?",
-      answers: ["20", "13", "19"],
-      correctAnswer: 0,
-      questionDifficulty: 3
+      prompt: "What's 2 + 2?",
+      choices: ["3", "4", "5"],
+      correct_index: 1,
+      difficulty: 1
     }
   ];
 
@@ -40,13 +34,13 @@ export default function MathQuiz() {
 
   // sets color of buttons based on user input
   function getAnswerColor(answerIndex: number) {
-    if (selectedAnswers[questionIndex] !== null && answerIndex === questions[questionIndex].correctAnswer) {
-      return "green";
+    if (selectedAnswers[questionIndex] !== null && answerIndex === questions[questionIndex].correct_index) {
+      return "#50C878";
     }
     else if(selectedAnswers[questionIndex] === answerIndex) {
-      return "red";
+      return "#F54927";
     }
-    return "white";
+    return "#708090";
   }
 
   // keeps track of which questions have been answered
@@ -66,8 +60,8 @@ export default function MathQuiz() {
       return updated;
     });
 
-    if (answerIndex === questions[questionIndex].correctAnswer) {
-      setScore(score + questions[questionIndex].questionDifficulty);
+    if (answerIndex === questions[questionIndex].correct_index) {
+      setScore(score + questions[questionIndex].difficulty);
     }
 
     setAnsweredQuestions((previous) => {
@@ -78,8 +72,11 @@ export default function MathQuiz() {
   }
 
   function nextQuestion() {
-    if(questionIndex < questions.length) {
+    if(questionIndex < questions.length - 1) {
       setQuestionIndex(questionIndex + 1);
+    }
+    else {
+      setQuestionIndex(questions.length);
     }
   }
 
@@ -93,7 +90,7 @@ export default function MathQuiz() {
   function getMaxScore(): number {
     let maxScore = 0;
     for (let i = 0; i < questions.length; i++) {
-      maxScore += questions[i].questionDifficulty;
+      maxScore += questions[i].difficulty;
     }
     return maxScore;
   }
@@ -102,27 +99,28 @@ export default function MathQuiz() {
     // QUIZ in progress
     return (
       <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-        <h1>{questions[questionIndex].question}</h1>
+        <h1>{questions[questionIndex].prompt}</h1>
         <p>Score: {score}</p>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button className = "quiz-button" onClick={() => handleAnswer(0)} style = {{backgroundColor: getAnswerColor(0)}}>
-            {questions[questionIndex].answers[0]}
-          </button>
-          <button className = "quiz-button" onClick={() => handleAnswer(1)} style = {{backgroundColor: getAnswerColor(1)}}>
-            {questions[questionIndex].answers[1]}
-          </button>
-          <button className = "quiz-button" onClick={() => handleAnswer(2)} style = {{backgroundColor: getAnswerColor(2)}}>
-            {questions[questionIndex].answers[2]}
-          </button>
+        <div style={{ display: "flex", gap: "10px" }}>
+          {questions[questionIndex].choices.map((choice, index) => (
+            <button
+              key={index}
+              className="text-black border border-black px-5 py-2 rounded-lg cursor-pointer"
+              onClick={() => handleAnswer(index)}
+              style={{ backgroundColor: getAnswerColor(index) }}
+            >
+              {choice}
+            </button>
+          ))}
         </div>
         <div>
           Question {questionIndex + 1} / {questions.length}
         </div>
         <div>
-          <button className = "quiz-button" onClick={() => previousQuestion()}>
+          <button className="bg-white text-black border border-black px-5 py-2 rounded-lg cursor-pointer" onClick={() => previousQuestion()}>
             Prev Question
           </button>
-          <button className = "quiz-button" onClick={() => nextQuestion()}>
+          <button className="bg-white text-black border border-black px-5 py-2 rounded-lg cursor-pointer" onClick={() => nextQuestion()}>
             {questionIndex === questions.length - 1
               ? "Submit"
               : "Next Question"}
