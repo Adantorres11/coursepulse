@@ -1,0 +1,237 @@
+{
+  "1": {
+    "id": 1,
+    "lecture_id": 1,
+    "lectureId": 1,
+    "title": "Tuesday's Lecture: Agile and Scrum",
+    "questions": [
+      {
+        "id": 11,
+        "prompt": "Why does Scrum use fixed-length sprints?",
+        "choices": [
+          "To allow scope changes mid-sprint without team consent",
+          "To enforce a regular cadence, inspect progress, and adapt",
+          "To eliminate the need for software testing",
+          "To guarantee 100% bug-free software releases"
+        ],
+        "correct_index": 1,
+        "correctChoiceIndex": 1,
+        "difficulty": "easy"
+      },
+      {
+        "id": 12,
+        "prompt": "Who is primarily responsible for maximizing the value of the product in Scrum?",
+        "choices": [
+          "Scrum Master",
+          "Lead Developer",
+          "Product Owner",
+          "Project Manager"
+        ],
+        "correct_index": 2,
+        "correctChoiceIndex": 2,
+        "difficulty": "medium"
+      },
+      {
+        "id": 13,
+        "prompt": "What is the primary purpose of the Sprint Retrospective?",
+        "choices": [
+          "Inspect how the sprint went with regards to individuals, interactions, and tools",
+          "Demo the completed increment to external stakeholders",
+          "Estimate user stories for the product backlog",
+          "Write documentation and deploy to production"
+        ],
+        "correct_index": 0,
+        "correctChoiceIndex": 0,
+        "difficulty": "medium"
+      },
+      {
+        "id": 14,
+        "prompt": "Which item reflects a core value of the Agile Manifesto?",
+        "choices": [
+          "Contract negotiation over customer collaboration",
+          "Following a plan over responding to change",
+          "Processes and tools over individuals and interactions",
+          "Working software over comprehensive documentation"
+        ],
+        "correct_index": 3,
+        "correctChoiceIndex": 3,
+        "difficulty": "easy"
+      },
+      {
+        "id": 15,
+        "prompt": "Who has the authority to cancel a Sprint before the sprint timebox expires?",
+        "choices": [
+          "The Development Team",
+          "The Scrum Master",
+          "Only the Product Owner",
+          "Any project stakeholder"
+        ],
+        "correct_index": 2,
+        "correctChoiceIndex": 2,
+        "difficulty": "hard"
+      }
+    ]
+  },
+  "2": {
+    "id": 2,
+    "lecture_id": 2,
+    "lectureId": 2,
+    "title": "REST APIs with Django REST Framework",
+    "questions": [
+      {
+        "id": 21,
+        "prompt": "What class converts complex data types like querysets into native Python datatypes in DRF?",
+        "choices": [
+          "View",
+          "Serializer",
+          "Router",
+          "Renderer"
+        ],
+        "correct_index": 1,
+        "correctChoiceIndex": 1,
+        "difficulty": "easy"
+      },
+      {
+        "id": 22,
+        "prompt": "Which HTTP method should be used to partially update an existing resource?",
+        "choices": [
+          "PUT",
+          "PATCH",
+          "POST",
+          "GET"
+        ],
+        "correct_index": 1,
+        "correctChoiceIndex": 1,
+        "difficulty": "medium"
+      },
+      {
+        "id": 23,
+        "prompt": "What status code indicates a successfully created resource in a RESTful API?",
+        "choices": [
+          "200 OK",
+          "201 Created",
+          "204 No Content",
+          "202 Accepted"
+        ],
+        "correct_index": 1,
+        "correctChoiceIndex": 1,
+        "difficulty": "easy"
+      },
+      {
+        "id": 24,
+        "prompt": "In DRF, what component automatically determines how URL routes map to viewset logic?",
+        "choices": [
+          "DefaultRouter",
+          "URLConf",
+          "Middleware",
+          "ModelViewSet"
+        ],
+        "correct_index": 0,
+        "correctChoiceIndex": 0,
+        "difficulty": "medium"
+      }
+    ]
+  },
+  "3": {
+    "id": 3,
+    "lecture_id": 3,
+    "lectureId": 3,
+    "title": "Introduction to React Hooks & State",
+    "questions": [
+      {
+        "id": 31,
+        "prompt": "Which hook lets you perform side effects in functional React components?",
+        "choices": [
+          "useState",
+          "useEffect",
+          "useMemo",
+          "useRef"
+        ],
+        "correct_index": 1,
+        "correctChoiceIndex": 1,
+        "difficulty": "easy"
+      },
+      {
+        "id": 32,
+        "prompt": "What does the useState hook return?",
+        "choices": [
+          "A single state value",
+          "A setter function only",
+          "A pair: the current state and a function to update it",
+          "An object with getter and setter properties"
+        ],
+        "correct_index": 2,
+        "correctChoiceIndex": 2,
+        "difficulty": "easy"
+      },
+      {
+        "id": 33,
+        "prompt": "When is the cleanup function returned by useEffect executed?",
+        "choices": [
+          "Before the component unmounts and before re-running the effect on update",
+          "Only when the browser window closes",
+          "Immediately after every render",
+          "Only during initial component mount"
+        ],
+        "correct_index": 0,
+        "correctChoiceIndex": 0,
+        "difficulty": "medium"
+      },
+      {
+        "id": 34,
+        "prompt": "Which rule must be followed when calling React Hooks?",
+        "choices": [
+          "Hooks can be called inside conditional statements",
+          "Hooks must only be called at the top level of React functions",
+          "Hooks can be called inside standard helper functions outside React",
+          "Hooks must always be wrapped in try/catch blocks"
+        ],
+        "correct_index": 1,
+        "correctChoiceIndex": 1,
+        "difficulty": "easy"
+      }
+    ]
+  },
+  "quiz-001": {
+    "id": 1,
+    "lecture_id": 1,
+    "lectureId": "lec-001",
+    "title": "Tuesday's Lecture: Agile and Scrum",
+    "questions": [
+      {
+        "id": 11,
+        "prompt": "Why does Scrum use fixed-length sprints?",
+        "choices": [
+          "To allow scope changes mid-sprint without team consent",
+          "To enforce a regular cadence, inspect progress, and adapt",
+          "To eliminate the need for software testing",
+          "To guarantee 100% bug-free software releases"
+        ],
+        "correct_index": 1,
+        "correctChoiceIndex": 1,
+        "difficulty": "easy"
+      }
+    ]
+  },
+  "lec-001": {
+    "id": 1,
+    "lecture_id": 1,
+    "lectureId": "lec-001",
+    "title": "Tuesday's Lecture: Agile and Scrum",
+    "questions": [
+      {
+        "id": 11,
+        "prompt": "Why does Scrum use fixed-length sprints?",
+        "choices": [
+          "To allow scope changes mid-sprint without team consent",
+          "To enforce a regular cadence, inspect progress, and adapt",
+          "To eliminate the need for software testing",
+          "To guarantee 100% bug-free software releases"
+        ],
+        "correct_index": 1,
+        "correctChoiceIndex": 1,
+        "difficulty": "easy"
+      }
+    ]
+  }
+}

@@ -8,6 +8,7 @@ Auth: token authentication for protected endpoints.
 Send `Authorization: Token <token>` with protected requests.
 Registration and login do not require a token.
 Lecture data is hardcoded through the seed script.
+The lecture and quiz endpoints below are public in Sprint 1 and need no token.
 
 ## GET /api/health/
 Liveness check for Docker and CI.
@@ -17,6 +18,7 @@ Liveness check for Docker and CI.
 
 ## GET /api/lectures/
 Lectures with a published quiz, newest first. Powers the Student Hub.
+Success: `200 OK`. Returns `[]` when no lecture has a published quiz.
 ```json
 [
   {
@@ -31,6 +33,7 @@ Lectures with a published quiz, newest first. Powers the Student Hub.
 
 ## GET /api/lectures/{id}/quiz/
 The full quiz for one lecture. Powers the Arena (game screen).
+Success: `200 OK`.
 ```json
 {
   "lecture_id": 1,
