@@ -1,35 +1,23 @@
 import { useState } from "react";
+import type { Quiz, DifficultyLevel } from "../types/api";
 
-interface QuizQuestion {
-  prompt: string;
-  choices: string[];
-  correct_index: number;
-  difficulty: number;
+type QuizQuestion = Quiz["questions"][number];
+
+interface QuizGameProps {
+  questions: QuizQuestion[];
 }
 
-export default function MathQuiz() {
+export default function QuizGame({ questions }: QuizGameProps) {
   const [score, setScore] = useState<number>(0);
   const [questionIndex, setQuestionIndex] = useState<number>(0);
 
-
-// QUIZ questions, can be easily adjusted later. Will need to connect to question database / AI creating questions.
-  const questions: QuizQuestion[] = [
-    {
-      prompt: "What's 2 + 2?",
-      choices: ["3", "4", "5", "8"],
-      correct_index: 1,
-      difficulty: 1
-    },
-    {
-      prompt: "What's 2 + 2?",
-      choices: ["3", "4", "5"],
-      correct_index: 1,
-      difficulty: 1
-    }
-  ];
-
   const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>(
     Array(questions.length).fill(null)
+  );
+
+  // keeps track of which questions have been answered
+  const [answeredQuestions, setAnsweredQuestions] = useState<boolean[]>(
+    questions.map(() => false)
   );
 
   // sets color of buttons based on user input
@@ -42,11 +30,6 @@ export default function MathQuiz() {
     }
     return "#708090";
   }
-
-  // keeps track of which questions have been answered
-  const [answeredQuestions, setAnsweredQuestions] = useState<boolean[]>(
-    questions.map(() => false)
-  );
 
 // adjusts score based on which quiz answer selected
   function handleAnswer(answerIndex: number) {
@@ -61,7 +44,7 @@ export default function MathQuiz() {
     });
 
     if (answerIndex === questions[questionIndex].correct_index) {
-      setScore(score + questions[questionIndex].difficulty);
+      setScore(score + 100 * getDifficultyPoints(questions[questionIndex].difficulty));
     }
 
     setAnsweredQuestions((previous) => {
@@ -71,14 +54,26 @@ export default function MathQuiz() {
     });
   }
 
-  function nextQuestion() {
-    if(questionIndex < questions.length - 1) {
-      setQuestionIndex(questionIndex + 1);
-    }
-    else {
-      setQuestionIndex(questions.length);
+  function getDifficultyPoints(difficulty: DifficultyLevel | undefined): number {
+    switch (difficulty) {
+      case "easy":
+        return 1;
+      case "medium":
+        return 2;
+      case "hard":
+        return 3;
+      default:
+        return 1;
     }
   }
+
+  function nextQuestion() {
+  if (questionIndex < questions.length - 1) {
+    setQuestionIndex((prev) => prev + 1);
+  } else {
+    setQuestionIndex(questions.length);
+  }
+}
 
   function previousQuestion() {
     if (questionIndex > 0) {
@@ -88,20 +83,25 @@ export default function MathQuiz() {
 
 // returns the maximum possible score for the results screen
   function getMaxScore(): number {
-    let maxScore = 0;
-    for (let i = 0; i < questions.length; i++) {
-      maxScore += questions[i].difficulty;
-    }
-    return maxScore;
+    return questions.reduce((total, question) => {
+      return total + 100 * getDifficultyPoints(question?.difficulty);
+    }, 0);
   }
 
+  // quiz is empty
+  if (questions.length === 0) {
+    return <p>No questions available for this quiz.</p>;
+  }
   if (questionIndex < questions.length) {
     // QUIZ in progress
     return (
       <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+        <div>
+          Question {questionIndex + 1} / {questions.length}
+          <p>Score: {score}</p>
+        </div>
         <h1>{questions[questionIndex].prompt}</h1>
-        <p>Score: {score}</p>
-        <div style={{ display: "flex", gap: "10px" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: "10px", margin: "20px" }}>
           {questions[questionIndex].choices.map((choice, index) => (
             <button
               key={index}
@@ -113,10 +113,7 @@ export default function MathQuiz() {
             </button>
           ))}
         </div>
-        <div>
-          Question {questionIndex + 1} / {questions.length}
-        </div>
-        <div>
+        <div style={{ display: "flex", justifyContent: "center", gap: "10px" }}>
           <button className="bg-white text-black border border-black px-5 py-2 rounded-lg cursor-pointer" onClick={() => previousQuestion()}>
             Prev Question
           </button>
@@ -133,7 +130,7 @@ export default function MathQuiz() {
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
       <h1>Quiz Complete!</h1>
-      <p>Score: {score}/{getMaxScore()}</p>
+      <p>Score: {(score / getMaxScore() * 100).toFixed(2)}%</p>
     </div>
   );
 }
