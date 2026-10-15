@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getLectures, type Lecture } from "../lib/apiClient";
 
 interface StudentHubProps {
-  onSelectQuiz: (lectureId: number | string) => void;
+  onSelectQuiz?: (lectureId: number | string) => void;
 }
 
-export function StudentHub({ onSelectQuiz }: StudentHubProps) {
+export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
+  const navigate = useNavigate();
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,15 +47,15 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps) {
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 py-8">
+    <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       {/* Header */}
-      <header className="mb-8 border-b border-slate-800 pb-6 flex items-center justify-between">
+      <header className="mb-6 sm:mb-8 border-b border-slate-800 pb-5 sm:pb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
-            <h1 className="text-3xl font-bold tracking-tight text-white">Student Hub</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Student Hub</h1>
           </div>
-          <p className="text-slate-400 text-sm">
+          <p className="text-slate-400 text-xs sm:text-sm">
             Keep the pulse on your lectures — practice and test your knowledge.
           </p>
         </div>
@@ -61,7 +63,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps) {
 
       {/* Loading Skeleton */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {[1, 2, 3].map((n) => (
             <div
               key={n}
@@ -105,15 +107,21 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps) {
         </div>
       ) : (
         /* Card Grid (Acceptance Criteria) */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {lectures.map((lecture) => {
             const questionCount = lecture.question_count ?? 5;
 
             return (
               <div
                 key={lecture.id}
-                onClick={() => onSelectQuiz(lecture.id)}
-                className="group bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-indigo-500 rounded-2xl p-6 transition-all duration-200 shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1 flex flex-col justify-between cursor-pointer"
+                onClick={() => {
+                  if (onSelectQuiz) {
+                    onSelectQuiz(lecture.id);
+                  } else {
+                    navigate(`/quiz/${lecture.id}`);
+                  }
+                }}
+                className="group bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-indigo-500 rounded-2xl p-5 sm:p-6 transition-all duration-200 shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1 flex flex-col justify-between cursor-pointer"
               >
                 <div>
                   {/* "New Quiz" badge & question count */}
