@@ -51,7 +51,7 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
 
     setHasLoginError(false);
     // On success, redirect to Student Hub
-    navigate("/");
+    navigate("/hub");
   };
 
   const handleSignupSubmit = (e: React.FormEvent) => {
@@ -77,7 +77,7 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
 
     setHasLoginError(false);
     // On success, redirect to Student Hub
-    navigate("/");
+    navigate("/hub");
   };
 
   return (
