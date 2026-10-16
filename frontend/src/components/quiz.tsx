@@ -28,7 +28,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
     else if (selectedAnswers[questionIndex] === answerIndex) {
       return "bg-red-500 text-white";
     }
-    return "bg-slate-100 text-black";
+    return "bg-slate-950 text-white";
   }
 
 // adjusts score based on which quiz answer selected
