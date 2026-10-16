@@ -23,12 +23,12 @@ export default function QuizGame({ questions }: QuizGameProps) {
   // sets color of buttons based on user input
   function getAnswerColor(answerIndex: number) {
     if (selectedAnswers[questionIndex] !== null && answerIndex === questions[questionIndex].correct_index) {
-      return "#50C878";
+      return "bg-emerald-500 text-white";
     }
-    else if(selectedAnswers[questionIndex] === answerIndex) {
-      return "#F54927";
+    else if (selectedAnswers[questionIndex] === answerIndex) {
+      return "bg-red-500 text-white";
     }
-    return "#708090";
+    return "bg-slate-100 text-black";
   }
 
 // adjusts score based on which quiz answer selected
@@ -95,29 +95,28 @@ export default function QuizGame({ questions }: QuizGameProps) {
   if (questionIndex < questions.length) {
     // QUIZ in progress
     return (
-      <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+      <div className="p-20 font-sans">
         <div>
           Question {questionIndex + 1} / {questions.length}
           <p>Score: {score}</p>
         </div>
         <h1>{questions[questionIndex].prompt}</h1>
-        <div style={{ display: "flex", justifyContent: "center", gap: "10px", margin: "20px" }}>
+        <div className="flex justify-center gap-2.5 m-5">
           {questions[questionIndex].choices.map((choice, index) => (
             <button
               key={index}
-              className="text-black border border-black px-5 py-2 rounded-lg cursor-pointer"
+              className={`border border-black px-5 py-2 rounded-lg cursor-pointer transition-colors ${getAnswerColor(index)}`}
               onClick={() => handleAnswer(index)}
-              style={{ backgroundColor: getAnswerColor(index) }}
             >
               {choice}
             </button>
           ))}
         </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: "10px" }}>
-          <button className="bg-white text-black border border-black px-5 py-2 rounded-lg cursor-pointer" onClick={() => previousQuestion()}>
+        <div className="flex justify-center gap-2.5">
+          <button className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => previousQuestion()}>
             Prev Question
           </button>
-          <button className="bg-white text-black border border-black px-5 py-2 rounded-lg cursor-pointer" onClick={() => nextQuestion()}>
+          <button className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => nextQuestion()}>
             {questionIndex === questions.length - 1
               ? "Submit"
               : "Next Question"}
@@ -128,7 +127,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
   }
   // QUIZ results
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+    <div className="p-20 font-sans">
       <h1>Quiz Complete!</h1>
       <p>Score: {(score / getMaxScore() * 100).toFixed(2)}%</p>
     </div>
