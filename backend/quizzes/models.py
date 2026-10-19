@@ -1,7 +1,7 @@
 from django.conf import settings
-from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 
 class Lecture(models.Model):
@@ -66,6 +66,7 @@ class Question(models.Model):
     def __str__(self):
         return self.prompt
 
+
 class Attempt(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -86,6 +87,7 @@ class Attempt(models.Model):
             f"Attempt {self.pk}: "
             f"user {self.user_id}, lecture {self.lecture_id}"
         )
+
 
 class Answer(models.Model):
     attempt = models.ForeignKey(
@@ -134,3 +136,25 @@ class Answer(models.Model):
             f"Answer {self.pk}: "
             f"attempt {self.attempt_id}, question {self.question_id}"
         )
+
+
+class QuizCompletion(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="quiz_completions",
+    )
+    lecture = models.ForeignKey(
+        Lecture,
+        on_delete=models.CASCADE,
+        related_name="completions",
+    )
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "lecture"],
+                name="unique_user_lecture_completion",
+            ),
+        ]
