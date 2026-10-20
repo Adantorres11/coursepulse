@@ -18,12 +18,15 @@ Liveness check for Docker and CI.
 ## GET /api/lectures/
 Lectures with a published quiz, newest first. Powers the Student Hub.
 A lecture is published when its `published_at` is set. Unpublished lectures are never returned.
-When no lecture is published, the response is an empty list: `[]`.
+A published lecture with no questions is not returned either.
+When no lecture qualifies, the response is an empty list: `[]`.
+`classroom_id` identifies the classroom. `classroom` is its name, set by whoever created it.
 ```json
 [
   {
     "id": 1,
     "title": "Tuesday's Lecture: Agile and Scrum",
+    "classroom_id": 1,
     "classroom": "CS 3398 Software Engineering",
     "published_at": "2026-09-22T15:00:00Z",
     "question_count": 5
