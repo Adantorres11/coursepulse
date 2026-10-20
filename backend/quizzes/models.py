@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 
 class Lecture(models.Model):
@@ -63,3 +65,96 @@ class Question(models.Model):
 
     def __str__(self):
         return self.prompt
+
+
+class Attempt(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="quiz_attempts",
+    )
+    lecture = models.ForeignKey(
+        Lecture,
+        on_delete=models.CASCADE,
+        related_name="attempts",
+    )
+    started_at = models.DateTimeField(default=timezone.now)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    total_points = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return (
+            f"Attempt {self.pk}: "
+            f"user {self.user_id}, lecture {self.lecture_id}"
+        )
+
+
+class Answer(models.Model):
+    attempt = models.ForeignKey(
+        Attempt,
+        on_delete=models.CASCADE,
+        related_name="answers",
+    )
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="answers",
+    )
+    chosen_index = models.PositiveSmallIntegerField()
+    is_correct = models.BooleanField()
+    time_taken_ms = models.PositiveIntegerField()
+    points_awarded = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["attempt", "question"],
+                name="unique_answer_per_attempt_question",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    chosen_index__gte=0,
+                    chosen_index__lte=3,
+                ),
+                name="answer_chosen_index_zero_to_three",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if self.attempt_id and self.question_id:
+            if self.attempt.lecture_id != self.question.lecture_id:
+                raise ValidationError({
+                    "question": (
+                        "The question must belong to the attempt's lecture."
+                    )
+                })
+
+    def __str__(self):
+        return (
+            f"Answer {self.pk}: "
+            f"attempt {self.attempt_id}, question {self.question_id}"
+        )
+
+
+class QuizCompletion(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="quiz_completions",
+    )
+    lecture = models.ForeignKey(
+        Lecture,
+        on_delete=models.CASCADE,
+        related_name="completions",
+    )
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "lecture"],
+                name="unique_user_lecture_completion",
+            ),
+        ]
