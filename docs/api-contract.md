@@ -59,7 +59,8 @@ Field rules
 - `difficulty`: `"easy"` (100 pts), `"medium"` (200 pts) or `"hard"` (300 pts).
 - Questions are returned in a fixed order.
 
-Errors: `404` with `{"detail": "Not found."}` for an unknown lecture id.
+Errors: `404` with `{"detail": "Not found."}` for an unknown lecture id. The same
+`404` is returned when the lecture is not published yet or has no questions.
 
 ## Known Sprint 1 shortcuts (tracked for Sprint 2)
 - `correct_index` is sent to the browser so scoring can happen client-side.
