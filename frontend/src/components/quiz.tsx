@@ -188,10 +188,10 @@ export default function QuizGame({ questions }: QuizGameProps) {
               {selectedAnswers[questionIndex] == questions[questionIndex].correct_index && <span className="text-emerald-400 font-bold">✓ Correct! +{getDifficultyPoints(questions[questionIndex].difficulty) * 100} points</span>}
               {selectedAnswers[questionIndex] != questions[questionIndex].correct_index && <span className="text-red-400 font-bold">✕ Not quite. +0 points</span>}
             </div>
-            <button className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => nextQuestion()}>
+            <button className="bg-blue-300 text-black font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => nextQuestion()}>
               {questionIndex === questions.length - 1
                 ? "Submit"
-                : "Next Question"}
+                : "Next Question →"}
             </button>
           </div>
         }
