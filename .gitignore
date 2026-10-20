@@ -22,3 +22,8 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Workspace / Local AI
+GEMINI.md
+assets/
+
