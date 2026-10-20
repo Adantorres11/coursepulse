@@ -18,12 +18,16 @@ Liveness check for Docker and CI.
 
 ## GET /api/lectures/
 Lectures with a published quiz, newest first. Powers the Student Hub.
-Success: `200 OK`. Returns `[]` when no lecture has a published quiz.
+A lecture is listed when its `published_at` has arrived and it has at least one question.
+Drafts, future publications, and lectures without questions are never returned.
+Success: `200 OK`. Returns `[]` when no lecture qualifies.
+`classroom_id` identifies the classroom. `classroom` is its name, set by whoever created it.
 ```json
 [
   {
     "id": 1,
     "title": "Tuesday's Lecture: Agile and Scrum",
+    "classroom_id": 1,
     "classroom": "CS 3398 Software Engineering",
     "published_at": "2026-09-22T15:00:00Z",
     "question_count": 5
@@ -55,7 +59,8 @@ Field rules
 - `difficulty`: `"easy"` (100 pts), `"medium"` (200 pts) or `"hard"` (300 pts).
 - Questions are returned in a fixed order.
 
-Errors: `404` with `{"detail": "Not found."}` for an unknown lecture id.
+Errors: `404` with `{"detail": "Not found."}` for an unknown lecture id. The same
+`404` is returned when the lecture is not published yet or has no questions.
 
 ## Known Sprint 1 shortcuts (tracked for Sprint 2)
 - `correct_index` is sent to the browser so scoring can happen client-side.
