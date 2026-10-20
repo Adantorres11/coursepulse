@@ -5,6 +5,7 @@ export type DifficultyLevel = "easy" | "medium" | "hard";
 export interface Lecture {
   id: number | string;
   title: string;
+  classroom_id: number;
   classroom: string;
   published_at: string; // ISO date string
   question_count: number;
