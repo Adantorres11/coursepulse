@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { getQuiz, type Quiz } from "../lib/apiClient";
+import QuizGame from "./quiz";
 
 interface QuizPageProps {
   lectureId?: string | number;
@@ -94,20 +95,7 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
             </p>
           </div>
 
-          {/* Placeholder for the gameplay component (Arena / SCRUM-17) */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 sm:p-6 text-center">
-            <p className="text-slate-300 text-sm font-medium mb-4">
-              Questions loaded successfully:
-            </p>
-            <ul className="text-left text-xs text-slate-400 space-y-2 max-w-md mx-auto">
-              {quiz.questions.map((q, idx) => (
-                <li key={q.id ?? idx} className="flex gap-2">
-                  <span className="text-indigo-400 font-bold">{idx + 1}.</span>
-                  <span className="break-words">{q.prompt}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {<QuizGame questions={quiz.questions} />}
         </div>
       )}
     </div>

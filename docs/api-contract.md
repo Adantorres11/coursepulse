@@ -4,7 +4,11 @@ The single source of truth for what the frontend and backend agree on.
 **Change this file in a PR before changing any endpoint shape**, so both sides can review it.
 
 Base URL (local): `http://localhost:8000`
-Auth: none in Sprint 1. Data is hardcoded through the seed script.
+Auth: token authentication for protected endpoints.
+Send `Authorization: Token <token>` with protected requests.
+Registration and login do not require a token.
+Lecture data is hardcoded through the seed script.
+The lecture and quiz endpoints below are public in Sprint 1 and need no token.
 
 ## GET /api/health/
 Liveness check for Docker and CI.
@@ -14,6 +18,7 @@ Liveness check for Docker and CI.
 
 ## GET /api/lectures/
 Lectures with a published quiz, newest first. Powers the Student Hub.
+Success: `200 OK`. Returns `[]` when no lecture has a published quiz.
 ```json
 [
   {
@@ -28,6 +33,7 @@ Lectures with a published quiz, newest first. Powers the Student Hub.
 
 ## GET /api/lectures/{id}/quiz/
 The full quiz for one lecture. Powers the Arena (game screen).
+Success: `200 OK`.
 ```json
 {
   "lecture_id": 1,
@@ -54,4 +60,236 @@ Errors: `404` with `{"detail": "Not found."}` for an unknown lecture id.
 ## Known Sprint 1 shortcuts (tracked for Sprint 2)
 - `correct_index` is sent to the browser so scoring can happen client-side.
   Sprint 2 moves grading to a `POST` endpoint on the server so scores cannot be faked.
-- No authentication or class-code join yet.
+- No class-code join yet.
+
+## Authentication
+
+Send JSON request bodies with `Content-Type: application/json`.
+
+### POST /api/auth/register/
+
+Creates an account. No token required.
+
+Request:
+```json
+{
+  "email": "student@example.com",
+  "password": "Maple!River82",
+  "role": "student"
+}
+```
+
+Rules:
+- Email must be valid and at most 150 characters.
+- Emails are trimmed and stored in lowercase.
+- Duplicate emails are rejected regardless of capitalization.
+- Role must be `"student"` or `"professor"`.
+- Password must have at least 8 characters and pass Django's
+  checks for common, entirely numeric, and user-similar passwords.
+
+Success: `201 Created`
+```json
+{
+  "token": "<token>",
+  "user": {
+    "id": 1,
+    "email": "student@example.com",
+    "role": "student"
+  }
+}
+```
+
+Invalid input: `400 Bad Request`, with errors under the relevant field.
+
+Duplicate email example:
+```json
+{
+  "email": ["An account with this email already exists."]
+}
+```
+
+Weak password example:
+```json
+{
+  "password": [
+    "This password is too short. It must contain at least 8 characters."
+  ]
+}
+```
+
+Password error wording can vary according to the failed check.
+
+### POST /api/auth/login/
+
+Logs in using email and password. No token required.
+
+Request:
+```json
+{
+  "email": "student@example.com",
+  "password": "Maple!River82"
+}
+```
+
+Success: `200 OK`, with the same token and user response
+structure as registration.
+
+Invalid credentials: `401 Unauthorized`
+```json
+{
+  "detail": "Invalid email or password."
+}
+```
+
+Missing or non-string credentials: `400 Bad Request`
+```json
+{
+  "detail": "Email and password are required."
+}
+```
+
+### GET /api/auth/me/
+
+Returns the current user's information. Requires this header:
+
+```text
+Authorization: Token <token>
+```
+
+Success: `200 OK`
+```json
+{
+  "id": 1,
+  "email": "student@example.com",
+  "role": "student"
+}
+```
+
+Missing token: `401 Unauthorized`
+```json
+{
+  "detail": "Authentication credentials were not provided."
+}
+```
+
+Invalid token: `401 Unauthorized`
+```json
+{
+  "detail": "Invalid token."
+}
+```
+
+Tokens are reused on login and do not automatically expire.
+Existing users without a role profile receive `"role": null`.
+
+## GET /api/classes/
+
+Returns only the logged-in student's enrolled classrooms.
+Requires a student account and this header:
+
+```text
+Authorization: Token <token>
+```
+
+Success: `200 OK`
+```json
+[
+  {
+    "id": 1,
+    "name": "Software Engineering",
+    "course_code": "CS 3398",
+    "professor": {
+      "id": 2,
+      "name": "Alex Smith"
+    },
+    "quiz_count": 5,
+    "new_quiz_count": 3
+  }
+]
+```
+
+Rules:
+- Classes are ordered by name, then ID.
+- No enrollments returns `[]` with `200 OK`.
+- Professor is `null` if no professor is assigned.
+- Professor name falls back to username when their full name is empty.
+- Course code may be empty for existing classrooms.
+- Each lecture with questions counts as one quiz if its publication
+  time has arrived.
+- Drafts, future publications, and lectures without questions are excluded.
+- New quizzes are available quizzes the current student has not completed.
+- Completion is recorded through QuizCompletion. The quiz-submission
+  handler must create this record when a student completes a quiz;
+  this endpoint only reads completion records.
+- Duplicate enrollment in the same classroom is prevented by the database.
+
+Errors:
+- `401`: Missing or invalid authentication token.
+- `403`: Authenticated user does not have the student role.
+
+## Class access codes
+
+Each classroom has a unique six-character access code.
+Generated codes use uppercase letters and numbers.
+Code input is case-insensitive; surrounding whitespace is ignored.
+The demo classroom's code is `DEMO01`.
+
+Both endpoints below require a student account and this header:
+
+```text
+Authorization: Token <token>
+```
+
+### GET /api/classes/lookup/?code=ABC123
+
+Previews a classroom without enrolling the student.
+
+Success: `200 OK`
+```json
+{
+  "id": 1,
+  "name": "Software Engineering",
+  "course_code": "CS 3398",
+  "professor": {
+    "id": 2,
+    "name": "Alex Smith"
+  },
+  "quiz_count": 5,
+  "new_quiz_count": 3
+}
+```
+
+Fields and quiz-count rules match GET /api/classes/.
+Professor may be null when no professor is assigned.
+
+### POST /api/classes/join/
+
+Enrolls the logged-in student in the classroom.
+
+Send `Content-Type: application/json`.
+
+Request:
+```json
+{
+  "code": "ABC123"
+}
+```
+
+Success:
+- `201 Created` for a new enrollment.
+- `200 OK` if already enrolled; no duplicate is created.
+- Both return the same classroom response structure as lookup.
+
+### Lookup and join errors
+
+Unknown six-character code: `404 Not Found`
+```json
+{
+  "detail": "We couldn't find a class with that code"
+}
+```
+
+Other errors:
+- `400`: Missing or malformed code; errors appear under `code`.
+- `401`: Missing or invalid authentication token.
+- `403`: Authenticated user does not have the student role.
