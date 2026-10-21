@@ -9,7 +9,7 @@ interface QuizGameProps {
 
 export default function QuizGame({ questions }: QuizGameProps) {
   const [score, setScore] = useState<number>(0);
-  const [questionIndex, setQuestionIndex] = useState<number>(0);
+  const [questionIndex, setQuestionIndex] = useState<number>(-1);
 
   const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>(
     Array(questions.length).fill(null)
@@ -116,7 +116,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
   }
 
   // Timer workings.
-  const [timeLeft, setTimeLeft] = useState<number>(20);
+  const [timeLeft, setTimeLeft] = useState<number>(5);
 
   useEffect(() => {
     if (questionIndex >= questions.length || answeredQuestions[questionIndex]){
@@ -124,8 +124,15 @@ export default function QuizGame({ questions }: QuizGameProps) {
     }
 
     if (timeLeft <= 0) {
-      handleAnswer(null);
-      return;
+      // question out of time
+      if(questionIndex != -1) {
+        handleAnswer(null);
+        return;
+      }
+      // countdown out of time
+      else {
+        nextQuestion();
+      }
     }
 
     const timer = setInterval(() => {
@@ -135,14 +142,11 @@ export default function QuizGame({ questions }: QuizGameProps) {
     return () => clearInterval(timer);
   }, [timeLeft, questionIndex, answeredQuestions, questions.length]);
 
-  useEffect(() => {
-    setTimeLeft(20);
-  }, [questionIndex]);
 
-// restart quiz
   function restartQuiz() {
     setScore(0);
-    setQuestionIndex(0);
+    setQuestionIndex(-1);
+    setTimeLeft(5);
     setSelectedAnswers(Array(questions.length).fill(null));
     setAnsweredQuestions(questions.map(() => false));
   }
@@ -150,6 +154,30 @@ export default function QuizGame({ questions }: QuizGameProps) {
   // QUIZ is empty
   if (questions.length === 0) {
     return <p>No questions available for this quiz.</p>;
+  }
+  // countdown screen
+  if (questionIndex === -1) {
+    return (
+      <div className="p-5 font-sans">
+        <div className="flex items-center justify-center flex-col">
+          <h1 className="text-3xl font-bold p-6 text-white">Get ready</h1>
+          <span className="text-7xl font-bold text-white">{timeLeft}</span>
+
+          <div className="flex items-center justify-center flex-row p-8 gap-2">
+            <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
+              {questions.length} questions
+            </div>
+            <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
+              20 sec each
+            </div>
+            <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
+              100 to 300 pts
+            </div>
+          </div>
+          <span className="text-slate-400 text-sm font-medium">Question 1 starts in a moment.</span>
+        </div>
+      </div>
+    )
   }
   // QUIZ in progress
   if (questionIndex < questions.length) {
