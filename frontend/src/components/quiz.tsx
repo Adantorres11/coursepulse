@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Quiz, DifficultyLevel } from "../types/api";
 
 type QuizQuestion = Quiz["questions"][number];
@@ -22,20 +22,26 @@ export default function QuizGame({ questions }: QuizGameProps) {
 
   // sets color of buttons based on user input
   function getAnswerColor(answerIndex: number) {
-    if (selectedAnswers[questionIndex] !== null && answerIndex === questions[questionIndex].correct_index) {
+    if (!answeredQuestions[questionIndex]) {
+      return "border border-slate-600 bg-slate-800 hover:border-slate-400";
+    }
+
+    if (answerIndex === questions[questionIndex].correct_index) {
       if(selectedAnswers[questionIndex] === answerIndex)
         return "border border-emerald-400 bg-emerald-600";
       else
         return "border border-emerald-400 bg-emerald-900";
     }
-    else if (selectedAnswers[questionIndex] === answerIndex) {
+
+    if (selectedAnswers[questionIndex] === answerIndex) {
       return "border border-red-300 bg-red-500";
     }
+
     return "border border-slate-600 bg-slate-800";
   }
 
 // adjusts score based on which quiz answer selected
-  function handleAnswer(answerIndex: number) {
+  function handleAnswer(answerIndex: number | null) {
     if(answeredQuestions[questionIndex]) {
       return;
     }
@@ -46,8 +52,8 @@ export default function QuizGame({ questions }: QuizGameProps) {
       return updated;
     });
 
-    if (answerIndex === questions[questionIndex].correct_index) {
-      setScore(score + 100 * getDifficultyPoints(questions[questionIndex].difficulty));
+    if (answerIndex !== null && answerIndex === questions[questionIndex].correct_index) {
+      setScore((prev) => prev + 100 * getDifficultyPoints(questions[questionIndex].difficulty));
     }
 
     setAnsweredQuestions((previous) => {
@@ -71,6 +77,8 @@ export default function QuizGame({ questions }: QuizGameProps) {
   }
 
   function nextQuestion() {
+    setTimeLeft(20);
+
     if (questionIndex < questions.length - 1) {
       setQuestionIndex((prev) => prev + 1);
     } else {
@@ -106,6 +114,30 @@ export default function QuizGame({ questions }: QuizGameProps) {
     }
     return count;
   }
+
+  // Timer workings.
+  const [timeLeft, setTimeLeft] = useState<number>(20);
+
+  useEffect(() => {
+    if (questionIndex >= questions.length || answeredQuestions[questionIndex]){
+      return;
+    }
+
+    if (timeLeft <= 0) {
+      handleAnswer(null);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => prev - 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timeLeft, questionIndex, answeredQuestions, questions.length]);
+
+  useEffect(() => {
+    setTimeLeft(20);
+  }, [questionIndex]);
 
 // restart quiz
   function restartQuiz() {
@@ -146,8 +178,22 @@ export default function QuizGame({ questions }: QuizGameProps) {
         </div>
 
         {/* timer bar */}
+        <div className="flex items-center justify-between w-full gap-2 py-2">
+          <div className="flex justify-between items-center mb-1 gap-2">
+            <span className="text-blue-300 text-2xl">◷</span>
+            <span className={"text-l font-bold text-slate-200"}>
+              0:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+            </span>
+          </div>
+          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden relative">
+            <div 
+              className={"h-full transition-all duration-1000 linear rounded-full bg-sky-400"}
+              style={{ width: `${(timeLeft / 20) * 100}%` }}
+            />
+          </div>
+        </div>
 
-        <div className="flex items-center justify-between w-full px-2 py-5">
+        <div className="flex items-center justify-between w-full px-2 pt-3 pb-2">
           <div className="flex flex-row inline-flex items-center gap-1">
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
               {questions[questionIndex]?.difficulty 
