@@ -230,82 +230,37 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
         ) : (
           /* Populated State — Matches Mockup 2 */
           <div className="space-y-4">
-            {/* 1. Daily Streak Banner Card */}
-            <div className="bg-[#141525] border border-amber-500/40 rounded-2xl p-5 sm:p-6 shadow-xl mb-6">
-              {/* Header: Fire icon, streak title, and 'Best 9' badge */}
+            {/* 1. Daily Streak Banner Card (No streak for the week state) */}
+            <div className="bg-[#141525] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl mb-6">
+              {/* Header: Fire icon, streak title, and badge */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-full bg-[#35251C] flex items-center justify-center text-amber-500 shrink-0 text-xl shadow-inner">
+                  <div className="w-11 h-11 rounded-full bg-[#1A2238] flex items-center justify-center text-slate-500 shrink-0 text-xl shadow-inner">
                     🔥
                   </div>
                   <div>
                     <h3 className="text-lg sm:text-xl font-bold text-white leading-tight">
-                      4 day streak
+                      0 day streak
                     </h3>
                     <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-                      Play a quiz today to make it 5.
+                      Play a quiz today to start your streak.
                     </p>
                   </div>
                 </div>
 
-                <div className="bg-[#2D211A] text-amber-400 border border-amber-600/40 text-xs font-bold px-3 py-1 rounded-full">
-                  Best 9
+                <div className="bg-[#18233C] text-slate-400 border border-slate-700/60 text-xs font-semibold px-3 py-1 rounded-full">
+                  Best 0
                 </div>
               </div>
 
-              {/* Weekly Streak Dots (M, T, W, T, F, S, S) */}
+              {/* Weekly Streak Dots (M, T, W, T, F, S, S) — No streak for any day */}
               <div className="flex justify-between items-center max-w-md mx-auto mt-6 px-2 sm:px-4">
-                {/* Monday - missed */}
-                <div className="flex flex-col items-center gap-2">
-                  <span className="text-[11px] font-semibold text-slate-400">M</span>
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#18233C] border border-slate-800"></div>
-                </div>
-
-                {/* Tuesday - completed */}
-                <div className="flex flex-col items-center gap-2">
-                  <span className="text-[11px] font-semibold text-slate-400">T</span>
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#F59E0B] flex items-center justify-center text-slate-950 font-bold text-sm shadow-sm">
-                    ✓
+                {["M", "T", "W", "T", "F", "S", "S"].map((day, idx) => (
+                  <div key={idx} className="flex flex-col items-center gap-2">
+                    <span className="text-[11px] font-semibold text-slate-400">{day}</span>
+                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#18233C] border border-slate-800"></div>
                   </div>
-                </div>
-
-                {/* Wednesday - completed */}
-                <div className="flex flex-col items-center gap-2">
-                  <span className="text-[11px] font-semibold text-slate-400">W</span>
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#F59E0B] flex items-center justify-center text-slate-950 font-bold text-sm shadow-sm">
-                    ✓
-                  </div>
-                </div>
-
-                {/* Thursday - completed */}
-                <div className="flex flex-col items-center gap-2">
-                  <span className="text-[11px] font-semibold text-slate-400">T</span>
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#F59E0B] flex items-center justify-center text-slate-950 font-bold text-sm shadow-sm">
-                    ✓
-                  </div>
-                </div>
-
-                {/* Friday - completed */}
-                <div className="flex flex-col items-center gap-2">
-                  <span className="text-[11px] font-semibold text-slate-400">F</span>
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#F59E0B] flex items-center justify-center text-slate-950 font-bold text-sm shadow-sm">
-                    ✓
-                  </div>
-                </div>
-
-                {/* Saturday (Today) - active streak target */}
-                <div className="flex flex-col items-center gap-2">
-                  <span className="text-[11px] font-bold text-amber-400">S</span>
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-dashed border-amber-400 flex items-center justify-center text-amber-400 bg-amber-400/10 text-xs shadow-sm animate-pulse">
-                    🔥
-                  </div>
-                </div>
-
-                {/* Sunday - upcoming */}
-                <div className="flex flex-col items-center gap-2">
-                  <span className="text-[11px] font-semibold text-slate-500">S</span>
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#18233C] border border-slate-800"></div>
-                </div>
+                ))}
               </div>
             </div>
 
