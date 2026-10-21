@@ -3,6 +3,7 @@ import { StudentHub } from "./components/StudentHub";
 import { QuizPage } from "./components/QuizPage";
 import { AuthPage } from "./components/AuthPage";
 import { LandingPage } from "./components/LandingPage";
+import { ClassHub } from "./components/ClassHub";
 
 function AppContent() {
   const location = useLocation();
@@ -11,7 +12,8 @@ function AppContent() {
     location.pathname === "/landing" ||
     location.pathname === "/login" ||
     location.pathname === "/signup" ||
-    location.pathname === "/hub";
+    location.pathname === "/hub" ||
+    location.pathname.startsWith("/class");
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -57,6 +59,8 @@ function AppContent() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/landing" element={<LandingPage />} />
           <Route path="/hub" element={<StudentHub />} />
+          <Route path="/class/:classId" element={<ClassHub />} />
+          <Route path="/class" element={<ClassHub />} />
           <Route path="/quiz/:lectureId" element={<QuizPage />} />
           <Route path="/login" element={<AuthPage initialTab="login" />} />
           <Route path="/signup" element={<AuthPage initialTab="signup" />} />

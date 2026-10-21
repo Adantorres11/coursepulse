@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { getLectures, type Lecture } from "../lib/apiClient";
 
 interface EnrolledClass {
   id: string | number;
@@ -21,8 +20,8 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Class enrollment state
-  const [classes, setClasses] = useState<EnrolledClass[]>([
+  // Default classes matching UI Mockups (CoursePulse Screens.pdf)
+  const MOCKUP_CLASSES: EnrolledClass[] = [
     {
       id: "cs-201",
       name: "Data Structures",
@@ -49,40 +48,28 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
       quizCount: 3,
       lectureId: 3,
     },
-  ]);
+  ];
+
+  // Class enrollment state
+  const [classes, setClasses] = useState<EnrolledClass[]>(MOCKUP_CLASSES);
 
   // Modal for joining a class with access code
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [joinSuccessMsg, setJoinSuccessMsg] = useState<string | null>(null);
 
-  // Fetch real backend / sample lectures
-  const fetchLectures = async () => {
+  // Load enrolled classes
+  const fetchClasses = async () => {
     setLoading(true);
     setError(null);
 
-    const result = await getLectures();
-
-    if (result.error) {
-      setError(result.error);
-    } else if (result.data && result.data.length > 0) {
-      // Sync classes with real lectures if available
-      const mapped = result.data.map((lecture: Lecture, idx: number) => ({
-        id: lecture.id,
-        name: lecture.title,
-        code: lecture.classroom || `CS ${300 + idx}`,
-        instructor: "Course Faculty",
-        quizCount: lecture.question_count ?? 5,
-        newQuizCount: idx === 0 ? 2 : idx === 1 ? 1 : undefined,
-        lectureId: lecture.id,
-      }));
-      setClasses(mapped);
-    }
+    // Keep mockup classes as local baseline
+    setClasses(MOCKUP_CLASSES);
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchLectures();
+    fetchClasses();
   }, []);
 
   const handleClassClick = (targetLectureId?: string | number) => {
@@ -90,7 +77,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
     if (onSelectQuiz) {
       onSelectQuiz(selectedId);
     } else {
-      navigate(`/quiz/${selectedId}`);
+      navigate(`/class/${selectedId}`);
     }
   };
 
@@ -186,7 +173,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
             <h2 className="text-xl font-semibold text-white mb-2">Failed to load classes</h2>
             <p className="text-red-300 text-sm mb-4">{error}</p>
             <button
-              onClick={fetchLectures}
+              onClick={fetchClasses}
               className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition cursor-pointer"
             >
               Retry
@@ -269,7 +256,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
               {classes.map((cls) => (
                 <div
                   key={cls.id}
-                  onClick={() => handleClassClick(cls.lectureId)}
+                  onClick={() => handleClassClick(cls.id)}
                   className="group bg-[#111A30] hover:bg-[#14203D] border border-slate-800/90 hover:border-slate-700 rounded-2xl p-4 sm:p-5 flex items-center justify-between transition-all duration-150 shadow-lg cursor-pointer"
                 >
                   {/* Left info with Book icon */}
@@ -374,7 +361,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
               if (classes.length > 0) {
                 setClasses([]);
               } else {
-                fetchLectures();
+                fetchClasses();
               }
             }}
             className="text-xs text-slate-500 hover:text-slate-300 transition-colors underline cursor-pointer"
