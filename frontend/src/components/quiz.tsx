@@ -23,12 +23,15 @@ export default function QuizGame({ questions }: QuizGameProps) {
   // sets color of buttons based on user input
   function getAnswerColor(answerIndex: number) {
     if (selectedAnswers[questionIndex] !== null && answerIndex === questions[questionIndex].correct_index) {
-      return "bg-emerald-500 text-white";
+      if(selectedAnswers[questionIndex] === answerIndex)
+        return "border border-emerald-400 bg-emerald-600";
+      else
+        return "border border-emerald-400 bg-emerald-900";
     }
     else if (selectedAnswers[questionIndex] === answerIndex) {
-      return "bg-red-500 text-white";
+      return "border border-red-300 bg-red-500";
     }
-    return "bg-slate-950 text-white";
+    return "border border-slate-600 bg-slate-800";
   }
 
 // adjusts score based on which quiz answer selected
@@ -68,68 +71,170 @@ export default function QuizGame({ questions }: QuizGameProps) {
   }
 
   function nextQuestion() {
-  if (questionIndex < questions.length - 1) {
-    setQuestionIndex((prev) => prev + 1);
-  } else {
-    setQuestionIndex(questions.length);
+    if (questionIndex < questions.length - 1) {
+      setQuestionIndex((prev) => prev + 1);
+    } else {
+      setQuestionIndex(questions.length);
+    }
   }
-}
 
+// removed functions
+// goes to previous question
+/*
   function previousQuestion() {
     if (questionIndex > 0) {
       setQuestionIndex(questionIndex - 1);
     }
   }
+*/
 
 // returns the maximum possible score for the results screen
+/*
   function getMaxScore(): number {
     return questions.reduce((total, question) => {
       return total + 100 * getDifficultyPoints(question?.difficulty);
     }, 0);
   }
+*/
 
-  // quiz is empty
+// returns number of questions user got correct.
+  function getNumberQuestionsCorrect(): number {
+    var count = 0;
+    for(var i = 0; i < questions.length; i++){
+      if(selectedAnswers[i] === questions[i].correct_index)
+        count += 1;
+    }
+    return count;
+  }
+
+// restart quiz
+  function restartQuiz() {
+    setScore(0);
+    setQuestionIndex(0);
+    setSelectedAnswers(Array(questions.length).fill(null));
+    setAnsweredQuestions(questions.map(() => false));
+  }
+
+  // QUIZ is empty
   if (questions.length === 0) {
     return <p>No questions available for this quiz.</p>;
   }
+  // QUIZ in progress
   if (questionIndex < questions.length) {
-    // QUIZ in progress
     return (
-      <div className="p-20 font-sans">
-        <div>
-          Question {questionIndex + 1} / {questions.length}
-          <p>Score: {score}</p>
+      <div className="p-5 font-sans">
+        <div className="flex items-center justify-between w-full">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-white text-xl font-bold tracking-tight">Question {questionIndex + 1} of {questions.length}</h1>
+          </div>
+
+          <div className="inline-flex items-center gap-2 border border-slate-600 bg-slate-800 text-white font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm">
+            <span className="text-slate-400 text-sm">Score</span>
+            <span className="text-blue-400 font-bold text-xl">{score}</span>
+          </div>
         </div>
-        <h1>{questions[questionIndex].prompt}</h1>
-        <div className="flex justify-center gap-2.5 m-5">
+
+        <div className="flex w-full gap-2 py-3">
+          {questions.map((_, index) => (
+            <div
+              key={index}
+              className={`h-2 flex-1 rounded-full ${
+                index < questionIndex ? 'bg-sky-400' : index === questionIndex ? 'bg-white' : 'bg-slate-800'
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* timer bar */}
+
+        <div className="flex items-center justify-between w-full px-2 py-5">
+          <div className="flex flex-row inline-flex items-center gap-1">
+            <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
+              {questions[questionIndex]?.difficulty 
+                ? questions[questionIndex].difficulty.charAt(0).toUpperCase() + questions[questionIndex].difficulty.slice(1)
+                : "Loading..."}
+            </div>
+            <span className="text-slate-400 text-sm font-medium">{getDifficultyPoints(questions[questionIndex].difficulty) * 100} pts</span>
+          </div>
+        </div>
+
+        <h2 className="text-white text-xl font-bold tracking-tight">{questions[questionIndex].prompt}</h2>
+
+        <div className="flex flex-col items-stretch gap-2.5 mx-0 my-5 w-full mr-auto">
           {questions[questionIndex].choices.map((choice, index) => (
             <button
               key={index}
-              className={`border border-black px-5 py-2 rounded-lg cursor-pointer transition-colors ${getAnswerColor(index)}`}
+              className={`flex w-full items-center justify-between gap-4 px-2 py-2 rounded-lg cursor-pointer transition-colors text-left ${getAnswerColor(index)}`}
               onClick={() => handleAnswer(index)}
             >
-              {choice}
+              <div className="flex items-center gap-4">
+                <span className="flex items-center justify-center w-8 h-8 bg-slate-600/40 rounded-lg font-bold text-sm">
+                  {String.fromCharCode(65 + index)}
+                </span>
+                {choice}
+              </div>
+                
+              <div className="pr-1">
+                {answeredQuestions[questionIndex] && index == questions[questionIndex].correct_index && <span className="text-white font-bold">✓</span>}
+                {selectedAnswers[questionIndex] == index && index != questions[questionIndex].correct_index && <span className="text-white font-bold">✕</span>}
+              </div>
+
             </button>
           ))}
         </div>
-        <div className="flex justify-center gap-2.5">
-          <button className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => previousQuestion()}>
-            Prev Question
-          </button>
-          <button className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => nextQuestion()}>
-            {questionIndex === questions.length - 1
-              ? "Submit"
-              : "Next Question"}
-          </button>
-        </div>
+        {answeredQuestions[questionIndex] &&
+          <div className="flex items-center justify-between w-full">
+            <div>
+              {selectedAnswers[questionIndex] == questions[questionIndex].correct_index && <span className="text-emerald-400 font-bold">✓ Correct! +{getDifficultyPoints(questions[questionIndex].difficulty) * 100} points</span>}
+              {selectedAnswers[questionIndex] != questions[questionIndex].correct_index && <span className="text-red-400 font-bold">✕ Not quite. +0 points</span>}
+            </div>
+            <button className="bg-blue-300 text-black font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => nextQuestion()}>
+              {questionIndex === questions.length - 1
+                ? "Submit"
+                : "Next Question →"}
+            </button>
+          </div>
+        }
       </div>
     );
   }
   // QUIZ results
   return (
-    <div className="p-20 font-sans">
-      <h1>Quiz Complete!</h1>
-      <p>Score: {(score / getMaxScore() * 100).toFixed(2)}%</p>
+    <div className="p-5 font-sans">
+      <div className="flex items-center justify-center flex-col">
+        <h1 className="text-3xl font-bold p-6">Quiz Complete</h1>
+        <h2 className="text-xs font-bold text-slate-500 p-1">FINAL SCORE</h2>
+        <span className="text-9xl font-bold text-blue-300">{score}</span>
+        <span className="text-m text-slate-200 p-1">{getNumberQuestionsCorrect()} of {questions.length} correct</span>
+      </div>
+
+      {/* leaderboard info */}
+
+      <div className="flex items-center justify-center flex-row p-6 gap-2">
+        {questions.map((_, index) => (
+            <div key={index} className="flex flex-col items-center justify-between px-2 py-2 rounded-lg transition-colors text-left border border-slate-600 bg-slate-800">
+              <div>
+                <span className="text-slate-400 text-xs font-medium">Q{index + 1} - {questions[index]?.difficulty 
+                  ? questions[index].difficulty.charAt(0).toUpperCase() + questions[index].difficulty.slice(1)
+                  : "Loading..."}</span>
+              </div>
+              <div>
+                {selectedAnswers[index] == questions[index].correct_index && <span className="text-emerald-400 font-bold">✓ +{getDifficultyPoints(questions[index].difficulty) * 100}</span>}
+                {selectedAnswers[index] != questions[index].correct_index && <span className="text-red-400 font-bold">✕ 0</span>}
+              </div>
+            </div>
+          ))}
+      </div>
+
+      <div className="flex items-center justify-center flex-row p-6 gap-2">
+          <button className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors text-left bg-blue-300 text-black leading-none" onClick={() => restartQuiz()}>
+            <span className="font-bold flex items-center justify-center">⟳</span>
+            <span className="font-medium">Replay</span>
+          </button>
+
+          {/*view leaderboard button*/}
+      </div>
+
     </div>
   );
 }
