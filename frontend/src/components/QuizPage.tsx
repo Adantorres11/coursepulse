@@ -54,7 +54,7 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
     <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       {/* Back link to Hub */}
       <Link
-        to="/"
+        to="/hub"
         onClick={handleBackClick}
         className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-6 cursor-pointer"
       >
@@ -75,7 +75,7 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
             {error || `We couldn't find any quiz questions for lecture #${lectureId}.`}
           </p>
           <Link
-            to="/"
+            to="/hub"
             onClick={handleBackClick}
             className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
           >
