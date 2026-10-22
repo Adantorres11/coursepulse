@@ -117,7 +117,8 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
           </div>
           <span className="text-xl font-bold tracking-tight text-white">CoursePulse</span>
         </Link>
-      </header>
+
+        </header>
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 sm:py-12 w-full">

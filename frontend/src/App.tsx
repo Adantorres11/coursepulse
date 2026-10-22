@@ -6,16 +6,17 @@ import { LandingPage } from "./components/LandingPage";
 
 function AppContent() {
   const location = useLocation();
-  const isAuthOrLandingPage =
+  const hasCustomHeader =
     location.pathname === "/" ||
     location.pathname === "/landing" ||
     location.pathname === "/login" ||
-    location.pathname === "/signup";
+    location.pathname === "/signup" ||
+    location.pathname === "/hub";
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col">
-      {/* Top Navbar (hidden on dedicated landing and auth screens) */}
-      {!isAuthOrLandingPage && (
+      {/* Top Navbar (hidden on dedicated screens with their own mockup headers) */}
+      {!hasCustomHeader && (
         <nav className="border-b border-slate-800/80 bg-slate-900/50 backdrop-blur px-4 sm:px-6 py-4">
           <div className="max-w-5xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-6">

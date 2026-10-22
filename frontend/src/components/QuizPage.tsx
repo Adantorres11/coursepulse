@@ -95,7 +95,8 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
             </p>
           </div>
 
-          {<QuizGame questions={quiz.questions} />}
+          {/* Interactive Gameplay Component */}
+          <QuizGame questions={quiz.questions} />
         </div>
       )}
     </div>
