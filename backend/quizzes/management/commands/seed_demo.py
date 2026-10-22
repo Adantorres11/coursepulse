@@ -73,8 +73,12 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
-        classroom, _ = Classroom.objects.get_or_create(
-            name="CS 3398 Software Engineering"
+        classroom, _ = Classroom.objects.update_or_create(
+            name="CS 3398 Software Engineering",
+            defaults={
+                "course_code": "CS 3398",
+                "access_code": "DEMO01",
+            },
         )
 
         lecture, _ = Lecture.objects.get_or_create(
@@ -96,6 +100,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Demo quiz ready: lecture {lecture.pk}, five questions."
+                f"Demo quiz ready: lecture {lecture.pk}, "
+                f"five questions. Class code: {classroom.access_code}"
             )
         )

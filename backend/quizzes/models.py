@@ -67,28 +67,6 @@ class Question(models.Model):
         return self.prompt
 
 
-class QuizCompletion(models.Model):
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="quiz_completions",
-    )
-    lecture = models.ForeignKey(
-        Lecture,
-        on_delete=models.CASCADE,
-        related_name="completions",
-    )
-    completed_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["user", "lecture"],
-                name="unique_user_lecture_completion",
-            ),
-        ]
-
-
 class Attempt(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -158,3 +136,25 @@ class Answer(models.Model):
             f"Answer {self.pk}: "
             f"attempt {self.attempt_id}, question {self.question_id}"
         )
+
+
+class QuizCompletion(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="quiz_completions",
+    )
+    lecture = models.ForeignKey(
+        Lecture,
+        on_delete=models.CASCADE,
+        related_name="completions",
+    )
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "lecture"],
+                name="unique_user_lecture_completion",
+            ),
+        ]

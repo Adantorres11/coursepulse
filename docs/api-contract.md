@@ -18,12 +18,16 @@ Liveness check for Docker and CI.
 
 ## GET /api/lectures/
 Lectures with a published quiz, newest first. Powers the Student Hub.
-Success: `200 OK`. Returns `[]` when no lecture has a published quiz.
+A lecture is listed when its `published_at` has arrived and it has at least one question.
+Drafts, future publications, and lectures without questions are never returned.
+Success: `200 OK`. Returns `[]` when no lecture qualifies.
+`classroom_id` identifies the classroom. `classroom` is its name, set by whoever created it.
 ```json
 [
   {
     "id": 1,
     "title": "Tuesday's Lecture: Agile and Scrum",
+    "classroom_id": 1,
     "classroom": "CS 3398 Software Engineering",
     "published_at": "2026-09-22T15:00:00Z",
     "question_count": 5
@@ -55,7 +59,8 @@ Field rules
 - `difficulty`: `"easy"` (100 pts), `"medium"` (200 pts) or `"hard"` (300 pts).
 - Questions are returned in a fixed order.
 
-Errors: `404` with `{"detail": "Not found."}` for an unknown lecture id.
+Errors: `404` with `{"detail": "Not found."}` for an unknown lecture id. The same
+`404` is returned when the lecture is not published yet or has no questions.
 
 ## Known Sprint 1 shortcuts (tracked for Sprint 2)
 - `correct_index` is sent to the browser so scoring can happen client-side.
@@ -224,6 +229,73 @@ Rules:
 - Duplicate enrollment in the same classroom is prevented by the database.
 
 Errors:
+- `401`: Missing or invalid authentication token.
+- `403`: Authenticated user does not have the student role.
+
+## Class access codes
+
+Each classroom has a unique six-character access code.
+Generated codes use uppercase letters and numbers.
+Code input is case-insensitive; surrounding whitespace is ignored.
+The demo classroom's code is `DEMO01`.
+
+Both endpoints below require a student account and this header:
+
+```text
+Authorization: Token <token>
+```
+
+### GET /api/classes/lookup/?code=ABC123
+
+Previews a classroom without enrolling the student.
+
+Success: `200 OK`
+```json
+{
+  "id": 1,
+  "name": "Software Engineering",
+  "course_code": "CS 3398",
+  "professor": {
+    "id": 2,
+    "name": "Alex Smith"
+  },
+  "quiz_count": 5,
+  "new_quiz_count": 3
+}
+```
+
+Fields and quiz-count rules match GET /api/classes/.
+Professor may be null when no professor is assigned.
+
+### POST /api/classes/join/
+
+Enrolls the logged-in student in the classroom.
+
+Send `Content-Type: application/json`.
+
+Request:
+```json
+{
+  "code": "ABC123"
+}
+```
+
+Success:
+- `201 Created` for a new enrollment.
+- `200 OK` if already enrolled; no duplicate is created.
+- Both return the same classroom response structure as lookup.
+
+### Lookup and join errors
+
+Unknown six-character code: `404 Not Found`
+```json
+{
+  "detail": "We couldn't find a class with that code"
+}
+```
+
+Other errors:
+- `400`: Missing or malformed code; errors appear under `code`.
 - `401`: Missing or invalid authentication token.
 - `403`: Authenticated user does not have the student role.
 

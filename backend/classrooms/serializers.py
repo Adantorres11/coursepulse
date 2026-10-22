@@ -28,3 +28,21 @@ class ClassroomSerializer(serializers.ModelSerializer):
             "id": professor.id,
             "name": professor.get_full_name() or professor.username,
         }
+
+class ClassCodeSerializer(serializers.Serializer):
+    code = serializers.CharField(
+        max_length=6,
+        min_length=6,
+        trim_whitespace=True,
+    )
+
+    def validate_code(self, value):
+        code = value.upper()
+
+        if any(character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+               for character in code):
+            raise serializers.ValidationError(
+                "Enter a 6-character code using letters and numbers."
+            )
+
+        return code
