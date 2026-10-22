@@ -86,25 +86,6 @@ export default function QuizGame({ questions }: QuizGameProps) {
     }
   }
 
-// removed functions
-// goes to previous question
-/*
-  function previousQuestion() {
-    if (questionIndex > 0) {
-      setQuestionIndex(questionIndex - 1);
-    }
-  }
-*/
-
-// returns the maximum possible score for the results screen
-/*
-  function getMaxScore(): number {
-    return questions.reduce((total, question) => {
-      return total + 100 * getDifficultyPoints(question?.difficulty);
-    }, 0);
-  }
-*/
-
 // returns number of questions user got correct.
   function getNumberQuestionsCorrect(): number {
     var count = 0;
@@ -183,6 +164,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
   if (questionIndex < questions.length) {
     return (
       <div className="p-5 font-sans">
+        {/* question number and quiz point counter */}
         <div className="flex items-center justify-between w-full">
           <div className="flex flex-col gap-1">
             <h1 className="text-white text-xl font-bold tracking-tight">Question {questionIndex + 1} of {questions.length}</h1>
@@ -194,6 +176,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
           </div>
         </div>
 
+        {/* quizprogress bar */}
         <div className="flex w-full gap-2 py-3">
           {questions.map((_, index) => (
             <div
@@ -221,6 +204,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
           </div>
         </div>
 
+        {/* difficulty and point chip */}
         <div className="flex items-center justify-between w-full px-2 pt-3 pb-2">
           <div className="flex flex-row inline-flex items-center gap-1">
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
@@ -232,8 +216,10 @@ export default function QuizGame({ questions }: QuizGameProps) {
           </div>
         </div>
 
+        {/* question */}
         <h2 className="text-white text-xl font-bold tracking-tight">{questions[questionIndex].prompt}</h2>
 
+        {/* choices buttons */}
         <div className="flex flex-col items-stretch gap-2.5 mx-0 my-5 w-full mr-auto">
           {questions[questionIndex].choices.map((choice, index) => (
             <button
@@ -282,7 +268,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
         <span className="text-m text-slate-200 p-1">{getNumberQuestionsCorrect()} of {questions.length} correct</span>
       </div>
 
-      {/* leaderboard info */}
+      {/* TODO leaderboard info */}
 
       <div className="flex items-center justify-center flex-row p-6 gap-2">
         {questions.map((_, index) => (
@@ -306,7 +292,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
             <span className="font-medium">Replay</span>
           </button>
 
-          {/*view leaderboard button*/}
+          {/* TODO view leaderboard button*/}
       </div>
 
     </div>
