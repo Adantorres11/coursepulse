@@ -104,7 +104,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
       return;
     }
 
-    if (timeLeft <= 0) {
+    if (timeLeft < 0) {
       // question out of time
       if(questionIndex != -1) {
         handleAnswer(null);
@@ -122,6 +122,12 @@ export default function QuizGame({ questions }: QuizGameProps) {
 
     return () => clearInterval(timer);
   }, [timeLeft, questionIndex, answeredQuestions, questions.length]);
+
+  // timer ring config
+  const radius = 44;
+  const strokeWidth = 3.5;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (timeLeft / 5) * circumference;
 
 
   function restartQuiz() {
@@ -142,7 +148,36 @@ export default function QuizGame({ questions }: QuizGameProps) {
       <div className="p-5 font-sans">
         <div className="flex items-center justify-center flex-col">
           <h1 className="text-3xl font-bold p-6 text-white">Get ready</h1>
-          <span className="text-7xl font-bold text-white">{timeLeft}</span>
+
+          {/* Countdown Circle */}
+          <div className="relative flex items-center justify-center w-72 h-72 sm:w-80 sm:h-80">
+            <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90 absolute top-0 left-0">
+              <circle
+                cx="50"
+                cy="50"
+                r={radius}
+                className="text-slate-800/60"
+                strokeWidth={strokeWidth}
+                stroke="currentColor"
+                fill="transparent"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                r={radius}
+                className="text-sky-400 transition-all duration-980 ease-linear"
+                strokeWidth={strokeWidth}
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                stroke="currentColor"
+                fill="transparent"
+              />
+            </svg>
+            <div className="absolute text-8xl sm:text-9xl font-black text-white tabular-nums tracking-tighter select-none">
+              {timeLeft}
+            </div>
+          </div>
 
           <div className="flex items-center justify-center flex-row p-8 gap-2">
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
@@ -193,7 +228,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
           <div className="flex justify-between items-center mb-1 gap-2">
             <span className="text-blue-300 text-2xl">◷</span>
             <span className={"text-l font-bold text-slate-200"}>
-              0:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+              0:{Math.max(0, timeLeft) < 10 ? `0${Math.max(0, timeLeft)}` : Math.max(0, timeLeft)}
             </span>
           </div>
           <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden relative">
