@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Quiz, DifficultyLevel } from "../types/api";
 
 type QuizQuestion = Quiz["questions"][number];
@@ -9,7 +9,7 @@ interface QuizGameProps {
 
 export default function QuizGame({ questions }: QuizGameProps) {
   const [score, setScore] = useState<number>(0);
-  const [questionIndex, setQuestionIndex] = useState<number>(0);
+  const [questionIndex, setQuestionIndex] = useState<number>(-1);
 
   const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>(
     Array(questions.length).fill(null)
@@ -22,20 +22,26 @@ export default function QuizGame({ questions }: QuizGameProps) {
 
   // sets color of buttons based on user input
   function getAnswerColor(answerIndex: number) {
-    if (selectedAnswers[questionIndex] !== null && answerIndex === questions[questionIndex].correct_index) {
+    if (!answeredQuestions[questionIndex]) {
+      return "border border-slate-600 bg-slate-800 hover:border-slate-400";
+    }
+
+    if (answerIndex === questions[questionIndex].correct_index) {
       if(selectedAnswers[questionIndex] === answerIndex)
         return "border border-emerald-400 bg-emerald-600";
       else
         return "border border-emerald-400 bg-emerald-900";
     }
-    else if (selectedAnswers[questionIndex] === answerIndex) {
+
+    if (selectedAnswers[questionIndex] === answerIndex) {
       return "border border-red-300 bg-red-500";
     }
+
     return "border border-slate-600 bg-slate-800";
   }
 
 // adjusts score based on which quiz answer selected
-  function handleAnswer(answerIndex: number) {
+  function handleAnswer(answerIndex: number | null) {
     if(answeredQuestions[questionIndex]) {
       return;
     }
@@ -46,8 +52,8 @@ export default function QuizGame({ questions }: QuizGameProps) {
       return updated;
     });
 
-    if (answerIndex === questions[questionIndex].correct_index) {
-      setScore(score + 100 * getDifficultyPoints(questions[questionIndex].difficulty));
+    if (answerIndex !== null && answerIndex === questions[questionIndex].correct_index) {
+      setScore((prev) => prev + 100 * getDifficultyPoints(questions[questionIndex].difficulty));
     }
 
     setAnsweredQuestions((previous) => {
@@ -71,31 +77,14 @@ export default function QuizGame({ questions }: QuizGameProps) {
   }
 
   function nextQuestion() {
+    setTimeLeft(20);
+
     if (questionIndex < questions.length - 1) {
       setQuestionIndex((prev) => prev + 1);
     } else {
       setQuestionIndex(questions.length);
     }
   }
-
-// removed functions
-// goes to previous question
-/*
-  function previousQuestion() {
-    if (questionIndex > 0) {
-      setQuestionIndex(questionIndex - 1);
-    }
-  }
-*/
-
-// returns the maximum possible score for the results screen
-/*
-  function getMaxScore(): number {
-    return questions.reduce((total, question) => {
-      return total + 100 * getDifficultyPoints(question?.difficulty);
-    }, 0);
-  }
-*/
 
 // returns number of questions user got correct.
   function getNumberQuestionsCorrect(): number {
@@ -107,10 +96,44 @@ export default function QuizGame({ questions }: QuizGameProps) {
     return count;
   }
 
-// restart quiz
+  // Timer workings.
+  const [timeLeft, setTimeLeft] = useState<number>(3);
+
+  useEffect(() => {
+    if (questionIndex >= questions.length || answeredQuestions[questionIndex]){
+      return;
+    }
+
+    if (timeLeft < 0) {
+      // question out of time
+      if(questionIndex != -1) {
+        handleAnswer(null);
+        return;
+      }
+      // countdown out of time
+      else {
+        nextQuestion();
+      }
+    }
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => prev - 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timeLeft, questionIndex, answeredQuestions, questions.length]);
+
+  // timer ring config
+  const radius = 44;
+  const strokeWidth = 3.5;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (timeLeft / 3) * circumference;
+
+
   function restartQuiz() {
     setScore(0);
-    setQuestionIndex(0);
+    setQuestionIndex(-1);
+    setTimeLeft(3);
     setSelectedAnswers(Array(questions.length).fill(null));
     setAnsweredQuestions(questions.map(() => false));
   }
@@ -119,10 +142,64 @@ export default function QuizGame({ questions }: QuizGameProps) {
   if (questions.length === 0) {
     return <p>No questions available for this quiz.</p>;
   }
+  // countdown screen
+  if (questionIndex === -1) {
+    return (
+      <div className="p-5 font-sans">
+        <div className="flex items-center justify-center flex-col">
+          <h1 className="text-3xl font-bold p-6 text-white">Get ready</h1>
+
+          {/* Countdown Circle */}
+          <div className="relative flex items-center justify-center w-72 h-72 sm:w-80 sm:h-80">
+            <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90 absolute top-0 left-0">
+              <circle
+                cx="50"
+                cy="50"
+                r={radius}
+                className="text-slate-800/60"
+                strokeWidth={strokeWidth}
+                stroke="currentColor"
+                fill="transparent"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                r={radius}
+                className="text-sky-400 transition-all duration-980 ease-linear"
+                strokeWidth={strokeWidth}
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                stroke="currentColor"
+                fill="transparent"
+              />
+            </svg>
+            <div className="absolute text-8xl sm:text-9xl font-black text-white tabular-nums tracking-tighter select-none">
+              {timeLeft}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center flex-row p-8 gap-2">
+            <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
+              {questions.length} questions
+            </div>
+            <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
+              20 sec each
+            </div>
+            <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
+              100 to 300 pts
+            </div>
+          </div>
+          <span className="text-slate-400 text-sm font-medium">Question 1 starts in a moment.</span>
+        </div>
+      </div>
+    )
+  }
   // QUIZ in progress
   if (questionIndex < questions.length) {
     return (
       <div className="p-5 font-sans">
+        {/* question number and quiz point counter */}
         <div className="flex items-center justify-between w-full">
           <div className="flex flex-col gap-1">
             <h1 className="text-white text-xl font-bold tracking-tight">Question {questionIndex + 1} of {questions.length}</h1>
@@ -134,6 +211,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
           </div>
         </div>
 
+        {/* quizprogress bar */}
         <div className="flex w-full gap-2 py-3">
           {questions.map((_, index) => (
             <div
@@ -146,8 +224,23 @@ export default function QuizGame({ questions }: QuizGameProps) {
         </div>
 
         {/* timer bar */}
+        <div className="flex items-center justify-between w-full gap-2 py-2">
+          <div className="flex justify-between items-center mb-1 gap-2">
+            <span className="text-blue-300 text-2xl">◷</span>
+            <span className={"text-l font-bold text-slate-200"}>
+              0:{Math.max(0, timeLeft) < 10 ? `0${Math.max(0, timeLeft)}` : Math.max(0, timeLeft)}
+            </span>
+          </div>
+          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden relative">
+            <div 
+              className={"h-full transition-all duration-1000 linear rounded-full bg-sky-400"}
+              style={{ width: `${(timeLeft / 20) * 100}%` }}
+            />
+          </div>
+        </div>
 
-        <div className="flex items-center justify-between w-full px-2 py-5">
+        {/* difficulty and point chip */}
+        <div className="flex items-center justify-between w-full px-2 pt-3 pb-2">
           <div className="flex flex-row inline-flex items-center gap-1">
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
               {questions[questionIndex]?.difficulty 
@@ -158,8 +251,10 @@ export default function QuizGame({ questions }: QuizGameProps) {
           </div>
         </div>
 
+        {/* question */}
         <h2 className="text-white text-xl font-bold tracking-tight">{questions[questionIndex].prompt}</h2>
 
+        {/* choices buttons */}
         <div className="flex flex-col items-stretch gap-2.5 mx-0 my-5 w-full mr-auto">
           {questions[questionIndex].choices.map((choice, index) => (
             <button
@@ -208,7 +303,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
         <span className="text-m text-slate-200 p-1">{getNumberQuestionsCorrect()} of {questions.length} correct</span>
       </div>
 
-      {/* leaderboard info */}
+      {/* TODO leaderboard info */}
 
       <div className="flex items-center justify-center flex-row p-6 gap-2">
         {questions.map((_, index) => (
@@ -232,7 +327,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
             <span className="font-medium">Replay</span>
           </button>
 
-          {/*view leaderboard button*/}
+          {/* TODO view leaderboard button*/}
       </div>
 
     </div>
