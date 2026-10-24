@@ -97,7 +97,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
   }
 
   // Timer workings.
-  const [timeLeft, setTimeLeft] = useState<number>(5);
+  const [timeLeft, setTimeLeft] = useState<number>(3);
 
   useEffect(() => {
     if (questionIndex >= questions.length || answeredQuestions[questionIndex]){
@@ -127,13 +127,13 @@ export default function QuizGame({ questions }: QuizGameProps) {
   const radius = 44;
   const strokeWidth = 3.5;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (timeLeft / 5) * circumference;
+  const strokeDashoffset = circumference - (timeLeft / 3) * circumference;
 
 
   function restartQuiz() {
     setScore(0);
     setQuestionIndex(-1);
-    setTimeLeft(5);
+    setTimeLeft(3);
     setSelectedAnswers(Array(questions.length).fill(null));
     setAnsweredQuestions(questions.map(() => false));
   }
