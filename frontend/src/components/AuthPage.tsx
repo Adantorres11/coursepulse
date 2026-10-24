@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { API_BASE_URL } from "../lib/apiClient";
 
 type AuthTab = "login" | "signup";
 type UserRole = "student" | "professor";
@@ -24,6 +25,7 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
   const [role, setRole] = useState<UserRole>("student");
   const [showPassword, setShowPassword] = useState(false);
   const [hasLoginError, setHasLoginError] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<{ title: string; subtitle: string }>({
     title: "Incorrect email or password.",
     subtitle: "Check your details and try again.",
@@ -34,51 +36,72 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
     setHasLoginError(false);
     setSearchParams({ tab });
   };
+const submitAuth = async (mode: AuthTab) => {
+  if (isSubmitting) return;
+
+  setHasLoginError(false);
+  setIsSubmitting(true);
+
+  try {
+    const endpoint = mode === "login" ? "login" : "register";
+
+    const response = await fetch(`${API_BASE_URL}/auth/${endpoint}/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        password,
+        ...(mode === "signup" ? { role } : {}),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      const message = Object.entries(data)
+        .map(([field, value]) => {
+          const text = Array.isArray(value)
+            ? value.join(" ")
+            : String(value);
+
+          return field === "detail" ? text : `${field}: ${text}`;
+        })
+        .join(" ");
+
+      setErrorMessage({
+        title: mode === "login" ? "Login failed." : "Signup failed.",
+        subtitle: message || "Please check your details and try again.",
+      });
+      setHasLoginError(true);
+      return;
+    }
+
+    if (typeof data.token !== "string" || !data.token) {
+      throw new Error("Missing authentication token");
+    }
+
+    sessionStorage.setItem("coursepulse_token", data.token);
+    navigate("/hub");
+  } catch {
+    setErrorMessage({
+      title: "Unable to complete your request.",
+      subtitle: "Check that the backend is running and try again.",
+    });
+    setHasLoginError(true);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const handleLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Acceptance criterion: A failed login shows the red error banner and red field borders
-    // If empty or test failure credentials (e.g. invalid password or empty), trigger error banner
-    if (!email.trim() || !password.trim() || password === "wrong" || email === "fail@school.edu") {
-      setErrorMessage({
-        title: "Incorrect email or password.",
-        subtitle: "Check your details and try again.",
-      });
-      setHasLoginError(true);
-      return;
-    }
-
-    setHasLoginError(false);
-    // On success, redirect to Student Hub
-    navigate("/hub");
-  };
+  e.preventDefault();
+  void submitAuth("login");
+};
 
   const handleSignupSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!email.trim() || !password.trim()) {
-      setErrorMessage({
-        title: "Missing required fields.",
-        subtitle: "Please enter your email and password.",
-      });
-      setHasLoginError(true);
-      return;
-    }
-
-    if (password.length < 8) {
-      setErrorMessage({
-        title: "Password too short.",
-        subtitle: "Password must be at least 8 characters.",
-      });
-      setHasLoginError(true);
-      return;
-    }
-
-    setHasLoginError(false);
-    // On success, redirect to Student Hub
-    navigate("/hub");
-  };
+  e.preventDefault();
+  void submitAuth("signup");
+};
 
   return (
     <div className="min-h-screen bg-[#0B1220] text-white flex flex-col justify-between selection:bg-sky-500/30">
@@ -396,6 +419,7 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
               {/* Submit Button */}
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="w-full bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-sky-500/10 mt-2"
               >
                 <span>{activeTab === "login" ? "Log in" : "Create account"}</span>
