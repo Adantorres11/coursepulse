@@ -1,9 +1,24 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { getLectures, type Lecture } from "../lib/apiClient";
+import { request, type Lecture } from "../lib/apiClient";
+import { LeaderboardModal } from "./LeaderboardModal";
+import { ClassRankCard } from "./ClassRankCard";
+
+interface ClassroomResponse {
+  id: number;
+  name: string;
+  course_code: string;
+  professor: {
+    id: number;
+    name: string;
+  } | null;
+  quiz_count: number;
+  new_quiz_count: number;
+}
 
 interface EnrolledClass {
   id: string | number;
+  classroomId?: number;
   name: string;
   code: string;
   instructor: string;
@@ -18,6 +33,7 @@ interface StudentHubProps {
 
 export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
   const navigate = useNavigate();
+  const [leaderboardClassId, setLeaderboardClassId] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,35 +74,57 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 
   // Fetch real backend / sample lectures
   const fetchLectures = async () => {
-    setLoading(true);
-    setError(null);
+  setLoading(true);
+  setError(null);
 
-    const result = await getLectures();
+  const token = sessionStorage.getItem("coursepulse_token");
 
-    if (result.error) {
-      setError(result.error);
-    } else if (result.data && result.data.length > 0) {
-      // Sync classes with real lectures if available
-      const mapped = result.data.map((lecture: Lecture, idx: number) => ({
-        id: lecture.id,
-        name: lecture.title,
-        code: lecture.classroom || `CS ${300 + idx}`,
-        instructor: "Course Faculty",
-        quizCount: lecture.question_count ?? 5,
-        newQuizCount: idx === 0 ? 2 : idx === 1 ? 1 : undefined,
-        lectureId: lecture.id,
-      }));
-      setClasses(mapped);
-    }
+  if (!token) {
+    setClasses([]);
+    setError("Please log in to see your classes.");
     setLoading(false);
-  };
+    return;
+  }
+
+  const result = await request<ClassroomResponse[]>("/classes/", {
+    headers: { Authorization: `Token ${token}` },
+  });
+
+  if (result.error || !result.data) {
+    setClasses([]);
+    setError(result.error || "Unable to load your classes.");
+    setLoading(false);
+    return;
+  }
+
+  const lectureResult = await request<Lecture[]>("/lectures/");
+  const lectures = lectureResult.data ?? [];
+
+  setClasses(
+    result.data.map((classroom) => ({
+      id: classroom.id,
+      classroomId: classroom.id,
+      name: classroom.name,
+      code: classroom.course_code,
+      instructor: classroom.professor?.name || "Professor not assigned",
+      quizCount: classroom.quiz_count,
+      newQuizCount: classroom.new_quiz_count,
+      lectureId: lectures.find(
+        (lecture) => lecture.classroom_id === classroom.id
+      )?.id,
+    }))
+  );
+
+  setLoading(false);
+};
 
   useEffect(() => {
     fetchLectures();
   }, []);
 
   const handleClassClick = (targetLectureId?: string | number) => {
-    const selectedId = targetLectureId || 1;
+    if (targetLectureId === undefined || targetLectureId === null) return;
+    const selectedId = targetLectureId;
     if (onSelectQuiz) {
       onSelectQuiz(selectedId);
     } else {
@@ -220,7 +258,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 
             <button
               type="button"
-              onClick={() => setIsJoinModalOpen(true)}
+              onClick={() => navigate("/join")}
               className="inline-flex items-center gap-2 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-sm px-6 py-3 rounded-xl transition-all shadow-lg shadow-sky-500/20 hover:scale-[1.02] cursor-pointer"
             >
               <span>Join a class</span>
@@ -267,9 +305,9 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
             {/* 2. Class List Cards */}
             <div className="space-y-3.5">
               {classes.map((cls) => (
-                <div
-                  key={cls.id}
-                  onClick={() => handleClassClick(cls.lectureId)}
+                <div key={cls.id} className="space-y-2">
+                  <div
+                    onClick={() => handleClassClick(cls.lectureId)}
                   className="group bg-[#111A30] hover:bg-[#14203D] border border-slate-800/90 hover:border-slate-700 rounded-2xl p-4 sm:p-5 flex items-center justify-between transition-all duration-150 shadow-lg cursor-pointer"
                 >
                   {/* Left info with Book icon */}
@@ -321,8 +359,16 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
                       </svg>
                     </div>
                   </div>
-                </div>
-              ))}
+                                </div>
+
+                {cls.classroomId !== undefined && (
+                  <ClassRankCard
+                    classroomId={cls.classroomId}
+                    onOpen={setLeaderboardClassId}
+                  />
+                )}
+              </div>
+            ))}
             </div>
 
             {/* 3. Bottom Banner — 'Have a class code?' */}
@@ -356,7 +402,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 
               <button
                 type="button"
-                onClick={() => setIsJoinModalOpen(true)}
+                onClick={() => navigate("/join")}
                 className="inline-flex items-center justify-center gap-2 bg-[#141C33] hover:bg-[#1A2645] border border-slate-700 hover:border-slate-500 text-white font-semibold text-xs sm:text-sm py-2.5 px-4 rounded-xl transition cursor-pointer self-start sm:self-auto"
               >
                 <span>Join a class</span>
@@ -434,6 +480,13 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
             </form>
           </div>
         </div>
+      )}
+
+      {leaderboardClassId !== null && (
+        <LeaderboardModal
+          classroomId={leaderboardClassId}
+          onClose={() => setLeaderboardClassId(null)}
+        />
       )}
 
       {/* Footer */}
