@@ -1,13 +1,20 @@
 import { useState } from "react";
 import type { Quiz, DifficultyLevel } from "../types/api";
+import { LeaderboardModal } from "./LeaderboardModal";
 
 type QuizQuestion = Quiz["questions"][number];
 
 interface QuizGameProps {
   questions: QuizQuestion[];
+  classroomId?: number;
 }
 
-export default function QuizGame({ questions }: QuizGameProps) {
+export default function QuizGame({
+  questions,
+  classroomId,
+}: QuizGameProps) {
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+
   const [score, setScore] = useState<number>(0);
   const [questionIndex, setQuestionIndex] = useState<number>(0);
 
@@ -232,7 +239,21 @@ export default function QuizGame({ questions }: QuizGameProps) {
             <span className="font-medium">Replay</span>
           </button>
 
-          {/*view leaderboard button*/}
+          <button
+            type="button"
+            onClick={() => setIsLeaderboardOpen(true)}
+            disabled={!classroomId}
+            className="rounded-lg bg-sky-400 px-3 py-2 font-medium text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            View leaderboard
+          </button>
+
+          {isLeaderboardOpen && classroomId && (
+            <LeaderboardModal
+              classroomId={classroomId}
+              onClose={() => setIsLeaderboardOpen(false)}
+            />
+          )}
       </div>
 
     </div>
