@@ -220,7 +220,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 
             <button
               type="button"
-              onClick={() => setIsJoinModalOpen(true)}
+              onClick={() => navigate("/join")}
               className="inline-flex items-center gap-2 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-sm px-6 py-3 rounded-xl transition-all shadow-lg shadow-sky-500/20 hover:scale-[1.02] cursor-pointer"
             >
               <span>Join a class</span>
@@ -356,7 +356,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 
               <button
                 type="button"
-                onClick={() => setIsJoinModalOpen(true)}
+                onClick={() => navigate("/join")}
                 className="inline-flex items-center justify-center gap-2 bg-[#141C33] hover:bg-[#1A2645] border border-slate-700 hover:border-slate-500 text-white font-semibold text-xs sm:text-sm py-2.5 px-4 rounded-xl transition cursor-pointer self-start sm:self-auto"
               >
                 <span>Join a class</span>
