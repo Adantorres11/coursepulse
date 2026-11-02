@@ -104,16 +104,14 @@ export default function QuizGame({ questions }: QuizGameProps) {
       return;
     }
 
-    if (timeLeft < 0) {
-      // question out of time
-      if(questionIndex != -1) {
-        handleAnswer(null);
-        return;
-      }
-      // countdown out of time
-      else {
-        nextQuestion();
-      }
+    // question out of time
+    if(questionIndex != -1 && timeLeft <= 0) {
+      handleAnswer(null);
+      return;
+    }
+    // countdown out of time
+    else if(timeLeft < 0) {
+      nextQuestion();
     }
 
     const timer = setInterval(() => {
