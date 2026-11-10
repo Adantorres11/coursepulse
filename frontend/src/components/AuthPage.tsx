@@ -82,8 +82,8 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
 
   return (
     <div className="min-h-screen bg-[#0B1220] text-white flex flex-col justify-between selection:bg-sky-500/30">
-      {/* Top Bar with Brand Logo and Back Button */}
-      <header className="px-6 sm:px-10 py-6 w-full max-w-5xl mx-auto flex items-center justify-between">
+      {/* Top Bar with Brand Logo */}
+      <header className="px-6 sm:px-10 py-6 w-full">
         <Link
           to="/"
           className="inline-flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity"
@@ -118,30 +118,11 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
           <span className="text-xl font-bold tracking-tight text-white">CoursePulse</span>
         </Link>
 
-        {/* Back to Home Button in Header */}
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer group"
-        >
-          <span className="transition-transform group-hover:-translate-x-1 font-bold">←</span>
-          <span>Back to Home</span>
-        </Link>
-      </header>
+        </header>
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 sm:py-12 w-full">
         <div className="w-full max-w-[420px] mx-auto">
-          {/* Inline Back Link */}
-          <div className="mb-4">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-[#38BDF8] transition-colors cursor-pointer group"
-            >
-              <span className="transition-transform group-hover:-translate-x-0.5 font-bold">←</span>
-              <span>Back</span>
-            </Link>
-          </div>
-
           {/* Title & Subtitle */}
           <div className="text-center mb-8">
             <h1 className="text-3xl sm:text-[34px] font-extrabold tracking-tight text-white mb-2">

@@ -298,3 +298,57 @@ Other errors:
 - `400`: Missing or malformed code; errors appear under `code`.
 - `401`: Missing or invalid authentication token.
 - `403`: Authenticated user does not have the student role.
+
+## GET /api/classes/{id}/leaderboard/
+
+Returns the class's enrolled students ranked by total quiz points.
+Requires a student account and token authentication.
+
+Success: `200 OK`
+```json
+[
+  {
+    "rank": 1,
+    "display_name": "Bharat K.",
+    "points": 500,
+    "is_current_user": true
+  },
+  {
+    "rank": 1,
+    "display_name": "Alex S.",
+    "points": 500,
+    "is_current_user": false
+  },
+  {
+    "rank": 3,
+    "display_name": "Sam R.",
+    "points": 0,
+    "is_current_user": false
+  }
+]
+```
+
+Rules:
+- Includes enrolled users with the student role.
+- Points are the sum of total_points from completed attempts across
+  all lectures in this class. Incomplete attempts are excluded.
+- All completed attempts count, including repeat attempts.
+- Attempts from other classes are excluded.
+- Students are ordered by points descending, then user ID ascending
+  for consistent ordering within ties.
+- Equal points share the same rank using competition ranking:
+  1, 1, 3.
+- Students with no completed attempts receive zero points.
+- Zero-point students appear last and share the same rank.
+- display_name uses the first name and last initial, such as "Bharat K.".
+- If the last name is missing, only the first name is shown.
+- If the first name is missing, display_name is "Student".
+  Email addresses and usernames are not used as name fallbacks.
+- is_current_user is true only for the requesting student's entry.
+- The response is an unpaginated array.
+
+Errors:
+- `401`: Missing or invalid authentication token.
+- `404`: Unknown class ID.
+- `403`: For an existing class, the requester does not have the
+  student role or is not enrolled.

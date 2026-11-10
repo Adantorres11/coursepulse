@@ -1,4 +1,6 @@
-from django.db.models import Count, Q
+from django.contrib.auth import get_user_model
+from django.db.models import Count, Q, Sum
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -139,3 +141,71 @@ class ClassJoinView(ClassCodeView):
                 else status.HTTP_200_OK
             ),
         )
+
+
+class ClassLeaderboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        classroom = get_object_or_404(Classroom, pk=pk)
+        profile = getattr(request.user, "profile", None)
+
+        if profile is None or profile.role != "student":
+            raise PermissionDenied(
+                "Only students can access this leaderboard."
+            )
+
+        if not classroom.enrollments.filter(
+            user=request.user,
+        ).exists():
+            raise PermissionDenied(
+                "You must be enrolled in this class."
+            )
+
+        students = (
+            get_user_model().objects
+            .filter(
+                enrollments__classroom=classroom,
+                profile__role="student",
+            )
+            .annotate(
+                points=Sum(
+                    "quiz_attempts__total_points",
+                    filter=Q(
+                        quiz_attempts__lecture__classroom=classroom,
+                        quiz_attempts__completed_at__isnull=False,
+                    ),
+                    default=0,
+                ),
+            )
+            .order_by("-points", "id")
+        )
+
+        entries = []
+        previous_points = None
+        rank = 0
+
+        for position, student in enumerate(students, start=1):
+            if student.points != previous_points:
+                rank = position
+
+            first_name = student.first_name.strip()
+            last_name = student.last_name.strip()
+
+            if not first_name:
+                display_name = "Student"
+            elif last_name:
+                display_name = f"{first_name} {last_name[0].upper()}."
+            else:
+                display_name = first_name
+
+            entries.append({
+                "rank": rank,
+                "display_name": display_name,
+                "points": student.points,
+                "is_current_user": student.pk == request.user.pk,
+            })
+
+            previous_points = student.points
+
+        return Response(entries)
