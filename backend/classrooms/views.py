@@ -12,7 +12,7 @@ from quizzes.models import QuizCompletion
 
 from .models import Classroom, Enrollment
 from .serializers import ClassCodeSerializer, ClassroomSerializer
-from .stats import class_standings
+from .stats import build_class_stats, class_standings
 
 
 class StudentClassListView(ListAPIView):
@@ -184,3 +184,25 @@ class ClassLeaderboardView(APIView):
             })
 
         return Response(entries)
+
+
+class ClassStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        classroom = get_object_or_404(Classroom, pk=pk)
+        profile = getattr(request.user, "profile", None)
+
+        if profile is None or profile.role != "student":
+            raise PermissionDenied(
+                "Only students can access class stats."
+            )
+
+        if not classroom.enrollments.filter(
+            user=request.user,
+        ).exists():
+            raise PermissionDenied(
+                "You must be enrolled in this class."
+            )
+
+        return Response(build_class_stats(classroom, request.user))

@@ -416,7 +416,8 @@ Rules:
 - rank uses competition ranking, the same as the leaderboard:
   1, 1, 3.
 - points_to_next_rank is the gap to the nearest student with strictly
-  more points. It is 0 for a student at rank 1.
+  more points. It is 0 for a student at rank 1, including when all
+  students are tied at the top.
 - lectures are ordered newest first by published_at, the same as
   GET /api/lectures/.
 - up_next is the first unplayed lecture in that order, which is the
@@ -425,8 +426,8 @@ Rules:
 - best_score is the highest total_points among the student's completed
   attempts for the lecture.
 - correct_count is the number of correct answers in that same attempt.
-  If two attempts tie on score, the earliest attempt is used, then the
-  lowest attempt ID.
+  If two attempts tie on score, the attempt with the lowest attempt ID
+  is used.
 - An unplayed lecture has best_score 0, correct_count 0, and is_new
   true. A played lecture has is_new false.
 - A student with no completed attempts gets total_points 0,
