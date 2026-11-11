@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { Quiz, DifficultyLevel, AnswerRequest, AnswerResult } from "../types/api";
 import { postAnswer } from "../lib/apiClient";
+import { LeaderboardModal } from "./LeaderboardModal";
 
 type QuizQuestion = Quiz["questions"][number];
 
@@ -11,6 +12,7 @@ interface QuizGameProps {
   lectureId?: string | number;
   initialAnsweredIds?: number[];
   initialScore?: number;
+  classroomId?: number;
 }
 
 export default function QuizGame({
@@ -18,7 +20,10 @@ export default function QuizGame({
   lectureId = "",
   initialAnsweredIds = [],
   initialScore = 0,
+  classroomId,
 }: QuizGameProps) {
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+
   // ids answered in an earlier visit; cleared on replay
   const [resumeIds, setResumeIds] = useState<string[]>(initialAnsweredIds.map(String));
   const allAnsweredAtLoad =
@@ -298,7 +303,7 @@ export default function QuizGame({
             </span>
           </div>
           <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden relative">
-            <div 
+          <div
               className={"h-full transition-all duration-1000 linear rounded-full bg-sky-400"}
               style={{ width: `${(timeLeft / QUESTION_TIME_LIMIT_SECONDS) * 100}%` }}
             />
@@ -309,7 +314,7 @@ export default function QuizGame({
         <div className="flex items-center justify-between w-full px-2 pt-3 pb-2">
           <div className="flex flex-row inline-flex items-center gap-1">
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
-              {questions[questionIndex]?.difficulty 
+              {questions[questionIndex]?.difficulty
                 ? questions[questionIndex].difficulty.charAt(0).toUpperCase() + questions[questionIndex].difficulty.slice(1)
                 : "Loading..."}
             </div>
@@ -334,7 +339,7 @@ export default function QuizGame({
                 </span>
                 {choice}
               </div>
-                
+
               <div className="pr-1">
                 {currentResult && index == currentResult.correct_index && <span className="text-white font-bold">✓</span>}
                 {currentResult && selectedAnswers[questionIndex] == index && index != currentResult.correct_index && <span className="text-white font-bold">✕</span>}
@@ -385,7 +390,7 @@ export default function QuizGame({
         {questions.map((_, index) => (
             <div key={index} className="flex flex-col items-center justify-between px-2 py-2 rounded-lg transition-colors text-left border border-slate-600 bg-slate-800">
               <div>
-                <span className="text-slate-400 text-xs font-medium">Q{index + 1} - {questions[index]?.difficulty 
+                <span className="text-slate-400 text-xs font-medium">Q{index + 1} - {questions[index]?.difficulty
                   ? questions[index].difficulty.charAt(0).toUpperCase() + questions[index].difficulty.slice(1)
                   : "Loading..."}</span>
               </div>
@@ -404,7 +409,21 @@ export default function QuizGame({
             <span className="font-medium">Replay</span>
           </button>
 
-          {/* TODO view leaderboard button*/}
+          <button
+      type="button"
+      onClick={() => setIsLeaderboardOpen(true)}
+      disabled={classroomId == null}
+      className="rounded-lg bg-sky-400 px-3 py-2 font-medium text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed       disabled:opacity-40"
+    >
+      View leaderboard
+    </button>
+
+    {isLeaderboardOpen && classroomId != null && (
+      <LeaderboardModal
+     classroomId={classroomId}
+             onClose={() => setIsLeaderboardOpen(false)}
+      />
+     )}
       </div>
 
     </div>
