@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { request, type Lecture } from "../lib/apiClient";
+import { request, getStudentDayStreak, type Lecture } from "../lib/apiClient";
 import { LeaderboardModal } from "./LeaderboardModal";
 import { ClassRankCard } from "./ClassRankCard";
 
@@ -36,6 +36,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
   const [leaderboardClassId, setLeaderboardClassId] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [dayStreak, setDayStreak] = useState<number | null>(null);
 
   // Class enrollment state
   const [classes, setClasses] = useState<EnrolledClass[]>([]);
@@ -93,6 +94,16 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 
   useEffect(() => {
     fetchLectures();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getStudentDayStreak().then((streak) => {
+      if (!cancelled) setDayStreak(streak);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleClassClick = (targetLectureId?: string | number) => {
@@ -241,37 +252,30 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
         ) : (
           /* Populated State — Matches Mockup 2 */
           <div className="space-y-4">
-            {/* 1. Daily Streak Banner Card (No streak for the week state) */}
+            {/* 1. Daily Streak Banner Card */}
             <div className="bg-[#141525] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl mb-6">
-              {/* Header: Fire icon, streak title, and badge */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-full bg-[#1A2238] flex items-center justify-center text-slate-500 shrink-0 text-xl shadow-inner">
-                    🔥
-                  </div>
-                  <div>
-                    <h3 className="text-lg sm:text-xl font-bold text-white leading-tight">
-                      0 day streak
-                    </h3>
+              {/* Header: Fire icon and streak title */}
+              <div className="flex items-center gap-3.5">
+                <div
+                  aria-hidden="true"
+                  className={`w-11 h-11 rounded-full bg-[#1A2238] flex items-center justify-center shrink-0 text-xl shadow-inner ${
+                    dayStreak !== null && dayStreak > 0 ? "" : "grayscale opacity-50"
+                  }`}
+                >
+                  🔥
+                </div>
+                <div aria-live="polite">
+                  <h3 className="text-lg sm:text-xl font-bold text-white leading-tight">
+                    {dayStreak === null ? "Loading streak…" : `${dayStreak} day streak`}
+                  </h3>
+                  {dayStreak !== null && (
                     <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-                      Play a quiz today to start your streak.
+                      {dayStreak === 0
+                        ? "Play a quiz today to start your streak."
+                        : "Play a quiz every day to keep it going."}
                     </p>
-                  </div>
+                  )}
                 </div>
-
-                <div className="bg-[#18233C] text-slate-400 border border-slate-700/60 text-xs font-semibold px-3 py-1 rounded-full">
-                  Best 0
-                </div>
-              </div>
-
-              {/* Weekly Streak Dots (M, T, W, T, F, S, S) — No streak for any day */}
-              <div className="flex justify-between items-center max-w-md mx-auto mt-6 px-2 sm:px-4">
-                {["M", "T", "W", "T", "F", "S", "S"].map((day, idx) => (
-                  <div key={idx} className="flex flex-col items-center gap-2">
-                    <span className="text-[11px] font-semibold text-slate-400">{day}</span>
-                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#18233C] border border-slate-800"></div>
-                  </div>
-                ))}
               </div>
             </div>
 

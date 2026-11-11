@@ -1,8 +1,8 @@
-import type { AnswerRequest, AnswerResult, ApiResult, HealthResponse, LeaderboardEntry, Lecture, Quiz } from "../types/api";
+import type { AnswerRequest, AnswerResult, ApiResult, ClassStats, ClassSummary, HealthResponse, LeaderboardEntry, Lecture, Quiz } from "../types/api";
 import sampleLectures from "../data/lectures.sample.json" with { type: "json" };
 import sampleQuizzes from "../data/quizzes.sample.json" with { type: "json" };
 
-export type { AnswerRequest, AnswerResult, ApiResult, HealthResponse, LeaderboardEntry, Lecture, Quiz, QuizQuestion, DifficultyLevel } from "../types/api";
+export type { AnswerRequest, AnswerResult, ApiResult, ClassStats, ClassSummary, HealthResponse, LeaderboardEntry, Lecture, Quiz, QuizQuestion, DifficultyLevel } from "../types/api";
 
 /**
  * Resolves the API base URL from Vite or runtime environment variables.
@@ -175,6 +175,50 @@ export async function postAnswer(
     },
     body: JSON.stringify(body),
   });
+}
+
+/** Auth header for the logged-in student, or an empty object when logged out. */
+function authHeaders(): Record<string, string> {
+  const token = sessionStorage.getItem("coursepulse_token");
+  return token ? { Authorization: `Token ${token}` } : {};
+}
+
+/**
+ * Fetch the logged-in student's classes.
+ * Matches API contract: GET /api/classes/
+ */
+export async function getClasses(): Promise<ApiResult<ClassSummary[]>> {
+  return request<ClassSummary[]>("/classes/", { headers: authHeaders() });
+}
+
+/**
+ * Fetch the logged-in student's stats for one class.
+ * Matches API contract: GET /api/classes/{id}/stats/
+ */
+export async function getClassStats(classId: number | string): Promise<ApiResult<ClassStats>> {
+  return request<ClassStats>(`/classes/${encodeURIComponent(String(classId).trim())}/stats/`, {
+    headers: authHeaders(),
+  });
+}
+
+/**
+ * Day streak of the student's first class.
+ * Never throws: returns 0 when logged out, when a request fails,
+ * or when the student has no classes.
+ */
+export async function getStudentDayStreak(): Promise<number> {
+  try {
+    if (!sessionStorage.getItem("coursepulse_token")) return 0;
+
+    const classes = await getClasses();
+    const first = classes.data?.[0];
+    if (!first) return 0;
+
+    const stats = await getClassStats(first.id);
+    return stats.data?.day_streak ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 /**
