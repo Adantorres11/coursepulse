@@ -1,8 +1,8 @@
-import type { ApiResult, HealthResponse, Lecture, Quiz } from "../types/api";
+import type { AnswerRequest, AnswerResult, ApiResult, HealthResponse, Lecture, Quiz } from "../types/api";
 import sampleLectures from "../data/lectures.sample.json" with { type: "json" };
 import sampleQuizzes from "../data/quizzes.sample.json" with { type: "json" };
 
-export type { ApiResult, HealthResponse, Lecture, Quiz, QuizQuestion, DifficultyLevel } from "../types/api";
+export type { AnswerRequest, AnswerResult, ApiResult, HealthResponse, Lecture, Quiz, QuizQuestion, DifficultyLevel } from "../types/api";
 
 /**
  * Resolves the API base URL from Vite or runtime environment variables.
@@ -104,12 +104,18 @@ export async function getLectures(): Promise<ApiResult<Lecture[]>> {
 export async function getQuiz(id: string | number): Promise<ApiResult<Quiz>> {
   const queryId = String(id).trim();
 
+  // Send the token (when logged in) so the server can return the student's progress
+  const token = sessionStorage.getItem("coursepulse_token");
+  const authOptions: RequestInit | undefined = token
+    ? { headers: { Authorization: `Token ${token}` } }
+    : undefined;
+
   // Primary contract endpoint: GET /api/lectures/{id}/quiz/
-  let result = await request<Quiz>(`/lectures/${encodeURIComponent(queryId)}/quiz/`);
+  let result = await request<Quiz>(`/lectures/${encodeURIComponent(queryId)}/quiz/`, authOptions);
 
   // Secondary fallback for legacy/alternative route /quizzes/{id}/ if contract endpoint 404s
   if (result.error && !result.error.includes("Could not reach API")) {
-    const altResult = await request<Quiz>(`/quizzes/${encodeURIComponent(queryId)}/`);
+    const altResult = await request<Quiz>(`/quizzes/${encodeURIComponent(queryId)}/`, authOptions);
     if (!altResult.error) {
       result = altResult;
     }
@@ -144,6 +150,26 @@ export async function getQuiz(id: string | number): Promise<ApiResult<Quiz>> {
   }
 
   return result;
+}
+
+/**
+ * Submit one answer; the server grades it.
+ * Matches API contract: POST /api/lectures/{id}/answers/
+ * Requires a logged-in student. There is no sample-data fallback.
+ */
+export async function postAnswer(
+  lectureId: string | number,
+  body: AnswerRequest
+): Promise<ApiResult<AnswerResult>> {
+  const token = sessionStorage.getItem("coursepulse_token");
+  return request<AnswerResult>(`/lectures/${encodeURIComponent(String(lectureId).trim())}/answers/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 /**

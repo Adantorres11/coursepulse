@@ -5,6 +5,9 @@ type QuizQuestion = Quiz["questions"][number];
 
 interface QuizGameProps {
   questions: QuizQuestion[];
+  lectureId?: string | number;
+  initialAnsweredIds?: number[];
+  initialScore?: number;
 }
 
 export default function QuizGame({ questions }: QuizGameProps) {
