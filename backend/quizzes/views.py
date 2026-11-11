@@ -3,10 +3,26 @@ from django.http import Http404
 from django.utils import timezone
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import ListAPIView, RetrieveAPIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from .models import Lecture
-from .serializers import LectureSerializer, QuizSerializer
+from .grading import AlreadyAnswered, submit_answer
+from .models import Lecture, Question
+from .serializers import (
+    AnswerRequestSerializer,
+    LectureSerializer,
+    QuizSerializer,
+)
+
+
+def available_lectures():
+    return (
+        Lecture.objects
+        .filter(published_at__lte=timezone.now())
+        .annotate(question_count=Count("questions"))
+        .filter(question_count__gt=0)
+    )
 
 
 class LectureListView(ListAPIView):
@@ -30,16 +46,41 @@ class LectureQuizView(RetrieveAPIView):
     serializer_class = QuizSerializer
 
     def get_queryset(self):
-        return (
-            Lecture.objects
-            .filter(published_at__lte=timezone.now())
-            .annotate(question_count=Count("questions"))
-            .filter(question_count__gt=0)
-            .prefetch_related("questions")
-        )
+        return available_lectures().prefetch_related("questions")
 
     def get_object(self):
         try:
             return super().get_object()
         except Http404:
             raise NotFound()
+
+
+class LectureAnswerView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            lecture = available_lectures().get(pk=pk)
+        except Lecture.DoesNotExist:
+            raise NotFound()
+        serializer = AnswerRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            question = lecture.questions.get(pk=data["question_id"])
+        except Question.DoesNotExist:
+            raise NotFound()
+        try:
+            result = submit_answer(
+                request.user,
+                lecture,
+                question,
+                data["chosen_index"],
+                data["time_taken_ms"],
+            )
+        except AlreadyAnswered:
+            return Response(
+                {"detail": "This question was already answered in this attempt."},
+                status=400,
+            )
+        return Response(result, status=201)

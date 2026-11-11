@@ -8,7 +8,7 @@ Auth: token authentication for protected endpoints.
 Send `Authorization: Token <token>` with protected requests.
 Registration and login do not require a token.
 Lecture data is hardcoded through the seed script.
-The lecture and quiz endpoints below are public in Sprint 1 and need no token.
+GET /api/lectures/ and GET /api/lectures/{id}/quiz/ need no token; an invalid token still returns 401. POST /api/lectures/{id}/answers/ requires a token.
 
 ## GET /api/health/
 Liveness check for Docker and CI.
@@ -47,24 +47,98 @@ Success: `200 OK`.
       "id": 11,
       "prompt": "Why does Scrum use fixed-length sprints?",
       "choices": ["Option A", "Option B", "Option C", "Option D"],
-      "correct_index": 2,
       "difficulty": "easy"
     }
-  ]
+  ],
+  "answered_question_ids": [11],
+  "total_points": 100
 }
 ```
 
 Field rules
-- `choices`: exactly 4 strings. `correct_index`: integer 0-3.
+- `choices`: exactly 4 strings.
+- The quiz does not include the correct answer. The correct answer comes from
+  `POST /api/lectures/{id}/answers/`.
 - `difficulty`: `"easy"` (100 pts), `"medium"` (200 pts) or `"hard"` (300 pts).
 - Questions are returned in a fixed order.
+- `answered_question_ids`: the ids of the questions the logged-in student has
+  answered in their open attempt. `total_points`: the points of that open attempt.
+  The open attempt is the student's newest attempt for this lecture with no
+  `completed_at`. Send the token to get these fields. When the request has no
+  token, or there is no open attempt, they are `[]` and `0`.
 
 Errors: `404` with `{"detail": "Not found."}` for an unknown lecture id. The same
 `404` is returned when the lecture is not published yet or has no questions.
 
+## POST /api/lectures/{id}/answers/
+Grades one answer on the server. The Arena (game screen) calls it after each
+question. Requires a token. Send `Content-Type: application/json`.
+
+Request:
+```json
+{
+  "question_id": 11,
+  "chosen_index": 2,
+  "time_taken_ms": 4200
+}
+```
+
+Success: `201 Created`
+```json
+{
+  "is_correct": true,
+  "points_awarded": 100,
+  "total_points": 100,
+  "correct_index": 2
+}
+```
+
+Rules:
+- The lecture must be available, as in GET /api/lectures/{id}/quiz/.
+  The question must belong to that lecture.
+- `question_id`: integer. `chosen_index`: integer 0-3. `time_taken_ms`:
+  integer, 0 or more. All three are required.
+- `chosen_index` is always required. When time runs out, the screen sends
+  `chosen_index` 0 with a `time_taken_ms` over the limit.
+- The time limit is 15 seconds per question: `QUESTION_TIME_LIMIT_MS = 15000`.
+  An answer timed out when `time_taken_ms` is greater than 15000.
+- `points_awarded` is 100 for an easy question, 200 for medium, and 300 for
+  hard. A correct answer gets 50 more points when it is the 3rd or later
+  correct answer in a row in the attempt. The current answer counts toward
+  the run. Every correct answer after the 3rd also gets the 50. It is 0
+  when the answer is wrong or timed out. A timed-out answer is never
+  correct, so `is_correct` is `false`.
+- A wrong or timed-out answer sets the run of correct answers to 0.
+- A new attempt starts with a run of correct answers of 0, so a replay
+  starts the bonus count again.
+- `total_points` is the running total of the attempt, including this answer.
+- `correct_index` is always returned, so the screen can show green and red
+  feedback.
+- The server picks the attempt. It uses the student's newest attempt for the
+  lecture with no `completed_at`, or starts a new one.
+- When every question in the lecture has an answer, the attempt is completed
+  (`completed_at` is set). The next answer starts a new attempt.
+- A second answer to the same question in the same attempt is rejected.
+
+Errors:
+- `400`: Invalid body. Errors appear under the field name, as in
+  POST /api/auth/register/.
+```json
+{
+  "chosen_index": ["Ensure this value is less than or equal to 3."]
+}
+```
+- `400`: The question already has an answer in this attempt.
+```json
+{
+  "detail": "This question was already answered in this attempt."
+}
+```
+- `401`: Missing or invalid authentication token.
+- `404`: `{"detail": "Not found."}` for an unknown or unavailable lecture, or
+  a question that is not in that lecture.
+
 ## Known Sprint 1 shortcuts (tracked for Sprint 2)
-- `correct_index` is sent to the browser so scoring can happen client-side.
-  Sprint 2 moves grading to a `POST` endpoint on the server so scores cannot be faked.
 - No class-code join yet.
 
 ## Authentication
@@ -346,6 +420,106 @@ Rules:
   Email addresses and usernames are not used as name fallbacks.
 - is_current_user is true only for the requesting student's entry.
 - The response is an unpaginated array.
+
+Errors:
+- `401`: Missing or invalid authentication token.
+- `404`: Unknown class ID.
+- `403`: For an existing class, the requester does not have the
+  student role or is not enrolled.
+
+## GET /api/classes/{id}/stats/
+
+Returns one student's progress in one class. The Class Hub screen uses
+it. Requires a student account and token authentication.
+
+Success: `200 OK`
+```json
+{
+  "classroom_id": 1,
+  "classroom": "Intro to Biology",
+  "total_points": 500,
+  "rank": 2,
+  "points_to_next_rank": 120,
+  "quizzes_played": 1,
+  "quizzes_total": 2,
+  "day_streak": 3,
+  "answer_streak": 2,
+  "up_next": {
+    "id": 7,
+    "title": "Cell Structure",
+    "published_at": "2026-11-03T15:00:00Z",
+    "question_count": 10,
+    "best_score": 0,
+    "correct_count": 0,
+    "is_new": true
+  },
+  "lectures": [
+    {
+      "id": 7,
+      "title": "Cell Structure",
+      "published_at": "2026-11-03T15:00:00Z",
+      "question_count": 10,
+      "best_score": 0,
+      "correct_count": 0,
+      "is_new": true
+    },
+    {
+      "id": 5,
+      "title": "Intro to Cells",
+      "published_at": "2026-10-27T15:00:00Z",
+      "question_count": 8,
+      "best_score": 500,
+      "correct_count": 7,
+      "is_new": false
+    }
+  ]
+}
+```
+
+Rules:
+- The class is identified by classroom_id. The name is returned in
+  classroom.
+- An available quiz is a lecture in this class with published_at in
+  the past and at least one question. Only available quizzes appear
+  in lectures and count in quizzes_total.
+- A quiz is played when the student has an attempt for it with
+  completed_at set. Incomplete attempts do not count.
+- quizzes_played is the number of available quizzes the student has
+  played. Repeat attempts do not add to it.
+- total_points is the sum of total_points from the student's completed
+  attempts across all lectures in this class, including repeat
+  attempts. It matches the student's points in the leaderboard.
+- rank uses competition ranking, the same as the leaderboard:
+  1, 1, 3.
+- points_to_next_rank is the gap to the nearest student with strictly
+  more points. It is 0 for a student at rank 1, including when all
+  students are tied at the top.
+- lectures are ordered newest first by published_at, the same as
+  GET /api/lectures/.
+- up_next is the first unplayed lecture in that order, which is the
+  newest unplayed lecture. It has the same shape as a lectures item.
+  It is null when every available quiz is played.
+- best_score is the highest total_points among the student's completed
+  attempts for the lecture.
+- correct_count is the number of correct answers in that same attempt.
+  If two attempts tie on score, the attempt with the lowest attempt ID
+  is used.
+- An unplayed lecture has best_score 0, correct_count 0, and is_new
+  true. A played lecture has is_new false.
+- A student with no completed attempts gets total_points 0,
+  quizzes_played 0, and points_to_next_rank as defined above. The
+  student shares the last rank with the other zero-point students.
+- day_streak is the number of days in a row on which the student answered
+  at least one question in any class. A day is a UTC calendar date. The
+  count goes back from today, or from yesterday if the student has not
+  answered yet today. It is 0 when the student answered neither
+  yesterday nor today.
+- answer_streak is the run of correct answers at the last answer of the
+  student's newest attempt in this class. It is 0 when the student has
+  no attempt.
+- A student who has never answered a question gets day_streak 0.
+- A student with no attempt in this class gets answer_streak 0. Their
+  day_streak can still be above 0 from answers in other classes.
 
 Errors:
 - `401`: Missing or invalid authentication token.

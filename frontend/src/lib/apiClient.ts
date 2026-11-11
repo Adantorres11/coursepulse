@@ -1,8 +1,8 @@
-import type { ApiResult, HealthResponse, Lecture, Quiz } from "../types/api";
+import type { AnswerRequest, AnswerResult, ApiResult, ClassStats, ClassSummary, HealthResponse, LeaderboardEntry, Lecture, Quiz } from "../types/api";
 import sampleLectures from "../data/lectures.sample.json" with { type: "json" };
 import sampleQuizzes from "../data/quizzes.sample.json" with { type: "json" };
 
-export type { ApiResult, HealthResponse, Lecture, Quiz, QuizQuestion, DifficultyLevel } from "../types/api";
+export type { AnswerRequest, AnswerResult, ApiResult, ClassStats, ClassSummary, HealthResponse, LeaderboardEntry, Lecture, Quiz, QuizQuestion, DifficultyLevel } from "../types/api";
 
 /**
  * Resolves the API base URL from Vite or runtime environment variables.
@@ -68,7 +68,12 @@ export async function request<T>(
         // Non-JSON response, keep the status-based error message
       }
 
-      return { data: null, error: errorMessage };
+      // Server faults carry no message a student can act on.
+      if (response.status >= 500) {
+        errorMessage = "The server had a problem. Try again shortly.";
+      }
+
+      return { data: null, error: errorMessage, status: response.status };
     }
 
     const data = (await response.json()) as T;
@@ -104,12 +109,18 @@ export async function getLectures(): Promise<ApiResult<Lecture[]>> {
 export async function getQuiz(id: string | number): Promise<ApiResult<Quiz>> {
   const queryId = String(id).trim();
 
+  // Send the token (when logged in) so the server can return the student's progress
+  const token = sessionStorage.getItem("coursepulse_token");
+  const authOptions: RequestInit | undefined = token
+    ? { headers: { Authorization: `Token ${token}` } }
+    : undefined;
+
   // Primary contract endpoint: GET /api/lectures/{id}/quiz/
-  let result = await request<Quiz>(`/lectures/${encodeURIComponent(queryId)}/quiz/`);
+  let result = await request<Quiz>(`/lectures/${encodeURIComponent(queryId)}/quiz/`, authOptions);
 
   // Secondary fallback for legacy/alternative route /quizzes/{id}/ if contract endpoint 404s
   if (result.error && !result.error.includes("Could not reach API")) {
-    const altResult = await request<Quiz>(`/quizzes/${encodeURIComponent(queryId)}/`);
+    const altResult = await request<Quiz>(`/quizzes/${encodeURIComponent(queryId)}/`, authOptions);
     if (!altResult.error) {
       result = altResult;
     }
@@ -144,6 +155,86 @@ export async function getQuiz(id: string | number): Promise<ApiResult<Quiz>> {
   }
 
   return result;
+}
+
+/**
+ * Submit one answer; the server grades it.
+ * Matches API contract: POST /api/lectures/{id}/answers/
+ * Requires a logged-in student. There is no sample-data fallback.
+ */
+export async function postAnswer(
+  lectureId: string | number,
+  body: AnswerRequest
+): Promise<ApiResult<AnswerResult>> {
+  const token = sessionStorage.getItem("coursepulse_token");
+  return request<AnswerResult>(`/lectures/${encodeURIComponent(String(lectureId).trim())}/answers/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Auth header for the logged-in student, or an empty object when logged out. */
+function authHeaders(): Record<string, string> {
+  const token = sessionStorage.getItem("coursepulse_token");
+  return token ? { Authorization: `Token ${token}` } : {};
+}
+
+/**
+ * Fetch the logged-in student's classes.
+ * Matches API contract: GET /api/classes/
+ */
+export async function getClasses(): Promise<ApiResult<ClassSummary[]>> {
+  return request<ClassSummary[]>("/classes/", { headers: authHeaders() });
+}
+
+/**
+ * Fetch the logged-in student's stats for one class.
+ * Matches API contract: GET /api/classes/{id}/stats/
+ */
+export async function getClassStats(classId: number | string): Promise<ApiResult<ClassStats>> {
+  return request<ClassStats>(`/classes/${encodeURIComponent(String(classId).trim())}/stats/`, {
+    headers: authHeaders(),
+  });
+}
+
+/**
+ * Day streak of the student's first class.
+ * Never throws: returns 0 when logged out, when a request fails,
+ * or when the student has no classes.
+ */
+export async function getStudentDayStreak(): Promise<number> {
+  try {
+    if (!sessionStorage.getItem("coursepulse_token")) return 0;
+
+    const classes = await getClasses();
+    const first = classes.data?.[0];
+    if (!first) return 0;
+
+    const stats = await getClassStats(first.id);
+    return stats.data?.day_streak ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Fetch the ranked students of one class.
+ * Matches API contract: GET /api/classes/{id}/leaderboard/
+ * Requires a logged-in student. There is no sample-data fallback.
+ */
+export async function getLeaderboard(
+  classId: number | string,
+  signal?: AbortSignal
+): Promise<ApiResult<LeaderboardEntry[]>> {
+  const token = sessionStorage.getItem("coursepulse_token");
+  return request<LeaderboardEntry[]>(`/classes/${encodeURIComponent(String(classId).trim())}/leaderboard/`, {
+    headers: token ? { Authorization: `Token ${token}` } : {},
+    signal,
+  });
 }
 
 /**

@@ -1,18 +1,23 @@
-import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { StudentHub } from "./components/StudentHub";
 import { QuizPage } from "./components/QuizPage";
 import { AuthPage } from "./components/AuthPage";
 import { LandingPage } from "./components/LandingPage";
 import { ClassHub } from "./components/ClassHub";
+import { JoinClassPage } from "./components/JoinClassPage";
 
 function AppContent() {
   const location = useLocation();
+  const navigate = useNavigate();
+  // Read on every render; each route change re-renders this component.
+  const isLoggedIn = Boolean(sessionStorage.getItem("coursepulse_token"));
   const hasCustomHeader =
     location.pathname === "/" ||
     location.pathname === "/landing" ||
     location.pathname === "/login" ||
     location.pathname === "/signup" ||
     location.pathname === "/hub" ||
+    location.pathname === "/join" ||
     location.pathname.startsWith("/class");
 
   return (
@@ -36,18 +41,33 @@ function AppContent() {
               </Link>
             </div>
             <div className="flex items-center gap-3">
-              <Link
-                to="/login"
-                className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-              >
-                Log in
-              </Link>
-              <Link
-                to="/signup"
-                className="text-sm font-semibold bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] px-3.5 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer"
-              >
-                Sign up
-              </Link>
+              {isLoggedIn ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    sessionStorage.removeItem("coursepulse_token");
+                    navigate("/login");
+                  }}
+                  className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                >
+                  Log out
+                </button>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Log in
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="text-sm font-semibold bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] px-3.5 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer"
+                  >
+                    Sign up
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </nav>
@@ -59,8 +79,9 @@ function AppContent() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/landing" element={<LandingPage />} />
           <Route path="/hub" element={<StudentHub />} />
+          <Route path="/join" element={<JoinClassPage />} />
           <Route path="/class/:classId" element={<ClassHub />} />
-          <Route path="/class" element={<ClassHub />} />
+          <Route path="/class" element={<Navigate to="/hub" replace />} />
           <Route path="/quiz/:lectureId" element={<QuizPage />} />
           <Route path="/login" element={<AuthPage initialTab="login" />} />
           <Route path="/signup" element={<AuthPage initialTab="signup" />} />

@@ -1,8 +1,24 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { request, getStudentDayStreak, type Lecture } from "../lib/apiClient";
+import { LeaderboardModal } from "./LeaderboardModal";
+import { ClassRankCard } from "./ClassRankCard";
+
+interface ClassroomResponse {
+  id: number;
+  name: string;
+  course_code: string;
+  professor: {
+    id: number;
+    name: string;
+  } | null;
+  quiz_count: number;
+  new_quiz_count: number;
+}
 
 interface EnrolledClass {
   id: string | number;
+  classroomId?: number;
   name: string;
   code: string;
   instructor: string;
@@ -17,63 +33,82 @@ interface StudentHubProps {
 
 export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
   const navigate = useNavigate();
+  const [leaderboardClassId, setLeaderboardClassId] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Default classes matching UI Mockups (CoursePulse Screens.pdf)
-  const MOCKUP_CLASSES: EnrolledClass[] = [
-    {
-      id: "cs-201",
-      name: "Data Structures",
-      code: "CS 201",
-      instructor: "Prof. Lin",
-      quizCount: 4,
-      newQuizCount: 2,
-      lectureId: 1,
-    },
-    {
-      id: "math-210",
-      name: "Discrete Math",
-      code: "MATH 210",
-      instructor: "Prof. Okafor",
-      quizCount: 6,
-      newQuizCount: 1,
-      lectureId: 2,
-    },
-    {
-      id: "stat-301",
-      name: "Probability and Statistics",
-      code: "STAT 301",
-      instructor: "Prof. Rivera",
-      quizCount: 3,
-      lectureId: 3,
-    },
-  ];
+  const [dayStreak, setDayStreak] = useState<number | null>(null);
 
   // Class enrollment state
-  const [classes, setClasses] = useState<EnrolledClass[]>(MOCKUP_CLASSES);
+  const [classes, setClasses] = useState<EnrolledClass[]>([]);
 
   // Modal for joining a class with access code
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [joinSuccessMsg, setJoinSuccessMsg] = useState<string | null>(null);
 
-  // Load enrolled classes
-  const fetchClasses = async () => {
-    setLoading(true);
-    setError(null);
+  // Fetch real backend / sample lectures
+  const fetchLectures = async () => {
+  setLoading(true);
+  setError(null);
 
-    // Keep mockup classes as local baseline
-    setClasses(MOCKUP_CLASSES);
+  const token = sessionStorage.getItem("coursepulse_token");
+
+  if (!token) {
+    setClasses([]);
+    setError("Please log in to see your classes.");
     setLoading(false);
-  };
+    return;
+  }
+
+  const result = await request<ClassroomResponse[]>("/classes/", {
+    headers: { Authorization: `Token ${token}` },
+  });
+
+  if (result.error || !result.data) {
+    setClasses([]);
+    setError(result.error || "Unable to load your classes.");
+    setLoading(false);
+    return;
+  }
+
+  const lectureResult = await request<Lecture[]>("/lectures/");
+  const lectures = lectureResult.data ?? [];
+
+  setClasses(
+    result.data.map((classroom) => ({
+      id: classroom.id,
+      classroomId: classroom.id,
+      name: classroom.name,
+      code: classroom.course_code,
+      instructor: classroom.professor?.name || "Professor not assigned",
+      quizCount: classroom.quiz_count,
+      newQuizCount: classroom.new_quiz_count,
+      lectureId: lectures.find(
+        (lecture) => lecture.classroom_id === classroom.id
+      )?.id,
+    }))
+  );
+
+  setLoading(false);
+};
 
   useEffect(() => {
-    fetchClasses();
+    fetchLectures();
   }, []);
 
-  const handleClassClick = (targetLectureId?: string | number) => {
-    const selectedId = targetLectureId || 1;
+  useEffect(() => {
+    let cancelled = false;
+    getStudentDayStreak().then((streak) => {
+      if (!cancelled) setDayStreak(streak);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleClassClick = (classroomId?: string | number) => {
+    if (classroomId === undefined || classroomId === null) return;
+    const selectedId = classroomId;
     if (onSelectQuiz) {
       onSelectQuiz(selectedId);
     } else {
@@ -173,7 +208,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
             <h2 className="text-xl font-semibold text-white mb-2">Failed to load classes</h2>
             <p className="text-red-300 text-sm mb-4">{error}</p>
             <button
-              onClick={fetchClasses}
+              onClick={fetchLectures}
               className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition cursor-pointer"
             >
               Retry
@@ -207,7 +242,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 
             <button
               type="button"
-              onClick={() => setIsJoinModalOpen(true)}
+              onClick={() => navigate("/join")}
               className="inline-flex items-center gap-2 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-sm px-6 py-3 rounded-xl transition-all shadow-lg shadow-sky-500/20 hover:scale-[1.02] cursor-pointer"
             >
               <span>Join a class</span>
@@ -217,46 +252,39 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
         ) : (
           /* Populated State — Matches Mockup 2 */
           <div className="space-y-4">
-            {/* 1. Daily Streak Banner Card (No streak for the week state) */}
+            {/* 1. Daily Streak Banner Card */}
             <div className="bg-[#141525] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl mb-6">
-              {/* Header: Fire icon, streak title, and badge */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-full bg-[#1A2238] flex items-center justify-center text-slate-500 shrink-0 text-xl shadow-inner">
-                    🔥
-                  </div>
-                  <div>
-                    <h3 className="text-lg sm:text-xl font-bold text-white leading-tight">
-                      0 day streak
-                    </h3>
+              {/* Header: Fire icon and streak title */}
+              <div className="flex items-center gap-3.5">
+                <div
+                  aria-hidden="true"
+                  className={`w-11 h-11 rounded-full bg-[#1A2238] flex items-center justify-center shrink-0 text-xl shadow-inner ${
+                    dayStreak !== null && dayStreak > 0 ? "" : "grayscale opacity-50"
+                  }`}
+                >
+                  🔥
+                </div>
+                <div aria-live="polite">
+                  <h3 className="text-lg sm:text-xl font-bold text-white leading-tight">
+                    {dayStreak === null ? "Loading streak…" : `${dayStreak} day streak`}
+                  </h3>
+                  {dayStreak !== null && (
                     <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-                      Play a quiz today to start your streak.
+                      {dayStreak === 0
+                        ? "Play a quiz today to start your streak."
+                        : "Play a quiz every day to keep it going."}
                     </p>
-                  </div>
+                  )}
                 </div>
-
-                <div className="bg-[#18233C] text-slate-400 border border-slate-700/60 text-xs font-semibold px-3 py-1 rounded-full">
-                  Best 0
-                </div>
-              </div>
-
-              {/* Weekly Streak Dots (M, T, W, T, F, S, S) — No streak for any day */}
-              <div className="flex justify-between items-center max-w-md mx-auto mt-6 px-2 sm:px-4">
-                {["M", "T", "W", "T", "F", "S", "S"].map((day, idx) => (
-                  <div key={idx} className="flex flex-col items-center gap-2">
-                    <span className="text-[11px] font-semibold text-slate-400">{day}</span>
-                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#18233C] border border-slate-800"></div>
-                  </div>
-                ))}
               </div>
             </div>
 
             {/* 2. Class List Cards */}
             <div className="space-y-3.5">
               {classes.map((cls) => (
-                <div
-                  key={cls.id}
-                  onClick={() => handleClassClick(cls.id)}
+                <div key={cls.id} className="space-y-2">
+                  <div
+                    onClick={() => handleClassClick(cls.classroomId)}
                   className="group bg-[#111A30] hover:bg-[#14203D] border border-slate-800/90 hover:border-slate-700 rounded-2xl p-4 sm:p-5 flex items-center justify-between transition-all duration-150 shadow-lg cursor-pointer"
                 >
                   {/* Left info with Book icon */}
@@ -308,8 +336,16 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
                       </svg>
                     </div>
                   </div>
-                </div>
-              ))}
+                                </div>
+
+                {cls.classroomId !== undefined && (
+                  <ClassRankCard
+                    classroomId={cls.classroomId}
+                    onOpen={setLeaderboardClassId}
+                  />
+                )}
+              </div>
+            ))}
             </div>
 
             {/* 3. Bottom Banner — 'Have a class code?' */}
@@ -343,7 +379,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 
               <button
                 type="button"
-                onClick={() => setIsJoinModalOpen(true)}
+                onClick={() => navigate("/join")}
                 className="inline-flex items-center justify-center gap-2 bg-[#141C33] hover:bg-[#1A2645] border border-slate-700 hover:border-slate-500 text-white font-semibold text-xs sm:text-sm py-2.5 px-4 rounded-xl transition cursor-pointer self-start sm:self-auto"
               >
                 <span>Join a class</span>
@@ -352,25 +388,6 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
             </div>
           </div>
         )}
-
-        {/* Demo Helper: Toggle between empty and populated states */}
-        <div className="text-center mt-8">
-          <button
-            type="button"
-            onClick={() => {
-              if (classes.length > 0) {
-                setClasses([]);
-              } else {
-                fetchClasses();
-              }
-            }}
-            className="text-xs text-slate-500 hover:text-slate-300 transition-colors underline cursor-pointer"
-          >
-            {classes.length > 0
-              ? "Preview Mockup 1 (Empty State: No classes yet)"
-              : "Preview Mockup 2 (Populated State with Streak & Classes)"}
-          </button>
-        </div>
       </main>
 
       {/* Modal: Join a Class with Access Code */}
@@ -421,6 +438,13 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
             </form>
           </div>
         </div>
+      )}
+
+      {leaderboardClassId !== null && (
+        <LeaderboardModal
+          classroomId={leaderboardClassId}
+          onClose={() => setLeaderboardClassId(null)}
+        />
       )}
 
       {/* Footer */}

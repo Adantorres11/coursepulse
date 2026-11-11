@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { getQuiz, type Quiz } from "../lib/apiClient";
+import { getQuiz, request, type Quiz, type Lecture } from "../lib/apiClient";
 import QuizGame from "./quiz";
 
 interface QuizPageProps {
@@ -13,8 +13,38 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
   const lectureId = propLectureId ?? routeLectureId ?? "";
 
   const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [classroomId, setClassroomId] = useState<number | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    setClassroomId(undefined);
+
+    if (lectureId) {
+      request<Lecture[]>("/lectures/", {
+        signal: controller.signal,
+      })
+        .then((result) => {
+          if (!active) return;
+
+          // request() never throws. On error the quiz still plays and the
+          // leaderboard button stays disabled because classroomId is undefined.
+          const lecture = result.data?.find(
+            (item) => String(item.id) === String(lectureId)
+          );
+
+          setClassroomId(lecture?.classroom_id);
+        });
+    }
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [lectureId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -96,7 +126,13 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
           </div>
 
           {/* Interactive Gameplay Component */}
-          <QuizGame questions={quiz.questions} />
+          <QuizGame
+            questions={quiz.questions}
+            lectureId={lectureId}
+            initialAnsweredIds={quiz.answered_question_ids ?? []}
+            initialScore={quiz.total_points ?? 0}
+            classroomId={classroomId}
+          />
         </div>
       )}
     </div>
