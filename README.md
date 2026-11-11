@@ -2,11 +2,13 @@
 
 CoursePulse is a study companion for the stretch after a lecture, when the material still feels familiar and is easy to lose. A professor publishes that lecture as a short quiz. Students join the class and play it before the next session.
 
-Rereading notes makes an idea feel known. Recalling it is what makes it stick. Each question asks for something from that lecture, and the score depends on how hard the recall is: easy is 100 points, medium is 200, and hard is 300. A session is only a few questions, so it fits between classes, and the score is specific to that lecture.
+Rereading notes makes an idea feel known. Recalling it is what makes it stick. Each question asks for something from that lecture, and the score depends on how hard the recall is: easy is 100 points, medium is 200, and hard is 300. A session is only a few questions, so it fits between class meetings, and the score is specific to that lecture.
+
+Those points are also a competition. Finished quizzes add up, and students in a class are ranked against each other. Moving up that ranking is a reason to play again, alongside remembering the lecture.
 
 ## How it works
 
-A professor opens a class and shares a six-character code. A student creates an account, enters the code, and joins. A lecture shows up in the Student Hub once it is published and has questions. The student answers one question at a time, and the quiz ends on a score.
+A professor opens a class and shares a six-character code. A student creates an account, enters the code, and joins. A lecture shows up in the Student Hub once it is published and has questions. The student answers one question at a time. The quiz ends on a score, and that score counts toward the student's place in the class.
 
 | Screen | What you do there |
 | --- | --- |
