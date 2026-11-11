@@ -30,15 +30,13 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
         .then((result) => {
           if (!active) return;
 
-          // On error the quiz still plays; the leaderboard button stays disabled.
+          // request() never throws. On error the quiz still plays and the
+          // leaderboard button stays disabled because classroomId is undefined.
           const lecture = result.data?.find(
             (item) => String(item.id) === String(lectureId)
           );
 
           setClassroomId(lecture?.classroom_id);
-        })
-        .catch(() => {
-          if (active) setClassroomId(undefined);
         });
     }
 
