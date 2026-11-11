@@ -2,6 +2,24 @@
 
 from django.conf import settings
 from django.db import migrations, models
+from django.db.models import Max
+
+
+def delete_duplicate_open_attempts(attempt_model):
+    newest_ids = (
+        attempt_model.objects
+        .filter(completed_at__isnull=True)
+        .values("user", "lecture")
+        .annotate(newest_id=Max("id"))
+        .values_list("newest_id", flat=True)
+    )
+    attempt_model.objects.filter(completed_at__isnull=True).exclude(
+        id__in=list(newest_ids)
+    ).delete()
+
+
+def remove_duplicate_open_attempts(apps, schema_editor):
+    delete_duplicate_open_attempts(apps.get_model("quizzes", "Attempt"))
 
 
 class Migration(migrations.Migration):
@@ -12,6 +30,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(remove_duplicate_open_attempts, migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name='attempt',
             constraint=models.UniqueConstraint(condition=models.Q(('completed_at__isnull', True)), fields=('user', 'lecture'), name='unique_open_attempt_per_user_lecture'),

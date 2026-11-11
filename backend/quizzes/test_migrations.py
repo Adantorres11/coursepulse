@@ -42,3 +42,21 @@ class MigrationBackfillTests(TestCase):
 
         answer.refresh_from_db()
         self.assertEqual(answer.answered_at, attempt.started_at)
+
+    def test_duplicate_cleanup_keeps_valid_open_attempts(self):
+        first, second = self.make_lecture(), self.make_lecture()
+        done = Attempt.objects.create(
+            user=self.user, lecture=first, completed_at=timezone.now()
+        )
+        open_one = Attempt.objects.create(user=self.user, lecture=first)
+        open_two = Attempt.objects.create(user=self.user, lecture=second)
+        migration = import_module(
+            "quizzes.migrations.0007_attempt_unique_open_attempt"
+        )
+
+        migration.delete_duplicate_open_attempts(Attempt)
+
+        self.assertEqual(
+            set(Attempt.objects.values_list("id", flat=True)),
+            {done.id, open_one.id, open_two.id},
+        )
