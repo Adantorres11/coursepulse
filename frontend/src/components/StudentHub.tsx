@@ -106,13 +106,13 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
     };
   }, []);
 
-  const handleClassClick = (targetLectureId?: string | number) => {
-    if (targetLectureId === undefined || targetLectureId === null) return;
-    const selectedId = targetLectureId;
+  const handleClassClick = (classroomId?: string | number) => {
+    if (classroomId === undefined || classroomId === null) return;
+    const selectedId = classroomId;
     if (onSelectQuiz) {
       onSelectQuiz(selectedId);
     } else {
-      navigate(`/quiz/${selectedId}`);
+      navigate(`/class/${selectedId}`);
     }
   };
 
@@ -284,7 +284,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
               {classes.map((cls) => (
                 <div key={cls.id} className="space-y-2">
                   <div
-                    onClick={() => handleClassClick(cls.lectureId)}
+                    onClick={() => handleClassClick(cls.classroomId)}
                   className="group bg-[#111A30] hover:bg-[#14203D] border border-slate-800/90 hover:border-slate-700 rounded-2xl p-4 sm:p-5 flex items-center justify-between transition-all duration-150 shadow-lg cursor-pointer"
                 >
                   {/* Left info with Book icon */}
