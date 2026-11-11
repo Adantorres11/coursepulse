@@ -23,7 +23,7 @@ class LectureSerializer(serializers.ModelSerializer):
 class QuestionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Question
-        fields = ["id", "prompt", "choices", "correct_index", "difficulty"]
+        fields = ["id", "prompt", "choices", "difficulty"]
 
 
 class QuizSerializer(serializers.ModelSerializer):

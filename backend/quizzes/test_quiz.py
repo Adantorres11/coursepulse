@@ -50,11 +50,20 @@ class LectureQuizTests(TestCase):
         question = body["questions"][0]
         self.assertEqual(
             set(question),
-            {"id", "prompt", "choices", "correct_index", "difficulty"},
+            {"id", "prompt", "choices", "difficulty"},
         )
         self.assertEqual(question["choices"], ["A", "B", "C", "D"])
-        self.assertEqual(question["correct_index"], 0)
         self.assertEqual(question["difficulty"], "easy")
+
+    def test_questions_do_not_include_correct_index(self):
+        lecture = self.make_lecture(self.now - timedelta(days=1))
+
+        response = self.client.get(self.url(lecture.id))
+
+        self.assertEqual(response.status_code, 200)
+        question = response.json()["questions"][0]
+        self.assertEqual(set(question), {"id", "prompt", "choices", "difficulty"})
+        self.assertNotIn("correct_index", response.content.decode())
 
     def test_questions_follow_position_then_id(self):
         lecture = self.make_lecture(self.now - timedelta(days=1), questions=0)
