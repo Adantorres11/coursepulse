@@ -1,77 +1,95 @@
 # CoursePulse
 
-An AI-powered study companion that keeps lecture concepts fresh between class and the exam.
-Professors upload a lecture; students play a fast, gamified quiz built from it.
-CoursePulse complements lectures. It does not replace them.
+CoursePulse is a study companion for the stretch after a lecture, when the material still feels familiar and is easy to lose. A professor publishes that lecture as a short quiz. Students join the class and play it before the next session.
 
-Course project for CS 3398 Software Engineering (Fall 2026), Team 009-03.
+Rereading notes makes an idea feel known. Recalling it is what makes it stick. Each question asks for something from that lecture, and the score depends on how hard the recall is: easy is 100 points, medium is 200, and hard is 300. A session is only a few questions, so it fits between class meetings, and the score is specific to that lecture.
 
-## Sprint 1 goal: the walking skeleton
-Run `docker compose up`, open the React app, see the hardcoded quiz served by the Django API,
-and play through all 5 questions with a score.
+Those points are also a competition. Finished quizzes add up, and students in a class are ranked against each other. Moving up that ranking is a reason to play again, alongside remembering the lecture.
 
-## Quick start
-**Prerequisites:** Docker Desktop, Git.
+## How it works
 
-1. **Clone the repo and move into it**
-   ```bash
-   git clone <repo-url> && cd coursepulse
-   ```
+A professor opens a class and shares a six-character code. A student creates an account, enters the code, and joins. A lecture shows up in the Student Hub once it is published and has questions. The student answers one question at a time. The quiz ends on a score, and that score counts toward the student's place in the class.
 
-2. **Create your local environment file**
-   ```bash
-   cp .env.example .env
-   ```
-   This holds your local DB credentials and secrets. It's gitignored, so it's yours alone and never gets committed.
+| Screen | What you do there |
+| --- | --- |
+| Landing | See what CoursePulse is, then sign up or log in |
+| Sign up / Log in | Create an account as a student or a professor |
+| Join class | Enter the six-character class code |
+| Student Hub | Choose a published lecture |
+| Quiz | Answer the questions and see the score |
 
-3. **Build and start everything**
-   ```bash
-   docker compose up --build
-   ```
-   Spins up Postgres, the Django API, and the React frontend together, wired to talk to each other.
+The repository includes a demo class and one published lecture, Agile and Scrum, with five questions. The seed command below loads it. Running the command again updates those questions in place.
 
-4. **Open it up**
+## Repository
 
-   | Service  | URL                                |
-   |----------|-------------------------------------|
-   | Frontend | http://localhost:5173              |
-   | API      | http://localhost:8000/api/health/  |
-   | Postgres | localhost:5432 (see `.env`)        |
-
-Stop with `Ctrl+C`. Wipe the database and start fresh with `docker compose down -v`.
-
-## Repository layout
 ```
-backend/    Python (Django + Django REST Framework) API
-frontend/   React (Vite) + TypeScript + Tailwind CSS
-docs/       Developer docs that live next to the code (API contract)
-.github/    PR template and CI workflows
+.
+├── backend/                 Django REST Framework API
+│   ├── accounts/            Registration, login, and roles
+│   ├── classrooms/          Classes, join codes, standings, and stats
+│   ├── quizzes/             Lectures, questions, attempts, and the demo seed
+│   ├── config/              Settings and URL routing
+│   ├── core/                Health check
+│   ├── Dockerfile
+│   ├── manage.py
+│   └── requirements.txt
+├── frontend/                React, Vite, TypeScript, and Tailwind
+│   ├── public/assets/       Logo
+│   ├── src/
+│   │   ├── components/      Landing, auth, join class, student hub, and quiz
+│   │   ├── data/            Sample lecture and quiz fixtures
+│   │   ├── lib/             API client
+│   │   ├── types/
+│   │   ├── App.tsx          Routes
+│   │   └── main.tsx
+│   ├── Dockerfile
+│   ├── package.json
+│   └── vite.config.ts
+├── docs/
+│   └── api-contract.md      Request and response shapes
+├── .env.example             Local environment template
+├── docker-compose.yml       Postgres, API, and frontend
+└── README.md
 ```
-Project-level documentation (product overview, tech stack, architecture, sprint notes) lives in our Confluence team space.
 
-## Tech stack
-| Layer      | Tech                          |
-|------------|--------------------------------|
-| Frontend   | React (Vite) + TypeScript + Tailwind CSS |
-| Backend    | Python (Django REST Framework) |
-| Database   | PostgreSQL                     |
+## Run
 
-## Running without Docker (optional)
-**Backend**
+Docker and Git.
 
-1. Create a virtual environment and install dependencies:
-   ```bash
-   cd backend
-   python -m venv .venv && source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-2. Run migrations and start the server:
-   ```bash
-   python manage.py migrate && python manage.py runserver
-   ```
-   No `DB_HOST` set means it falls back to SQLite automatically, so no Postgres is needed for this path.
+```bash
+git clone <repo-url>
+cd coursepulse
+cp .env.example .env
+docker compose up --build
+```
 
-**Frontend**
+| Service | URL |
+| --- | --- |
+| Frontend | http://localhost:5173 |
+| API | http://localhost:8000/api/health/ |
+
+Load the demo lecture once the API is up:
+
+```bash
+docker compose exec backend python manage.py seed_demo
+```
+
+Stop with Ctrl+C. Reset the database with `docker compose down -v`.
+
+Local database credentials live in `.env`, which is not committed.
+
+## Without Docker
+
+With `DB_HOST` unset, the API uses SQLite.
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py seed_demo
+python manage.py runserver
+```
 
 ```bash
 cd frontend
@@ -79,34 +97,8 @@ npm install && npm run dev
 ```
 
 ## Tests
+
 ```bash
 cd backend && python manage.py test
 cd frontend && npm run build
-```
-
-## Demo quiz
-
-With Docker Desktop running, start the database and backend from the
-repository root:
-
-```bash
-docker compose up --build -d db backend
-```
-
-Load the demo content:
-
-```bash
-docker compose exec backend python manage.py seed_demo
-```
-
-The command creates one demo classroom, one published lecture, and five
-questions about Scrum and Git, covering easy, medium, and hard difficulties.
-Running it again updates the same demo questions without creating duplicates.
-
-For local development without Docker, install the backend dependencies,
-then run these commands from `backend` using your virtual environment's Python:
-
-```bash
-python manage.py migrate
-python manage.py seed_demo
 ```
