@@ -131,10 +131,11 @@ Rules:
 - `total_points` is the running total of the attempt, including this answer.
 - `correct_index` is always returned, so the screen can show green and red
   feedback.
-- The server picks the attempt. It uses the student's newest attempt for the
-  lecture with no `completed_at`, or starts a new one.
+- The server picks the attempt. It uses the student's open attempt for the
+  lecture, the one that the start call created or reused.
 - When every question in the lecture has an answer, the attempt is completed
-  (`completed_at` is set). The next answer starts a new attempt.
+  (`completed_at` is set). The next start call, not the next answer, begins a
+  new attempt.
 - A second answer to the same question in the same attempt is rejected.
 
 Errors:
@@ -194,8 +195,9 @@ original time is kept.
 Rules:
 - The lecture must be available, as in GET /api/lectures/{id}/quiz/.
   The question must belong to that lecture.
-- The server uses the open attempt or starts a new one, the same rule as
-  POST /api/lectures/{id}/answers/.
+- The server uses the student's open attempt for the lecture (the newest one
+  with no `completed_at`), or starts a new one. A student has at most one open
+  attempt per lecture.
 - Only an enrolled student can start a question. The student must have the
   student role and must be enrolled in the class of the lecture.
 - The server measures the answer time from `started_at`.
