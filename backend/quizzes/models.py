@@ -122,6 +122,7 @@ class Answer(models.Model):
     is_correct = models.BooleanField()
     time_taken_ms = models.PositiveIntegerField()
     points_awarded = models.PositiveIntegerField(default=0)
+    answered_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         constraints = [

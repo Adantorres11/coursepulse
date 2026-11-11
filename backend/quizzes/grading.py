@@ -7,6 +7,8 @@ from .streaks import next_day_streak, streak_bonus
 POINTS_BY_DIFFICULTY = {"easy": 100, "medium": 200, "hard": 300}
 QUESTION_TIME_LIMIT_MS = 15000
 TIME_GRACE_MS = 1000
+DAILY_FULL_POINTS_QUESTIONS = 35
+CAPPED_POINTS_PERCENT = 25
 
 
 class AlreadyAnswered(Exception):
@@ -26,6 +28,13 @@ def grade_answer(question, chosen_index, time_taken_ms):
     )
     points = POINTS_BY_DIFFICULTY[question.difficulty] if is_correct else 0
     return is_correct, points
+
+
+def capped_points(base_points, answers_today):
+    """Return the base points, reduced once the daily full-points limit is used."""
+    if answers_today < DAILY_FULL_POINTS_QUESTIONS:
+        return base_points
+    return base_points * CAPPED_POINTS_PERCENT // 100
 
 
 def get_open_attempt(user, lecture, for_update=False):
@@ -72,6 +81,19 @@ def submit_answer(user, lecture, question, chosen_index):
         is_correct, points = grade_answer(question, chosen_index, time_taken_ms)
         if attempt.answers.filter(question=question).exists():
             raise AlreadyAnswered()
+        today = timezone.localdate()
+        # Locking the day streak row makes one student's answers run one at a
+        # time, so two lectures cannot read the same daily count.
+        day_streak, _ = DayStreak.objects.select_for_update().get_or_create(
+            user=user
+        )
+        if attempt.is_first:
+            answers_today = Answer.objects.filter(
+                attempt__user=user,
+                attempt__is_first=True,
+                answered_at__date=today,
+            ).count()
+            points = capped_points(points, answers_today)
         attempt.answer_streak = attempt.answer_streak + 1 if is_correct else 0
         if is_correct:
             points += streak_bonus(attempt.answer_streak)
@@ -84,15 +106,12 @@ def submit_answer(user, lecture, question, chosen_index):
                     is_correct=is_correct,
                     time_taken_ms=time_taken_ms,
                     points_awarded=points,
+                    answered_at=now,
                 )
         except IntegrityError:
             raise AlreadyAnswered()
         attempt.total_points += points
         update_fields = ["total_points", "answer_streak"]
-        today = timezone.localdate()
-        day_streak, _ = DayStreak.objects.select_for_update().get_or_create(
-            user=user
-        )
         day_streak.count = next_day_streak(
             day_streak.count, day_streak.last_day, today
         )

@@ -1,6 +1,11 @@
 from django.test import SimpleTestCase
 
-from .grading import QUESTION_TIME_LIMIT_MS, TIME_GRACE_MS, grade_answer
+from .grading import (
+    QUESTION_TIME_LIMIT_MS,
+    TIME_GRACE_MS,
+    capped_points,
+    grade_answer,
+)
 from .models import Question
 
 
@@ -34,3 +39,13 @@ class GradeAnswerTests(SimpleTestCase):
     def test_no_choice_is_never_correct(self):
         question = Question(correct_index=0, difficulty="easy")
         self.assertEqual(grade_answer(question, None, 1000), (False, 0))
+
+
+class CappedPointsTests(SimpleTestCase):
+    def test_full_points_before_the_35th_answer_is_passed(self):
+        self.assertEqual(capped_points(100, 34), 100)
+
+    def test_quarter_points_from_the_36th_answer(self):
+        self.assertEqual(capped_points(100, 35), 25)
+        self.assertEqual(capped_points(200, 35), 50)
+        self.assertEqual(capped_points(300, 80), 75)
