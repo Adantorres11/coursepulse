@@ -39,34 +39,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
   const [dayStreak, setDayStreak] = useState<number | null>(null);
 
   // Class enrollment state
-  const [classes, setClasses] = useState<EnrolledClass[]>([
-    {
-      id: "cs-201",
-      name: "Data Structures",
-      code: "CS 201",
-      instructor: "Prof. Lin",
-      quizCount: 4,
-      newQuizCount: 2,
-      lectureId: 1,
-    },
-    {
-      id: "math-210",
-      name: "Discrete Math",
-      code: "MATH 210",
-      instructor: "Prof. Okafor",
-      quizCount: 6,
-      newQuizCount: 1,
-      lectureId: 2,
-    },
-    {
-      id: "stat-301",
-      name: "Probability and Statistics",
-      code: "STAT 301",
-      instructor: "Prof. Rivera",
-      quizCount: 3,
-      lectureId: 3,
-    },
-  ]);
+  const [classes, setClasses] = useState<EnrolledClass[]>([]);
 
   // Modal for joining a class with access code
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
@@ -415,25 +388,6 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
             </div>
           </div>
         )}
-
-        {/* Demo Helper: Toggle between empty and populated states */}
-        <div className="text-center mt-8">
-          <button
-            type="button"
-            onClick={() => {
-              if (classes.length > 0) {
-                setClasses([]);
-              } else {
-                fetchLectures();
-              }
-            }}
-            className="text-xs text-slate-500 hover:text-slate-300 transition-colors underline cursor-pointer"
-          >
-            {classes.length > 0
-              ? "Preview Mockup 1 (Empty State: No classes yet)"
-              : "Preview Mockup 2 (Populated State with Streak & Classes)"}
-          </button>
-        </div>
       </main>
 
       {/* Modal: Join a Class with Access Code */}

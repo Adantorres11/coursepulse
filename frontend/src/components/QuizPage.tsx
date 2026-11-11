@@ -18,30 +18,33 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-  let active = true;
-  const controller = new AbortController();
+    let active = true;
+    const controller = new AbortController();
 
-  setClassroomId(undefined);
+    setClassroomId(undefined);
 
-  if (lectureId) {
-    request<Lecture[]>("/lectures/", {
-      signal: controller.signal,
-    }).then((result) => {
-      if (!active || !result.data) return;
+    if (lectureId) {
+      request<Lecture[]>("/lectures/", {
+        signal: controller.signal,
+      })
+        .then((result) => {
+          if (!active) return;
 
-      const lecture = result.data.find(
-        (item) => String(item.id) === String(lectureId)
-      );
+          // request() never throws. On error the quiz still plays and the
+          // leaderboard button stays disabled because classroomId is undefined.
+          const lecture = result.data?.find(
+            (item) => String(item.id) === String(lectureId)
+          );
 
-      setClassroomId(lecture?.classroom_id);
-    });
-  }
+          setClassroomId(lecture?.classroom_id);
+        });
+    }
 
-  return () => {
-    active = false;
-    controller.abort();
-  };
-}, [lectureId]);
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [lectureId]);
 
   useEffect(() => {
     let isMounted = true;
