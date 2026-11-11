@@ -20,6 +20,10 @@ def delete_duplicate_open_attempts(attempt_model):
 
 def remove_duplicate_open_attempts(apps, schema_editor):
     delete_duplicate_open_attempts(apps.get_model("quizzes", "Attempt"))
+    if schema_editor.connection.vendor == "postgresql":
+        # Run the deferred foreign key checks from the delete now. Postgres
+        # refuses to build an index on a table with pending trigger events.
+        schema_editor.execute("SET CONSTRAINTS ALL IMMEDIATE")
 
 
 class Migration(migrations.Migration):

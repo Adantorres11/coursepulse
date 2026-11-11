@@ -1,6 +1,8 @@
 from datetime import timedelta
 from importlib import import_module
+from types import SimpleNamespace
 
+from django.apps import apps
 from django.test import TestCase
 from django.utils import timezone
 
@@ -60,3 +62,24 @@ class MigrationBackfillTests(TestCase):
             set(Attempt.objects.values_list("id", flat=True)),
             {done.id, open_one.id, open_two.id},
         )
+
+    def run_cleanup_on(self, vendor):
+        statements = []
+        schema_editor = SimpleNamespace(
+            connection=SimpleNamespace(vendor=vendor),
+            execute=statements.append,
+        )
+        migration = import_module(
+            "quizzes.migrations.0007_attempt_unique_open_attempt"
+        )
+        migration.remove_duplicate_open_attempts(apps, schema_editor)
+        return statements
+
+    def test_duplicate_cleanup_runs_deferred_checks_on_postgres(self):
+        self.assertEqual(
+            self.run_cleanup_on("postgresql"),
+            ["SET CONSTRAINTS ALL IMMEDIATE"],
+        )
+
+    def test_duplicate_cleanup_skips_deferred_checks_elsewhere(self):
+        self.assertEqual(self.run_cleanup_on("sqlite"), [])
