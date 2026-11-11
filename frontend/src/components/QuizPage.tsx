@@ -18,30 +18,35 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-  let active = true;
-  const controller = new AbortController();
+    let active = true;
+    const controller = new AbortController();
 
-  setClassroomId(undefined);
+    setClassroomId(undefined);
 
-  if (lectureId) {
-    request<Lecture[]>("/lectures/", {
-      signal: controller.signal,
-    }).then((result) => {
-      if (!active || !result.data) return;
+    if (lectureId) {
+      request<Lecture[]>("/lectures/", {
+        signal: controller.signal,
+      })
+        .then((result) => {
+          if (!active) return;
 
-      const lecture = result.data.find(
-        (item) => String(item.id) === String(lectureId)
-      );
+          // On error the quiz still plays; the leaderboard button stays disabled.
+          const lecture = result.data?.find(
+            (item) => String(item.id) === String(lectureId)
+          );
 
-      setClassroomId(lecture?.classroom_id);
-    });
-  }
+          setClassroomId(lecture?.classroom_id);
+        })
+        .catch(() => {
+          if (active) setClassroomId(undefined);
+        });
+    }
 
-  return () => {
-    active = false;
-    controller.abort();
-  };
-}, [lectureId]);
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [lectureId]);
 
   useEffect(() => {
     let isMounted = true;
