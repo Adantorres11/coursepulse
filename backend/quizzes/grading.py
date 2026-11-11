@@ -1,7 +1,8 @@
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from .models import Answer, Attempt, QuizCompletion
+from .models import Answer, Attempt, DayStreak, QuizCompletion
+from .streaks import next_day_streak, streak_bonus
 
 POINTS_BY_DIFFICULTY = {"easy": 100, "medium": 200, "hard": 300}
 QUESTION_TIME_LIMIT_MS = 15000
@@ -43,6 +44,9 @@ def submit_answer(user, lecture, question, chosen_index, time_taken_ms):
         ) or Attempt.objects.create(user=user, lecture=lecture)
         if attempt.answers.filter(question=question).exists():
             raise AlreadyAnswered()
+        attempt.answer_streak = attempt.answer_streak + 1 if is_correct else 0
+        if is_correct:
+            points += streak_bonus(attempt.answer_streak)
         try:
             with transaction.atomic():
                 Answer.objects.create(
@@ -56,7 +60,16 @@ def submit_answer(user, lecture, question, chosen_index, time_taken_ms):
         except IntegrityError:
             raise AlreadyAnswered()
         attempt.total_points += points
-        update_fields = ["total_points"]
+        update_fields = ["total_points", "answer_streak"]
+        today = timezone.localdate()
+        day_streak, _ = DayStreak.objects.select_for_update().get_or_create(
+            user=user
+        )
+        day_streak.count = next_day_streak(
+            day_streak.count, day_streak.last_day, today
+        )
+        day_streak.last_day = today
+        day_streak.save()
         if attempt.answers.count() == lecture.questions.count():
             attempt.completed_at = timezone.now()
             update_fields.append("completed_at")
