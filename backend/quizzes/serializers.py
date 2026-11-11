@@ -32,3 +32,9 @@ class QuizSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lecture
         fields = ["lecture_id", "title", "questions"]
+
+
+class AnswerRequestSerializer(serializers.Serializer):
+    question_id = serializers.IntegerField()
+    chosen_index = serializers.IntegerField(min_value=0, max_value=3)
+    time_taken_ms = serializers.IntegerField(min_value=0)

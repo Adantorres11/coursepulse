@@ -1,3 +1,7 @@
+from django.db import transaction
+
+from .models import Answer, Attempt
+
 POINTS_BY_DIFFICULTY = {"easy": 100, "medium": 200, "hard": 300}
 QUESTION_TIME_LIMIT_MS = 15000
 
@@ -10,3 +14,32 @@ def grade_answer(question, chosen_index, time_taken_ms):
     )
     points = POINTS_BY_DIFFICULTY[question.difficulty] if is_correct else 0
     return is_correct, points
+
+
+def submit_answer(user, lecture, question, chosen_index, time_taken_ms):
+    """Save one graded answer on the user's open attempt."""
+    is_correct, points = grade_answer(question, chosen_index, time_taken_ms)
+    with transaction.atomic():
+        attempt = (
+            Attempt.objects
+            .select_for_update()
+            .filter(user=user, lecture=lecture, completed_at__isnull=True)
+            .order_by("-id")
+            .first()
+        ) or Attempt.objects.create(user=user, lecture=lecture)
+        Answer.objects.create(
+            attempt=attempt,
+            question=question,
+            chosen_index=chosen_index,
+            is_correct=is_correct,
+            time_taken_ms=time_taken_ms,
+            points_awarded=points,
+        )
+        attempt.total_points += points
+        attempt.save(update_fields=["total_points"])
+    return {
+        "is_correct": is_correct,
+        "points_awarded": points,
+        "total_points": attempt.total_points,
+        "correct_index": question.correct_index,
+    }
