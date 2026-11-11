@@ -2,6 +2,21 @@
 
 import django.utils.timezone
 from django.db import migrations, models
+from django.db.models import OuterRef, Subquery
+
+
+def copy_attempt_start_times(answer_model, attempt_model):
+    started_at = attempt_model.objects.filter(
+        pk=OuterRef("attempt_id")
+    ).values("started_at")[:1]
+    answer_model.objects.update(answered_at=Subquery(started_at))
+
+
+def backfill_answered_at(apps, schema_editor):
+    copy_attempt_start_times(
+        apps.get_model("quizzes", "Answer"),
+        apps.get_model("quizzes", "Attempt"),
+    )
 
 
 class Migration(migrations.Migration):
@@ -12,6 +27,12 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.AddField(
+            model_name='answer',
+            name='answered_at',
+            field=models.DateTimeField(null=True),
+        ),
+        migrations.RunPython(backfill_answered_at, migrations.RunPython.noop),
+        migrations.AlterField(
             model_name='answer',
             name='answered_at',
             field=models.DateTimeField(default=django.utils.timezone.now),
