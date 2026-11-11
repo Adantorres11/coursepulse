@@ -84,4 +84,14 @@ export interface HealthResponse {
 export interface ApiResult<T> {
   data: T | null;
   error: string | null;
+  /** HTTP status of a non-OK response. Not set for network errors. */
+  status?: number;
+}
+
+// One row of GET /api/classes/{id}/leaderboard/
+export interface LeaderboardEntry {
+  rank: number;
+  display_name: string;
+  points: number;
+  is_current_user: boolean;
 }
