@@ -103,8 +103,10 @@ Rules:
 - The time limit is 15 seconds per question: `QUESTION_TIME_LIMIT_MS = 15000`.
   An answer timed out when `time_taken_ms` is greater than 15000.
 - `points_awarded` is 100 for an easy question, 200 for medium, and 300 for
-  hard. It is 0 when the answer is wrong or timed out. A timed-out answer
-  is never correct, so `is_correct` is `false`.
+  hard. It gets 50 more once the run of correct answers in the attempt has
+  reached 3, including this answer. It is 0 when the answer is wrong or
+  timed out. A timed-out answer is never correct, so `is_correct` is `false`.
+- A wrong or timed-out answer sets the run of correct answers to 0.
 - `total_points` is the running total of the attempt, including this answer.
 - `correct_index` is always returned, so the screen can show green and red
   feedback.
@@ -436,6 +438,8 @@ Success: `200 OK`
   "points_to_next_rank": 120,
   "quizzes_played": 1,
   "quizzes_total": 2,
+  "day_streak": 3,
+  "answer_streak": 2,
   "up_next": {
     "id": 7,
     "title": "Cell Structure",
@@ -501,7 +505,13 @@ Rules:
 - A student with no completed attempts gets total_points 0,
   quizzes_played 0, and points_to_next_rank as defined above. The
   student shares the last rank with the other zero-point students.
-- Streak fields are not included.
+- day_streak is the number of days in a row, up to today, on which the
+  student answered a question in any class. It is 0 when the student did
+  not answer yesterday or today.
+- answer_streak is the run of correct answers at the last answer of the
+  student's newest attempt in this class. It is 0 when the student has
+  no attempt.
+- A student with no attempts gets day_streak 0 and answer_streak 0.
 
 Errors:
 - `401`: Missing or invalid authentication token.
