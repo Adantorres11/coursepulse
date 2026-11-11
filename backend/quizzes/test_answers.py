@@ -8,6 +8,7 @@ from classrooms.models import Classroom
 from .grading import QUESTION_TIME_LIMIT_MS
 from .models import Answer, Attempt, Lecture, QuizCompletion
 from .test_lectures import add_questions
+from .testing import answer, make_student
 
 
 class AnswerEndpointTests(APITestCase):
@@ -21,9 +22,7 @@ class AnswerEndpointTests(APITestCase):
         )
         add_questions(cls.lecture, 2)
         cls.question = cls.lecture.questions.order_by("position").first()
-        cls.user = get_user_model().objects.create_user(
-            username="student", password="pw"
-        )
+        cls.user = make_student("student", cls.classroom)
 
     def setUp(self):
         self.client.force_authenticate(self.user)
@@ -41,6 +40,9 @@ class AnswerEndpointTests(APITestCase):
             },
             format="json",
         )
+
+    def answer(self, question, chosen_index):
+        return answer(self.client, self.lecture, question, chosen_index)
 
     def test_correct_answer_is_graded_and_saved(self):
         response = self.post(self.question.correct_index)
@@ -140,7 +142,7 @@ class AnswerEndpointTests(APITestCase):
 
     def answer_all_correctly(self):
         for question in self.lecture.questions.order_by("position"):
-            response = self.post(question.correct_index, question_id=question.id)
+            response = self.answer(question, question.correct_index)
             self.assertEqual(response.status_code, 201)
 
     def test_repeat_answer_is_400_and_total_unchanged(self):
@@ -181,9 +183,7 @@ class AnswerEndpointTests(APITestCase):
         self.assertEqual(QuizCompletion.objects.count(), 1)
 
     def test_answers_from_two_students_stay_separate(self):
-        other = get_user_model().objects.create_user(
-            username="other", password="pw"
-        )
+        other = make_student("other", self.classroom)
         self.post(self.question.correct_index)
         self.client.force_authenticate(other)
         response = self.post(self.question.correct_index + 1)
@@ -191,3 +191,68 @@ class AnswerEndpointTests(APITestCase):
         self.assertEqual(response.json()["total_points"], 0)
         self.assertEqual(Attempt.objects.count(), 2)
         self.assertEqual(Attempt.objects.get(user=self.user).total_points, 100)
+
+
+class AnswerPermissionTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.classroom = Classroom.objects.create(name="Any Class")
+        cls.lecture = Lecture.objects.create(
+            classroom=cls.classroom,
+            title="Lecture",
+            published_at=timezone.now() - timedelta(hours=1),
+        )
+        add_questions(cls.lecture, 1)
+        cls.question = cls.lecture.questions.get()
+
+    def post_as(self, user):
+        self.client.force_authenticate(user)
+        return answer(
+            self.client, self.lecture, self.question, self.question.correct_index
+        )
+
+    def test_professor_gets_403(self):
+        professor = make_student("prof", self.classroom, role="professor")
+        response = self.post_as(professor)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json(), {"detail": "Only students can answer questions."}
+        )
+        self.assertFalse(Answer.objects.exists())
+
+    def test_user_without_profile_gets_403(self):
+        user = get_user_model().objects.create_user(username="plain", password="pw")
+        response = self.post_as(user)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json(), {"detail": "Only students can answer questions."}
+        )
+        self.assertFalse(Answer.objects.exists())
+
+    def test_student_not_enrolled_gets_403(self):
+        response = self.post_as(make_student("outsider"))
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json(), {"detail": "You must be enrolled in this class."}
+        )
+        self.assertFalse(Answer.objects.exists())
+
+    def test_enrolled_student_gets_201(self):
+        response = self.post_as(make_student("enrolled", self.classroom))
+        self.assertEqual(response.status_code, 201)
+
+    def test_unknown_lecture_is_404_for_professor(self):
+        professor = make_student("prof", self.classroom, role="professor")
+        self.client.force_authenticate(professor)
+        response = self.client.post(
+            "/api/lectures/999999/answers/",
+            {"question_id": self.question.id, "chosen_index": 0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_professor_can_still_get_quiz(self):
+        professor = make_student("prof", self.classroom, role="professor")
+        self.client.force_authenticate(professor)
+        response = self.client.get(f"/api/lectures/{self.lecture.id}/quiz/")
+        self.assertEqual(response.status_code, 200)

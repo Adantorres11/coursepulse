@@ -1,7 +1,6 @@
 from datetime import date, timedelta
 from unittest.mock import patch
 
-from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
@@ -9,6 +8,7 @@ from classrooms.models import Classroom
 from .grading import QUESTION_TIME_LIMIT_MS
 from .models import Attempt, DayStreak, Lecture
 from .test_lectures import add_questions
+from .testing import answer, make_student
 
 DAY = date(2026, 11, 11)
 
@@ -18,9 +18,7 @@ class StreakScoringTests(APITestCase):
     def setUpTestData(cls):
         cls.classroom = Classroom.objects.create(name="Any Class")
         cls.lecture = cls.make_lecture("Lecture", 4)
-        cls.user = get_user_model().objects.create_user(
-            username="student", password="pw"
-        )
+        cls.user = make_student("student", cls.classroom)
 
     @classmethod
     def make_lecture(cls, title, questions):
@@ -41,6 +39,8 @@ class StreakScoringTests(APITestCase):
         question = lecture.questions.get(position=position)
         chosen = question.correct_index if correct else question.correct_index + 1
         with patch("quizzes.grading.timezone.localdate", return_value=day):
+            if time_taken_ms == 4200:
+                return answer(self.client, lecture, question, chosen)
             return self.client.post(
                 f"/api/lectures/{lecture.id}/answers/",
                 {

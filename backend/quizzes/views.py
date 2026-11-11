@@ -1,7 +1,7 @@
 from django.db.models import Count
 from django.http import Http404
 from django.utils import timezone
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -55,6 +55,14 @@ class LectureQuizView(RetrieveAPIView):
             raise NotFound()
 
 
+def check_can_answer(user, lecture):
+    profile = getattr(user, "profile", None)
+    if profile is None or profile.role != "student":
+        raise PermissionDenied("Only students can answer questions.")
+    if not lecture.classroom.enrollments.filter(user=user).exists():
+        raise PermissionDenied("You must be enrolled in this class.")
+
+
 class LectureAnswerView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -63,6 +71,7 @@ class LectureAnswerView(APIView):
             lecture = available_lectures().get(pk=pk)
         except Lecture.DoesNotExist:
             raise NotFound()
+        check_can_answer(request.user, lecture)
         serializer = AnswerRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
