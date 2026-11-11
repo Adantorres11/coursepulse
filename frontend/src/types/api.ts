@@ -42,11 +42,7 @@ export interface QuizQuestion {
   id: number | string;
   prompt: string;
   choices: string[];
-  correct_index: number;
   difficulty?: DifficultyLevel;
-
-  // Optional legacy alias for backwards compatibility
-  correctChoiceIndex?: number;
 }
 
 export interface Quiz {
