@@ -54,9 +54,25 @@ export interface Quiz {
   lecture_id: number | string;
   title: string;
   questions: QuizQuestion[];
+  // For the logged-in student's open attempt. Empty and 0 when there is none.
+  answered_question_ids?: number[];
+  total_points?: number;
 
   // Optional legacy alias for backwards compatibility
   lectureId?: number | string;
+}
+
+export interface AnswerRequest {
+  question_id: number;
+  chosen_index: number; // 0-3
+  time_taken_ms: number; // 0 or more
+}
+
+export interface AnswerResult {
+  is_correct: boolean;
+  points_awarded: number;
+  total_points: number;
+  correct_index: number;
 }
 
 export interface HealthResponse {
