@@ -44,9 +44,13 @@ def get_open_attempt(user, lecture, for_update=False):
 def start_question(user, lecture, question):
     """Record when the user first saw the question. Return (start, created)."""
     with transaction.atomic():
-        attempt = get_open_attempt(
-            user, lecture, for_update=True
-        ) or Attempt.objects.create(user=user, lecture=lecture)
+        attempt = get_open_attempt(user, lecture, for_update=True)
+        if attempt is None:
+            try:
+                with transaction.atomic():
+                    attempt = Attempt.objects.create(user=user, lecture=lecture)
+            except IntegrityError:
+                attempt = get_open_attempt(user, lecture, for_update=True)
         if attempt.answers.filter(question=question).exists():
             raise AlreadyAnswered()
         return QuestionStart.objects.get_or_create(

@@ -83,6 +83,15 @@ class Attempt(models.Model):
     total_points = models.PositiveIntegerField(default=0)
     answer_streak = models.PositiveIntegerField(default=0)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "lecture"],
+                condition=models.Q(completed_at__isnull=True),
+                name="unique_open_attempt_per_user_lecture",
+            ),
+        ]
+
     def __str__(self):
         return (
             f"Attempt {self.pk}: "

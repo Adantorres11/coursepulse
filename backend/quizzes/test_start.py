@@ -1,9 +1,12 @@
 from datetime import timedelta
+from unittest.mock import patch
 
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from classrooms.models import Classroom
+from .grading import get_open_attempt, start_question
 from .models import Attempt, Lecture, QuestionStart
 from .test_lectures import add_questions
 from .testing import answer, make_student, start
@@ -86,3 +89,53 @@ class QuestionStartTests(APITestCase):
         self.client.force_authenticate(None)
         response = start(self.client, self.lecture, self.question)
         self.assertEqual(response.status_code, 401)
+
+
+class OpenAttemptTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.classroom = Classroom.objects.create(name="Any Class")
+        cls.lecture = Lecture.objects.create(
+            classroom=cls.classroom,
+            title="Lecture",
+            published_at=timezone.now() - timedelta(hours=1),
+        )
+        add_questions(cls.lecture, 1)
+        cls.question = cls.lecture.questions.get()
+        cls.user = make_student("student", cls.classroom)
+
+    def test_second_open_attempt_is_rejected(self):
+        Attempt.objects.create(user=self.user, lecture=self.lecture)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Attempt.objects.create(user=self.user, lecture=self.lecture)
+
+    def test_completed_attempt_and_open_attempt_are_allowed(self):
+        Attempt.objects.create(
+            user=self.user, lecture=self.lecture, completed_at=timezone.now()
+        )
+        Attempt.objects.create(user=self.user, lecture=self.lecture)
+        self.assertEqual(Attempt.objects.count(), 2)
+
+    def test_start_reuses_the_existing_open_attempt(self):
+        attempt = Attempt.objects.create(user=self.user, lecture=self.lecture)
+        record, created = start_question(self.user, self.lecture, self.question)
+        self.assertTrue(created)
+        self.assertEqual(record.attempt, attempt)
+        self.assertEqual(Attempt.objects.count(), 1)
+
+    def test_start_recovers_when_another_request_created_the_attempt(self):
+        attempt = Attempt.objects.create(user=self.user, lecture=self.lecture)
+        real = get_open_attempt
+        calls = []
+
+        def first_call_misses(*args, **kwargs):
+            calls.append(1)
+            return None if len(calls) == 1 else real(*args, **kwargs)
+
+        with patch("quizzes.grading.get_open_attempt", first_call_misses):
+            record, created = start_question(
+                self.user, self.lecture, self.question
+            )
+        self.assertTrue(created)
+        self.assertEqual(record.attempt, attempt)
+        self.assertEqual(Attempt.objects.count(), 1)

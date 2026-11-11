@@ -114,6 +114,7 @@ class AttemptAnswerModelTests(TestCase):
         first_attempt = Attempt.objects.create(
             user=self.user,
             lecture=self.lecture,
+            completed_at=timezone.now(),
         )
         second_attempt = Attempt.objects.create(
             user=self.user,
