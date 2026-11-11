@@ -103,8 +103,14 @@ Rules:
 - The time limit is 15 seconds per question: `QUESTION_TIME_LIMIT_MS = 15000`.
   An answer timed out when `time_taken_ms` is greater than 15000.
 - `points_awarded` is 100 for an easy question, 200 for medium, and 300 for
-  hard. It is 0 when the answer is wrong or timed out. A timed-out answer
-  is never correct, so `is_correct` is `false`.
+  hard. A correct answer gets 50 more points when it is the 3rd or later
+  correct answer in a row in the attempt. The current answer counts toward
+  the run. Every correct answer after the 3rd also gets the 50. It is 0
+  when the answer is wrong or timed out. A timed-out answer is never
+  correct, so `is_correct` is `false`.
+- A wrong or timed-out answer sets the run of correct answers to 0.
+- A new attempt starts with a run of correct answers of 0, so a replay
+  starts the bonus count again.
 - `total_points` is the running total of the attempt, including this answer.
 - `correct_index` is always returned, so the screen can show green and red
   feedback.
@@ -436,6 +442,8 @@ Success: `200 OK`
   "points_to_next_rank": 120,
   "quizzes_played": 1,
   "quizzes_total": 2,
+  "day_streak": 3,
+  "answer_streak": 2,
   "up_next": {
     "id": 7,
     "title": "Cell Structure",
@@ -501,7 +509,17 @@ Rules:
 - A student with no completed attempts gets total_points 0,
   quizzes_played 0, and points_to_next_rank as defined above. The
   student shares the last rank with the other zero-point students.
-- Streak fields are not included.
+- day_streak is the number of days in a row on which the student answered
+  at least one question in any class. A day is a UTC calendar date. The
+  count goes back from today, or from yesterday if the student has not
+  answered yet today. It is 0 when the student answered neither
+  yesterday nor today.
+- answer_streak is the run of correct answers at the last answer of the
+  student's newest attempt in this class. It is 0 when the student has
+  no attempt.
+- A student who has never answered a question gets day_streak 0.
+- A student with no attempt in this class gets answer_streak 0. Their
+  day_streak can still be above 0 from answers in other classes.
 
 Errors:
 - `401`: Missing or invalid authentication token.

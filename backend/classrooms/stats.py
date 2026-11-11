@@ -2,7 +2,8 @@ from django.contrib.auth import get_user_model
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
-from quizzes.models import Attempt
+from quizzes.models import Attempt, DayStreak
+from quizzes.streaks import current_day_streak
 
 
 def class_standings(classroom):
@@ -94,6 +95,14 @@ def build_class_stats(classroom, user):
         s["points"] for s in standings if s["points"] > mine["points"]
     ]
 
+    day_streak = DayStreak.objects.filter(user=user).first()
+    newest_attempt = (
+        Attempt.objects
+        .filter(user=user, lecture__classroom=classroom)
+        .order_by("-id")
+        .first()
+    )
+
     return {
         "classroom_id": classroom.pk,
         "classroom": classroom.name,
@@ -104,6 +113,13 @@ def build_class_stats(classroom, user):
         ),
         "quizzes_played": sum(1 for item in items if not item["is_new"]),
         "quizzes_total": len(items),
+        "day_streak": (
+            current_day_streak(
+                day_streak.count, day_streak.last_day, timezone.localdate()
+            )
+            if day_streak else 0
+        ),
+        "answer_streak": newest_attempt.answer_streak if newest_attempt else 0,
         "up_next": next(
             (item for item in items if item["is_new"]),
             None,

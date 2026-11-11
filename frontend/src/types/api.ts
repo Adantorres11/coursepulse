@@ -34,6 +34,8 @@ export interface ClassStats {
   points_to_next_rank: number;
   quizzes_played: number;
   quizzes_total: number;
+  day_streak: number;
+  answer_streak: number;
   up_next: ClassLectureStat | null;
   lectures: ClassLectureStat[];
 }
