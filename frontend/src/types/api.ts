@@ -51,6 +51,7 @@ export interface Quiz {
   title: string;
   questions: QuizQuestion[];
   // For the logged-in student's open attempt. Empty and 0 when there is none.
+  // Optional only because the offline sample data lacks them; the API always sends them (see docs/api-contract.md).
   answered_question_ids?: number[];
   total_points?: number;
 

@@ -4,6 +4,8 @@ import { postAnswer } from "../lib/apiClient";
 
 type QuizQuestion = Quiz["questions"][number];
 
+const QUESTION_TIME_LIMIT_SECONDS = 15;
+
 interface QuizGameProps {
   questions: QuizQuestion[];
   lectureId?: string | number;
@@ -83,7 +85,7 @@ export default function QuizGame({
       question_id: Number(questions[questionIndex].id),
       chosen_index: answerIndex ?? 0,
       // over the 15000 ms server limit when time ran out
-      time_taken_ms: answerIndex === null ? Math.max(elapsed, 15001) : elapsed,
+      time_taken_ms: answerIndex === null ? Math.max(elapsed, QUESTION_TIME_LIMIT_SECONDS * 1000 + 1) : elapsed,
     };
     await submitAnswer(body, answerIndex, questionIndex);
   }
@@ -147,7 +149,7 @@ export default function QuizGame({
   }
 
   function nextQuestion() {
-    setTimeLeft(15);
+    setTimeLeft(QUESTION_TIME_LIMIT_SECONDS);
     setQuestionIndex(nextOpenIndex(questionIndex));
   }
 
@@ -248,7 +250,7 @@ export default function QuizGame({
               {questions.length} questions
             </div>
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
-              15 sec each
+              {QUESTION_TIME_LIMIT_SECONDS} sec each
             </div>
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
               100 to 300 pts
@@ -298,7 +300,7 @@ export default function QuizGame({
           <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden relative">
             <div 
               className={"h-full transition-all duration-1000 linear rounded-full bg-sky-400"}
-              style={{ width: `${(timeLeft / 15) * 100}%` }}
+              style={{ width: `${(timeLeft / QUESTION_TIME_LIMIT_SECONDS) * 100}%` }}
             />
           </div>
         </div>

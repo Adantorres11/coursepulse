@@ -8,7 +8,7 @@ Auth: token authentication for protected endpoints.
 Send `Authorization: Token <token>` with protected requests.
 Registration and login do not require a token.
 Lecture data is hardcoded through the seed script.
-The lecture and quiz endpoints below are public in Sprint 1 and need no token.
+GET /api/lectures/ and GET /api/lectures/{id}/quiz/ need no token; an invalid token still returns 401. POST /api/lectures/{id}/answers/ requires a token.
 
 ## GET /api/health/
 Liveness check for Docker and CI.
