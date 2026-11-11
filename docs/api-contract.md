@@ -109,6 +109,8 @@ Rules:
   when the answer is wrong or timed out. A timed-out answer is never
   correct, so `is_correct` is `false`.
 - A wrong or timed-out answer sets the run of correct answers to 0.
+- A new attempt starts with a run of correct answers of 0, so a replay
+  starts the bonus count again.
 - `total_points` is the running total of the attempt, including this answer.
 - `correct_index` is always returned, so the screen can show green and red
   feedback.
@@ -507,13 +509,17 @@ Rules:
 - A student with no completed attempts gets total_points 0,
   quizzes_played 0, and points_to_next_rank as defined above. The
   student shares the last rank with the other zero-point students.
-- day_streak is the number of days in a row, up to today, on which the
-  student answered a question in any class. It is 0 when the student did
-  not answer yesterday or today.
+- day_streak is the number of days in a row on which the student answered
+  at least one question in any class. A day is a UTC calendar date. The
+  count goes back from today, or from yesterday if the student has not
+  answered yet today. It is 0 when the student answered neither
+  yesterday nor today.
 - answer_streak is the run of correct answers at the last answer of the
   student's newest attempt in this class. It is 0 when the student has
   no attempt.
-- A student with no attempts gets day_streak 0 and answer_streak 0.
+- A student who has never answered a question gets day_streak 0.
+- A student with no attempt in this class gets answer_streak 0. Their
+  day_streak can still be above 0 from answers in other classes.
 
 Errors:
 - `401`: Missing or invalid authentication token.
