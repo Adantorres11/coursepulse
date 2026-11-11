@@ -1,22 +1,28 @@
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from .models import Answer, Attempt, DayStreak, QuizCompletion
+from .models import Answer, Attempt, DayStreak, QuestionStart, QuizCompletion
 from .streaks import next_day_streak, streak_bonus
 
 POINTS_BY_DIFFICULTY = {"easy": 100, "medium": 200, "hard": 300}
 QUESTION_TIME_LIMIT_MS = 15000
+TIME_GRACE_MS = 1000
 
 
 class AlreadyAnswered(Exception):
     """The open attempt already has an answer for this question."""
 
 
+class NotStarted(Exception):
+    """The question was not started in the open attempt."""
+
+
 def grade_answer(question, chosen_index, time_taken_ms):
     """Return (is_correct, points_awarded) for one answer."""
     is_correct = (
-        chosen_index == question.correct_index
-        and time_taken_ms <= QUESTION_TIME_LIMIT_MS
+        chosen_index is not None
+        and chosen_index == question.correct_index
+        and time_taken_ms <= QUESTION_TIME_LIMIT_MS + TIME_GRACE_MS
     )
     points = POINTS_BY_DIFFICULTY[question.difficulty] if is_correct else 0
     return is_correct, points
@@ -35,13 +41,31 @@ def get_open_attempt(user, lecture, for_update=False):
     )
 
 
-def submit_answer(user, lecture, question, chosen_index, time_taken_ms):
-    """Save one graded answer on the user's open attempt."""
-    is_correct, points = grade_answer(question, chosen_index, time_taken_ms)
+def start_question(user, lecture, question):
+    """Record when the user first saw the question. Return (start, created)."""
     with transaction.atomic():
         attempt = get_open_attempt(
             user, lecture, for_update=True
         ) or Attempt.objects.create(user=user, lecture=lecture)
+        if attempt.answers.filter(question=question).exists():
+            raise AlreadyAnswered()
+        return QuestionStart.objects.get_or_create(
+            attempt=attempt, question=question
+        )
+
+
+def submit_answer(user, lecture, question, chosen_index):
+    """Save one graded answer on the user's open attempt."""
+    now = timezone.now()
+    with transaction.atomic():
+        attempt = get_open_attempt(user, lecture, for_update=True)
+        if attempt is None:
+            raise NotStarted()
+        start = attempt.starts.filter(question=question).first()
+        if start is None:
+            raise NotStarted()
+        time_taken_ms = int((now - start.started_at).total_seconds() * 1000)
+        is_correct, points = grade_answer(question, chosen_index, time_taken_ms)
         if attempt.answers.filter(question=question).exists():
             raise AlreadyAnswered()
         attempt.answer_streak = attempt.answer_streak + 1 if is_correct else 0

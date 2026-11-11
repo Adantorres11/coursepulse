@@ -5,10 +5,9 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from classrooms.models import Classroom
-from .grading import QUESTION_TIME_LIMIT_MS
-from .models import Answer, Attempt, Lecture, QuizCompletion
+from .models import Answer, Attempt, Lecture, QuestionStart, QuizCompletion
 from .test_lectures import add_questions
-from .testing import answer, make_student
+from .testing import answer, make_student, start
 
 
 class AnswerEndpointTests(APITestCase):
@@ -30,14 +29,17 @@ class AnswerEndpointTests(APITestCase):
     def url(self, lecture_id=None):
         return f"/api/lectures/{lecture_id or self.lecture.id}/answers/"
 
-    def post(self, chosen_index, time_taken_ms=4200, question_id=None, url=None):
+    def post(self, chosen_index, question_id=None, url=None, started=True,
+             extra=None):
+        question_id = question_id or self.question.id
+        url = url or self.url()
+        if started:
+            self.client.post(
+                url.replace("answers/", f"questions/{question_id}/start/")
+            )
         return self.client.post(
-            url or self.url(),
-            {
-                "question_id": question_id or self.question.id,
-                "chosen_index": chosen_index,
-                "time_taken_ms": time_taken_ms,
-            },
+            url,
+            {"question_id": question_id, "chosen_index": chosen_index, **(extra or {})},
             format="json",
         )
 
@@ -60,7 +62,7 @@ class AnswerEndpointTests(APITestCase):
         self.assertEqual(answer.question, self.question)
         self.assertEqual(answer.chosen_index, self.question.correct_index)
         self.assertTrue(answer.is_correct)
-        self.assertEqual(answer.time_taken_ms, 4200)
+        self.assertLess(answer.time_taken_ms, 5000)
         self.assertEqual(answer.points_awarded, 100)
         attempt = Attempt.objects.get()
         self.assertEqual(attempt.user, self.user)
@@ -76,15 +78,6 @@ class AnswerEndpointTests(APITestCase):
         self.assertEqual(body["points_awarded"], 0)
         self.assertEqual(body["total_points"], 0)
         self.assertEqual(body["correct_index"], self.question.correct_index)
-
-    def test_timeout_answer_earns_zero(self):
-        response = self.post(
-            self.question.correct_index, QUESTION_TIME_LIMIT_MS + 1
-        )
-        self.assertEqual(response.status_code, 201)
-        self.assertFalse(response.json()["is_correct"])
-        self.assertEqual(response.json()["points_awarded"], 0)
-        self.assertEqual(Answer.objects.get().points_awarded, 0)
 
     def test_logged_out_request_is_401(self):
         self.client.force_authenticate(None)
@@ -128,10 +121,9 @@ class AnswerEndpointTests(APITestCase):
 
     def test_invalid_body_is_rejected_and_not_saved(self):
         bad_bodies = [
-            ("chosen_index", {"question_id": self.question.id, "chosen_index": 4, "time_taken_ms": 100}),
-            ("chosen_index", {"question_id": self.question.id, "chosen_index": -1, "time_taken_ms": 100}),
-            ("time_taken_ms", {"question_id": self.question.id, "chosen_index": 0}),
-            ("time_taken_ms", {"question_id": self.question.id, "chosen_index": 0, "time_taken_ms": -5}),
+            ("chosen_index", {"question_id": self.question.id, "chosen_index": 4}),
+            ("chosen_index", {"question_id": self.question.id, "chosen_index": -1}),
+            ("chosen_index", {"question_id": self.question.id}),
         ]
         for field, body in bad_bodies:
             with self.subTest(body=body):
@@ -191,6 +183,82 @@ class AnswerEndpointTests(APITestCase):
         self.assertEqual(response.json()["total_points"], 0)
         self.assertEqual(Attempt.objects.count(), 2)
         self.assertEqual(Attempt.objects.get(user=self.user).total_points, 100)
+
+
+class ServerTimingTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.classroom = Classroom.objects.create(name="Any Class")
+        cls.lecture = Lecture.objects.create(
+            classroom=cls.classroom,
+            title="Lecture",
+            published_at=timezone.now() - timedelta(hours=1),
+        )
+        add_questions(cls.lecture, 2)
+        cls.question = cls.lecture.questions.order_by("position").first()
+        cls.user = make_student("student", cls.classroom)
+
+    def setUp(self):
+        self.client.force_authenticate(self.user)
+
+    def start_and_backdate(self, milliseconds):
+        start(self.client, self.lecture, self.question)
+        QuestionStart.objects.update(
+            started_at=timezone.now() - timedelta(milliseconds=milliseconds)
+        )
+
+    def post(self, chosen_index, extra=None):
+        return self.client.post(
+            f"/api/lectures/{self.lecture.id}/answers/",
+            {
+                "question_id": self.question.id,
+                "chosen_index": chosen_index,
+                **(extra or {}),
+            },
+            format="json",
+        )
+
+    def test_answer_without_start_returns_400(self):
+        response = self.post(self.question.correct_index)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json(), {"detail": "Start this question before answering."}
+        )
+        self.assertFalse(Answer.objects.exists())
+
+    def test_time_is_measured_from_start(self):
+        self.start_and_backdate(4000)
+        response = self.post(self.question.correct_index)
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(4000 <= Answer.objects.get().time_taken_ms < 5000)
+
+    def test_client_time_taken_ms_is_ignored(self):
+        self.start_and_backdate(20000)
+        response = self.post(
+            self.question.correct_index, extra={"time_taken_ms": 100}
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["is_correct"], False)
+        self.assertEqual(response.json()["points_awarded"], 0)
+
+    def test_answer_inside_grace_is_correct(self):
+        self.start_and_backdate(15500)
+        response = self.post(self.question.correct_index)
+        self.assertTrue(response.json()["is_correct"])
+
+    def test_answer_after_grace_times_out(self):
+        self.start_and_backdate(16500)
+        response = self.post(self.question.correct_index)
+        self.assertFalse(response.json()["is_correct"])
+        self.assertEqual(response.json()["points_awarded"], 0)
+
+    def test_null_answer_is_never_correct(self):
+        self.start_and_backdate(15200)
+        response = self.post(None)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["is_correct"], False)
+        self.assertEqual(response.json()["points_awarded"], 0)
+        self.assertIsNone(Answer.objects.get().chosen_index)
 
 
 class AnswerPermissionTests(APITestCase):

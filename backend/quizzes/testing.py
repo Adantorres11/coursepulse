@@ -12,13 +12,16 @@ def make_student(username, classroom=None, role="student"):
     return user
 
 
+def start(client, lecture, question):
+    return client.post(
+        f"/api/lectures/{lecture.id}/questions/{question.id}/start/"
+    )
+
+
 def answer(client, lecture, question, chosen_index):
+    start(client, lecture, question)
     return client.post(
         f"/api/lectures/{lecture.id}/answers/",
-        {
-            "question_id": question.id,
-            "chosen_index": chosen_index,
-            "time_taken_ms": 4200,
-        },
+        {"question_id": question.id, "chosen_index": chosen_index},
         format="json",
     )

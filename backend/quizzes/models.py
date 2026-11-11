@@ -101,7 +101,7 @@ class Answer(models.Model):
         on_delete=models.CASCADE,
         related_name="answers",
     )
-    chosen_index = models.PositiveSmallIntegerField()
+    chosen_index = models.PositiveSmallIntegerField(null=True)
     is_correct = models.BooleanField()
     time_taken_ms = models.PositiveIntegerField()
     points_awarded = models.PositiveIntegerField(default=0)
@@ -135,6 +135,34 @@ class Answer(models.Model):
     def __str__(self):
         return (
             f"Answer {self.pk}: "
+            f"attempt {self.attempt_id}, question {self.question_id}"
+        )
+
+
+class QuestionStart(models.Model):
+    attempt = models.ForeignKey(
+        Attempt,
+        on_delete=models.CASCADE,
+        related_name="starts",
+    )
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="starts",
+    )
+    started_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["attempt", "question"],
+                name="unique_start_per_attempt_question",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"QuestionStart {self.pk}: "
             f"attempt {self.attempt_id}, question {self.question_id}"
         )
 

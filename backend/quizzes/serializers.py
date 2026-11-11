@@ -61,5 +61,6 @@ class QuizSerializer(serializers.ModelSerializer):
 
 class AnswerRequestSerializer(serializers.Serializer):
     question_id = serializers.IntegerField()
-    chosen_index = serializers.IntegerField(min_value=0, max_value=3)
-    time_taken_ms = serializers.IntegerField(min_value=0)
+    chosen_index = serializers.IntegerField(
+        min_value=0, max_value=3, allow_null=True
+    )

@@ -5,10 +5,9 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from classrooms.models import Classroom
-from .grading import QUESTION_TIME_LIMIT_MS
-from .models import Attempt, DayStreak, Lecture
+from .models import Attempt, DayStreak, Lecture, QuestionStart
 from .test_lectures import add_questions
-from .testing import answer, make_student
+from .testing import answer, make_student, start
 
 DAY = date(2026, 11, 11)
 
@@ -33,23 +32,12 @@ class StreakScoringTests(APITestCase):
     def setUp(self):
         self.client.force_authenticate(self.user)
 
-    def answer(self, position, correct=True, lecture=None, day=DAY,
-               time_taken_ms=4200):
+    def answer(self, position, correct=True, lecture=None, day=DAY):
         lecture = lecture or self.lecture
         question = lecture.questions.get(position=position)
         chosen = question.correct_index if correct else question.correct_index + 1
         with patch("quizzes.grading.timezone.localdate", return_value=day):
-            if time_taken_ms == 4200:
-                return answer(self.client, lecture, question, chosen)
-            return self.client.post(
-                f"/api/lectures/{lecture.id}/answers/",
-                {
-                    "question_id": question.id,
-                    "chosen_index": chosen,
-                    "time_taken_ms": time_taken_ms,
-                },
-                format="json",
-            )
+            return answer(self.client, lecture, question, chosen)
 
     def test_first_answer_creates_day_streak_of_one(self):
         self.answer(0)
@@ -95,7 +83,12 @@ class StreakScoringTests(APITestCase):
 
     def test_timed_out_correct_answer_resets_answer_streak(self):
         self.answer(0)
-        response = self.answer(1, time_taken_ms=QUESTION_TIME_LIMIT_MS + 1)
+        question = self.lecture.questions.get(position=1)
+        start(self.client, self.lecture, question)
+        QuestionStart.objects.filter(question=question).update(
+            started_at=timezone.now() - timedelta(milliseconds=16500)
+        )
+        response = self.answer(1)
         self.assertEqual(response.json()["points_awarded"], 0)
         self.assertEqual(Attempt.objects.get().answer_streak, 0)
 

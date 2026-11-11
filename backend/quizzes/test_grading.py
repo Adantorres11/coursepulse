@@ -1,6 +1,6 @@
 from django.test import SimpleTestCase
 
-from .grading import QUESTION_TIME_LIMIT_MS, grade_answer
+from .grading import QUESTION_TIME_LIMIT_MS, TIME_GRACE_MS, grade_answer
 from .models import Question
 
 
@@ -19,10 +19,18 @@ class GradeAnswerTests(SimpleTestCase):
         result = grade_answer(make_question(), 1, 1000)
         self.assertEqual(result, (False, 0))
 
-    def test_timeout_with_correct_index_scores_zero(self):
-        result = grade_answer(make_question(), 2, QUESTION_TIME_LIMIT_MS + 1)
+    def test_answer_at_the_end_of_grace_is_correct(self):
+        result = grade_answer(
+            make_question(), 2, QUESTION_TIME_LIMIT_MS + TIME_GRACE_MS
+        )
+        self.assertEqual(result, (True, 100))
+
+    def test_answer_after_grace_scores_zero(self):
+        result = grade_answer(
+            make_question(), 2, QUESTION_TIME_LIMIT_MS + TIME_GRACE_MS + 1
+        )
         self.assertEqual(result, (False, 0))
 
-    def test_answer_at_the_limit_is_not_a_timeout(self):
-        result = grade_answer(make_question(), 2, QUESTION_TIME_LIMIT_MS)
-        self.assertEqual(result, (True, 100))
+    def test_no_choice_is_never_correct(self):
+        question = Question(correct_index=0, difficulty="easy")
+        self.assertEqual(grade_answer(question, None, 1000), (False, 0))
