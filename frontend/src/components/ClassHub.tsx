@@ -1,179 +1,62 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { getLectures } from "../lib/apiClient";
+import { getClasses, getClassStats, type ClassStats, type ClassSummary } from "../lib/apiClient";
+import { LeaderboardModal } from "./LeaderboardModal";
 
-export type ViewState = "populated" | "loading" | "empty" | "error";
-
-interface ClassStat {
-  totalPoints: number;
-  classRank: number;
-  pointsToNextRank: number;
-  quizzesPlayed: number;
-  totalQuizzes: number;
-}
-
-interface LectureItem {
-  id: string | number;
-  title: string;
-  questionCount: number;
-  difficultyRange?: string;
-  isUpNext?: boolean;
-  isCompleted?: boolean;
-  score?: number;
-  correctCount?: number;
-  bestPoints?: number;
-  isNew?: boolean;
-}
-
-interface LeaderboardEntry {
-  rank: number;
-  name: string;
-  points: number;
-  isCurrentUser?: boolean;
-}
+type HubState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; classInfo: ClassSummary; stats: ClassStats };
 
 export function ClassHub() {
   const { classId } = useParams<{ classId: string }>();
   const navigate = useNavigate();
 
-  // State management
-  const [viewState, setViewState] = useState<ViewState>("populated");
+  const [state, setState] = useState<HubState>({ status: "loading" });
+  const [reloadKey, setReloadKey] = useState(0);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Class directory matching Student Hub mockups
-  const CLASS_DIRECTORY: Record<
-    string,
-    { name: string; code: string; totalQuizzes: number; upNext: LectureItem; lectures: LectureItem[] }
-  > = {
-    "cs-201": {
-      name: "Data Structures",
-      code: "CS 201 · Prof. Lin",
-      totalQuizzes: 4,
-      upNext: {
-        id: 3,
-        title: "Lecture 3: Sorting Algorithms",
-        questionCount: 10,
-        difficultyRange: "100–300 pts each",
-        isUpNext: true,
-      },
-      lectures: [
-        { id: 1, title: "Lecture 1: Data Structures", questionCount: 5, isCompleted: false, isNew: true },
-        { id: 2, title: "Lecture 2: Hash Tables", questionCount: 8, isCompleted: false, isNew: true },
-        { id: 4, title: "Lecture 4: Graph Algorithms", questionCount: 6, isCompleted: false, isNew: true },
-      ],
-    },
-    "math-210": {
-      name: "Discrete Math",
-      code: "MATH 210 · Prof. Okafor",
-      totalQuizzes: 6,
-      upNext: {
-        id: 11,
-        title: "Lecture 1: Propositional Logic",
-        questionCount: 8,
-        difficultyRange: "100–300 pts each",
-        isUpNext: true,
-      },
-      lectures: [
-        { id: 12, title: "Lecture 2: Set Theory & Relations", questionCount: 6, isCompleted: false, isNew: true },
-        { id: 13, title: "Lecture 3: Combinatorics & Permutations", questionCount: 7, isCompleted: false, isNew: true },
-      ],
-    },
-    "stat-301": {
-      name: "Probability and Statistics",
-      code: "STAT 301 · Prof. Rivera",
-      totalQuizzes: 3,
-      upNext: {
-        id: 21,
-        title: "Lecture 1: Random Variables & Distributions",
-        questionCount: 8,
-        difficultyRange: "100–300 pts each",
-        isUpNext: true,
-      },
-      lectures: [
-        { id: 22, title: "Lecture 2: Central Limit Theorem", questionCount: 5, isCompleted: false, isNew: true },
-      ],
-    },
-  };
+  const reload = () => setReloadKey((k) => k + 1);
 
-  const selectedClass = (classId && CLASS_DIRECTORY[classId]) || CLASS_DIRECTORY["cs-201"];
-
-  // Class metadata
-  const className = selectedClass.name;
-  const classCode = selectedClass.code;
-
-  // Stats - 0 points and 0/X quizzes played until points/tracking are implemented
-  const [stats] = useState<ClassStat>({
-    totalPoints: 0,
-    classRank: 1,
-    pointsToNextRank: 0,
-    quizzesPlayed: 0,
-    totalQuizzes: selectedClass.totalQuizzes,
-  });
-
-  // Up Next featured quiz
-  const [upNextLecture, setUpNextLecture] = useState<LectureItem | null>(selectedClass.upNext);
-
-  // List of lectures
-  const [lectures, setLectures] = useState<LectureItem[]>(selectedClass.lectures);
-
-  // Leaderboard data for modal - only Student with 0 points
-  const leaderboardData: LeaderboardEntry[] = [
-    { rank: 1, name: "Student", points: 0, isCurrentUser: true },
-  ];
-
-  // Fetch real lecture data on mount
-  const loadClassData = async () => {
-    setLoading(true);
-    setErrorMessage(null);
-
-    const result = await getLectures();
-    if (!result.error && result.data && result.data.length > 0) {
-      // If real backend returns lectures matching this class name, use them
-      const matching = result.data.filter(
-        (l) => l.classroom && l.classroom.toLowerCase().includes(className.toLowerCase())
-      );
-      if (matching.length > 0) {
-        setUpNextLecture({
-          id: matching[0].id,
-          title: matching[0].title,
-          questionCount: matching[0].question_count || 5,
-          difficultyRange: "100–300 pts each",
-          isUpNext: true,
-        });
-
-        if (matching.length > 1) {
-          setLectures(
-            matching.slice(1).map((lec) => ({
-              id: lec.id,
-              title: lec.title,
-              questionCount: lec.question_count || 5,
-              isCompleted: false,
-              isNew: true,
-            }))
-          );
-        }
-      }
-    }
-    setLoading(false);
-  };
-
+  // Load this class's stats and its name, code and professor.
   useEffect(() => {
-    loadClassData();
-  }, [classId]);
+    let cancelled = false;
+    setState({ status: "loading" });
 
-  const handleStartQuiz = (lectureId?: string | number) => {
-    const targetId = lectureId || upNextLecture?.id || 1;
-    navigate(`/quiz/${targetId}`);
-  };
+    Promise.all([getClassStats(classId ?? ""), getClasses()]).then(
+      ([statsResult, classesResult]) => {
+        // A newer load started (class changed or Retry), so drop this answer.
+        if (cancelled) return;
 
-  const handleRetry = () => {
-    setViewState("loading");
-    setTimeout(() => {
-      setViewState("populated");
-      loadClassData();
-    }, 600);
+        if (statsResult.error || !statsResult.data) {
+          setState({ status: "error", message: statsResult.error || "Unable to load this class." });
+          return;
+        }
+        if (classesResult.error || !classesResult.data) {
+          setState({ status: "error", message: classesResult.error || "Unable to load this class." });
+          return;
+        }
+
+        const stats = statsResult.data;
+        const classInfo = classesResult.data.find((c) => c.id === stats.classroom_id);
+        if (!classInfo) {
+          setState({ status: "error", message: "We could not find this class." });
+          return;
+        }
+        setState({ status: "ready", classInfo, stats });
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [classId, reloadKey]);
+
+  const classInfo = state.status === "ready" ? state.classInfo : null;
+  const stats = state.status === "ready" ? state.stats : null;
+
+  const handleStartQuiz = (lectureId: number) => {
+    navigate(`/quiz/${lectureId}`);
   };
 
   return (
@@ -237,17 +120,21 @@ export function ClassHub() {
         {/* Class Header Title & Subtitle */}
         <div className="mb-8">
           <h1 className="text-3xl sm:text-4xl md:text-[42px] font-extrabold tracking-tight text-white mb-1.5">
-            {className}
+            {classInfo ? classInfo.name : "Class"}
           </h1>
           <p className="text-slate-400 text-sm sm:text-base">
-            {viewState === "loading" || loading ? "Loading your quizzes..." : classCode}
+            {state.status === "loading"
+              ? "Loading your quizzes..."
+              : classInfo
+              ? `${classInfo.course_code} · ${classInfo.professor?.name ?? "Professor not assigned"}`
+              : ""}
           </p>
         </div>
 
         {/* ======================================================== */}
         {/* STATE 1: LOADING SKELETON (Matching Mockup 3)            */}
         {/* ======================================================== */}
-        {(viewState === "loading" || loading) && (
+        {state.status === "loading" && (
           <div className="space-y-4 animate-pulse">
             <div className="h-24 bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 flex items-center justify-between">
               <div className="space-y-2.5 w-1/2">
@@ -278,7 +165,7 @@ export function ClassHub() {
         {/* ======================================================== */}
         {/* STATE 2: ERROR STATE (Matching Mockup 1)                 */}
         {/* ======================================================== */}
-        {viewState === "error" && !loading && (
+        {state.status === "error" && (
           <div className="bg-[#10192E] border border-slate-800 rounded-3xl p-8 sm:p-12 text-center max-w-2xl mx-auto shadow-2xl flex flex-col items-center">
             {/* Red Warning Icon */}
             <div className="w-14 h-14 rounded-full bg-[#2A1520] border border-rose-500/30 flex items-center justify-center mb-5 text-rose-400 text-2xl shadow-inner">
@@ -289,12 +176,12 @@ export function ClassHub() {
               Couldn't load your quizzes
             </h2>
             <p className="text-slate-400 text-sm max-w-sm mx-auto mb-6 leading-relaxed">
-              {errorMessage || "Something went wrong on our end. Check your connection and try again."}
+              {state.message}
             </p>
 
             <button
               type="button"
-              onClick={handleRetry}
+              onClick={reload}
               className="inline-flex items-center gap-2 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-sm px-6 py-2.5 rounded-xl transition cursor-pointer shadow-md shadow-sky-500/20 active:scale-95"
             >
               <span>↻</span>
@@ -306,7 +193,7 @@ export function ClassHub() {
         {/* ======================================================== */}
         {/* STATE 3: EMPTY STATE (Matching Mockup 2)                 */}
         {/* ======================================================== */}
-        {viewState === "empty" && !loading && (
+        {stats && stats.lectures.length === 0 && (
           <div className="border-2 border-dashed border-slate-700/80 rounded-3xl p-10 sm:p-16 text-center max-w-3xl mx-auto flex flex-col items-center justify-center bg-[#10192E]/30">
             {/* Document Icon Badge */}
             <div className="w-14 h-14 rounded-2xl bg-[#142342] flex items-center justify-center mb-5 text-[#38BDF8] shadow-md">
@@ -339,7 +226,7 @@ export function ClassHub() {
         {/* ======================================================== */}
         {/* STATE 4: POPULATED STATE (Matching Mockup 4)             */}
         {/* ======================================================== */}
-        {viewState === "populated" && !loading && (
+        {stats && stats.lectures.length > 0 && (
           <div className="space-y-8">
             {/* 1. Stat Cards (Acceptance Criterion 1) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
@@ -353,7 +240,7 @@ export function ClassHub() {
                     <span>Total Points</span>
                   </div>
                   <div className="text-3xl sm:text-4xl font-extrabold text-[#38BDF8] tracking-tight">
-                    {stats.totalPoints.toLocaleString()}
+                    {stats.total_points.toLocaleString()}
                   </div>
                 </div>
                 <p className="text-xs text-slate-400 mt-3">Across all lectures</p>
@@ -380,13 +267,13 @@ export function ClassHub() {
                     </div>
                   </div>
                   <div className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-                    #{stats.classRank}
+                    #{stats.rank}
                   </div>
                 </div>
                 <p className="text-xs text-slate-400 mt-3">
-                  {stats.totalPoints > 0 && stats.pointsToNextRank > 0 ? (
+                  {stats.rank > 1 && stats.points_to_next_rank > 0 ? (
                     <>
-                      <span className="text-[#38BDF8] font-semibold">{stats.pointsToNextRank} pts</span> to reach #{stats.classRank - 1}
+                      <span className="text-[#38BDF8] font-semibold">{stats.points_to_next_rank} pts</span> to reach #{stats.rank - 1}
                     </>
                   ) : (
                     <span>Play a quiz to rank up</span>
@@ -405,9 +292,9 @@ export function ClassHub() {
                     <span>Quizzes Played</span>
                   </div>
                   <div className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-                    {stats.quizzesPlayed}
+                    {stats.quizzes_played}
                     <span className="text-slate-500 font-semibold text-xl sm:text-2xl">
-                      {" "}/ {stats.totalQuizzes}
+                      {" "}/ {stats.quizzes_total}
                     </span>
                   </div>
                 </div>
@@ -417,7 +304,9 @@ export function ClassHub() {
                   <div
                     className="bg-[#38BDF8] h-full rounded-full transition-all duration-300"
                     style={{
-                      width: `${(stats.quizzesPlayed / stats.totalQuizzes) * 100}%`,
+                      width: `${
+                        stats.quizzes_total > 0 ? (stats.quizzes_played / stats.quizzes_total) * 100 : 0
+                      }%`,
                     }}
                   />
                 </div>
@@ -425,7 +314,7 @@ export function ClassHub() {
             </div>
 
             {/* 2. Up Next Section (Acceptance Criterion 2) */}
-            {upNextLecture && (
+            {stats.up_next && (
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
                   Up Next
@@ -450,14 +339,11 @@ export function ClassHub() {
                   {/* Left content */}
                   <div className="relative z-10">
                     <h4 className="text-xl sm:text-2xl font-bold text-white mb-2.5">
-                      {upNextLecture.title}
+                      {stats.up_next.title}
                     </h4>
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <span className="bg-[#18294D] border border-slate-700/80 text-slate-300 px-3 py-1 rounded-full font-medium">
-                        {upNextLecture.questionCount} questions
-                      </span>
-                      <span className="bg-[#18294D] border border-slate-700/80 text-slate-300 px-3 py-1 rounded-full font-medium">
-                        {upNextLecture.difficultyRange || "100–300 pts each"}
+                        {stats.up_next.question_count} questions
                       </span>
                     </div>
                   </div>
@@ -465,7 +351,7 @@ export function ClassHub() {
                   {/* Right Action Button */}
                   <button
                     type="button"
-                    onClick={() => handleStartQuiz(upNextLecture.id)}
+                    onClick={() => handleStartQuiz(stats.up_next!.id)}
                     className="relative z-10 inline-flex items-center justify-center gap-2 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-sm px-6 py-3 rounded-xl transition cursor-pointer shadow-lg shadow-sky-500/20 active:scale-95 shrink-0 self-start sm:self-auto"
                   >
                     <span>Start quiz</span>
@@ -482,7 +368,7 @@ export function ClassHub() {
               </h3>
 
               <div className="space-y-3">
-                {lectures.map((lecture) => (
+                {stats.lectures.map((lecture) => (
                   <div
                     key={lecture.id}
                     onClick={() => handleStartQuiz(lecture.id)}
@@ -490,7 +376,7 @@ export function ClassHub() {
                   >
                     {/* Left: Check / Play Icon + Title + Progress */}
                     <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
-                      {lecture.isCompleted ? (
+                      {!lecture.is_new ? (
                         <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#162547] flex items-center justify-center text-[#38BDF8] shrink-0 shadow-sm font-bold">
                           ✓
                         </div>
@@ -505,15 +391,15 @@ export function ClassHub() {
                           {lecture.title}
                         </h4>
 
-                        {lecture.isCompleted && lecture.correctCount !== undefined ? (
+                        {!lecture.is_new ? (
                           /* Score Dots Indicator matching Mockup */
                           <div className="flex items-center gap-1.5 mt-1">
                             <div className="flex items-center gap-1">
-                              {Array.from({ length: lecture.questionCount }).map((_, i) => (
+                              {Array.from({ length: lecture.question_count }).map((_, i) => (
                                 <span
                                   key={i}
                                   className={`w-1.5 h-1.5 rounded-full ${
-                                    i < (lecture.correctCount || 0)
+                                    i < lecture.correct_count
                                       ? "bg-[#38BDF8]"
                                       : "bg-slate-700"
                                   }`}
@@ -521,12 +407,12 @@ export function ClassHub() {
                               ))}
                             </div>
                             <span className="text-xs text-slate-400 font-medium ml-1">
-                              {lecture.correctCount} of {lecture.questionCount} correct
+                              {lecture.correct_count} of {lecture.question_count} correct
                             </span>
                           </div>
                         ) : (
                           <p className="text-xs text-slate-400 mt-0.5">
-                            {lecture.questionCount} questions
+                            {lecture.question_count} questions
                           </p>
                         )}
                       </div>
@@ -534,20 +420,20 @@ export function ClassHub() {
 
                     {/* Right: Best Points / New Badge + Arrow Button */}
                     <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-                      {lecture.bestPoints ? (
+                      {!lecture.is_new ? (
                         <div className="text-right">
                           <span className="block text-[10px] uppercase font-bold text-slate-400">
                             Best
                           </span>
                           <span className="text-xs sm:text-sm font-bold text-[#38BDF8]">
-                            {lecture.bestPoints} pts
+                            {lecture.best_score} pts
                           </span>
                         </div>
-                      ) : lecture.isNew ? (
+                      ) : (
                         <span className="bg-[#162547] border border-sky-500/30 text-sky-400 text-xs font-bold px-2.5 py-0.5 rounded-full shadow-sm">
                           New
                         </span>
-                      ) : null}
+                      )}
 
                       <div className="w-8 h-8 rounded-xl bg-[#18233C] group-hover:bg-[#1D305A] flex items-center justify-center text-slate-400 group-hover:text-white transition text-xs font-bold shadow-sm">
                         →
@@ -559,102 +445,14 @@ export function ClassHub() {
             </div>
           </div>
         )}
-
-        {/* ======================================================== */}
-        {/* DEV HELPER: STATE TOGGLE SWITCHER (Acceptance Crit 4)     */}
-        {/* ======================================================== */}
-        <div className="mt-12 pt-6 border-t border-slate-800/80 text-center">
-          <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">
-            Reviewer Demo Switcher (Simulate Acceptance Criteria States)
-          </p>
-          <div className="inline-flex flex-wrap items-center justify-center gap-2 p-1 bg-[#090F1E] border border-slate-800 rounded-xl">
-            {(["populated", "loading", "empty", "error"] as ViewState[]).map((state) => (
-              <button
-                key={state}
-                type="button"
-                onClick={() => setViewState(state)}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors capitalize cursor-pointer ${
-                  viewState === state
-                    ? "bg-[#38BDF8] text-[#0A101D] shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                {state}
-              </button>
-            ))}
-          </div>
-        </div>
       </main>
 
-      {/* ======================================================== */}
-      {/* LEADERBOARD MODAL (Acceptance Criterion 5)                */}
-      {/* ======================================================== */}
-      {isLeaderboardOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <div className="bg-[#10192E] border border-slate-800 rounded-2xl p-6 sm:p-7 max-w-md w-full shadow-2xl relative">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
-              <div>
-                <h3 className="text-xl font-bold text-white">Class Leaderboard</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{className} · {classCode}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsLeaderboardOpen(false)}
-                className="w-8 h-8 rounded-lg bg-[#18233C] hover:bg-[#203055] text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Leaderboard Ranks List */}
-            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-              {leaderboardData.map((user) => (
-                <div
-                  key={user.rank}
-                  className={`flex items-center justify-between p-3 rounded-xl transition ${
-                    user.isCurrentUser
-                      ? "bg-[#18294D] border border-sky-500/50 text-white font-bold"
-                      : "bg-[#0B1220] border border-slate-800 text-slate-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`w-6 text-center text-xs font-extrabold ${
-                        user.rank === 1
-                          ? "text-amber-400"
-                          : user.rank === 2
-                          ? "text-slate-300"
-                          : user.rank === 3
-                          ? "text-amber-600"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      #{user.rank}
-                    </span>
-                    <span className="text-xs sm:text-sm font-medium truncate max-w-[170px]">
-                      {user.name}
-                    </span>
-                  </div>
-                  <span className="text-xs sm:text-sm font-bold text-sky-400">
-                    {user.points.toLocaleString()} pts
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Footer Close Button */}
-            <div className="mt-5 pt-3 border-t border-slate-800 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsLeaderboardOpen(false)}
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Leaderboard modal (Acceptance Criterion 5) */}
+      {isLeaderboardOpen && stats && (
+        <LeaderboardModal
+          classroomId={stats.classroom_id}
+          onClose={() => setIsLeaderboardOpen(false)}
+        />
       )}
 
       {/* Footer */}
