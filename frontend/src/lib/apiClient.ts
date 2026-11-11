@@ -68,6 +68,11 @@ export async function request<T>(
         // Non-JSON response, keep the status-based error message
       }
 
+      // Server faults carry no message a student can act on.
+      if (response.status >= 500) {
+        errorMessage = "The server had a problem. Try again shortly.";
+      }
+
       return { data: null, error: errorMessage, status: response.status };
     }
 
