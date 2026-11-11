@@ -4,6 +4,7 @@ from .views import (
     ClassJoinView,
     ClassLeaderboardView,
     ClassLookupView,
+    ClassStatsView,
     StudentClassListView,
 )
 
@@ -27,5 +28,10 @@ urlpatterns = [
         "classes/<int:pk>/leaderboard/",
         ClassLeaderboardView.as_view(),
         name="class-leaderboard",
+    ),
+    path(
+        "classes/<int:pk>/stats/",
+        ClassStatsView.as_view(),
+        name="class-stats",
     ),
 ]

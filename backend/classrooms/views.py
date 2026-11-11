@@ -1,5 +1,4 @@
-from django.contrib.auth import get_user_model
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -13,6 +12,7 @@ from quizzes.models import QuizCompletion
 
 from .models import Classroom, Enrollment
 from .serializers import ClassCodeSerializer, ClassroomSerializer
+from .stats import build_class_stats, class_standings
 
 
 class StudentClassListView(ListAPIView):
@@ -162,33 +162,10 @@ class ClassLeaderboardView(APIView):
                 "You must be enrolled in this class."
             )
 
-        students = (
-            get_user_model().objects
-            .filter(
-                enrollments__classroom=classroom,
-                profile__role="student",
-            )
-            .annotate(
-                points=Sum(
-                    "quiz_attempts__total_points",
-                    filter=Q(
-                        quiz_attempts__lecture__classroom=classroom,
-                        quiz_attempts__completed_at__isnull=False,
-                    ),
-                    default=0,
-                ),
-            )
-            .order_by("-points", "id")
-        )
-
         entries = []
-        previous_points = None
-        rank = 0
 
-        for position, student in enumerate(students, start=1):
-            if student.points != previous_points:
-                rank = position
-
+        for standing in class_standings(classroom):
+            student = standing["user"]
             first_name = student.first_name.strip()
             last_name = student.last_name.strip()
 
@@ -200,12 +177,32 @@ class ClassLeaderboardView(APIView):
                 display_name = first_name
 
             entries.append({
-                "rank": rank,
+                "rank": standing["rank"],
                 "display_name": display_name,
-                "points": student.points,
+                "points": standing["points"],
                 "is_current_user": student.pk == request.user.pk,
             })
 
-            previous_points = student.points
-
         return Response(entries)
+
+
+class ClassStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        classroom = get_object_or_404(Classroom, pk=pk)
+        profile = getattr(request.user, "profile", None)
+
+        if profile is None or profile.role != "student":
+            raise PermissionDenied(
+                "Only students can access class stats."
+            )
+
+        if not classroom.enrollments.filter(
+            user=request.user,
+        ).exists():
+            raise PermissionDenied(
+                "You must be enrolled in this class."
+            )
+
+        return Response(build_class_stats(classroom, request.user))
