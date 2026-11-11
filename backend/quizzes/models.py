@@ -81,6 +81,7 @@ class Attempt(models.Model):
     started_at = models.DateTimeField(default=timezone.now)
     completed_at = models.DateTimeField(null=True, blank=True)
     total_points = models.PositiveIntegerField(default=0)
+    answer_streak = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return (
@@ -158,3 +159,16 @@ class QuizCompletion(models.Model):
                 name="unique_user_lecture_completion",
             ),
         ]
+
+
+class DayStreak(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="day_streak",
+    )
+    count = models.PositiveIntegerField(default=0)
+    last_day = models.DateField(null=True, blank=True)
+
+    def __str__(self):
+        return f"DayStreak {self.pk}: user {self.user_id}, {self.count} days"
