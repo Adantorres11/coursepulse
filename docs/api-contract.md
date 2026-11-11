@@ -78,8 +78,7 @@ Request:
 ```json
 {
   "question_id": 11,
-  "chosen_index": 2,
-  "time_taken_ms": 4200
+  "chosen_index": 2
 }
 ```
 
@@ -96,18 +95,36 @@ Success: `201 Created`
 Rules:
 - The lecture must be available, as in GET /api/lectures/{id}/quiz/.
   The question must belong to that lecture.
-- `question_id`: integer. `chosen_index`: integer 0-3. `time_taken_ms`:
-  integer, 0 or more. All three are required.
-- `chosen_index` is always required. When time runs out, the screen sends
-  `chosen_index` 0 with a `time_taken_ms` over the limit.
-- The time limit is 15 seconds per question: `QUESTION_TIME_LIMIT_MS = 15000`.
-  An answer timed out when `time_taken_ms` is greater than 15000.
+- `question_id`: integer. `chosen_index`: integer 0-3, or `null` when time
+  ran out. Both fields are required. `chosen_index` is still required
+  when it is `null`.
+- The server measures the time. It counts from the question's start call
+  (POST /api/lectures/{id}/questions/{question_id}/start/) to the moment
+  the answer arrives. The client does not send a time.
+- The screen shows 15 seconds per question: `QUESTION_TIME_LIMIT_MS = 15000`.
+  The server allows 1000 ms more for network delay: `TIME_GRACE_MS = 1000`.
+  An answer timed out when the measured time is greater than 16000 ms.
+- A `null` answer is never correct, so `is_correct` is `false`.
+- An answer to a question that was not started in the open attempt is
+  rejected. Call the start endpoint first.
+- Only an enrolled student can answer. The student must have the student
+  role and must be enrolled in the class of the lecture.
 - `points_awarded` is 100 for an easy question, 200 for medium, and 300 for
   hard. A correct answer gets 50 more points when it is the 3rd or later
   correct answer in a row in the attempt. The current answer counts toward
   the run. Every correct answer after the 3rd also gets the 50. It is 0
   when the answer is wrong or timed out. A timed-out answer is never
   correct, so `is_correct` is `false`.
+- Daily cap: each student gets full base points for the first 35
+  first-attempt questions answered in a UTC day. After that, a correct
+  answer earns 25% of the base points: 25 for easy, 50 for medium, and 75
+  for hard. The 50-point streak bonus is never reduced. Only first-attempt
+  answers count toward the cap, and only first-attempt answers are reduced
+  by it. Replay answers never count toward the cap and are never reduced.
+- The first attempt at each lecture is the only attempt that counts toward
+  class totals. For a replay, `points_awarded` and `total_points` are the
+  score of that replay only. They do not change the leaderboard or the
+  class stats.
 - A wrong or timed-out answer sets the run of correct answers to 0.
 - A new attempt starts with a run of correct answers of 0, so a replay
   starts the bonus count again.
@@ -134,9 +151,72 @@ Errors:
   "detail": "This question was already answered in this attempt."
 }
 ```
+- `400`: The question was not started in the open attempt.
+```json
+{
+  "detail": "Start this question before answering."
+}
+```
 - `401`: Missing or invalid authentication token.
+- `403`: The user does not have the student role.
+```json
+{
+  "detail": "Only students can answer questions."
+}
+```
+- `403`: The student is not enrolled in the class of the lecture.
+```json
+{
+  "detail": "You must be enrolled in this class."
+}
+```
 - `404`: `{"detail": "Not found."}` for an unknown or unavailable lecture, or
   a question that is not in that lecture.
+
+Check order: `401`, then `404` for the lecture, then `403`, then `400` for
+body validation, then `404` for a question not in the lecture, then `400`
+for a question that was not started or was already answered.
+
+## POST /api/lectures/{id}/questions/{question_id}/start/
+Marks the moment a question appears. The Arena calls it when it shows the
+question. Requires a token. Send no body.
+
+Success: `201 Created` the first time the question is started in the open
+attempt. `200 OK` when it was already started in the open attempt. The
+original time is kept.
+```json
+{
+  "question_id": 11,
+  "started_at": "2026-11-11T15:00:00Z"
+}
+```
+
+Rules:
+- The lecture must be available, as in GET /api/lectures/{id}/quiz/.
+  The question must belong to that lecture.
+- The server uses the open attempt or starts a new one, the same rule as
+  POST /api/lectures/{id}/answers/.
+- Only an enrolled student can start a question. The student must have the
+  student role and must be enrolled in the class of the lecture.
+- The server measures the answer time from `started_at`.
+
+Errors:
+- `400`: The question already has an answer in this attempt.
+```json
+{
+  "detail": "This question was already answered in this attempt."
+}
+```
+- `401`: Missing or invalid authentication token.
+- `403`: `{"detail": "Only students can answer questions."}` when the user
+  does not have the student role.
+- `403`: `{"detail": "You must be enrolled in this class."}` when the
+  student is not enrolled in the class of the lecture.
+- `404`: `{"detail": "Not found."}` for an unknown or unavailable lecture, or
+  a question that is not in that lecture.
+
+Check order: `401`, then `404` (unknown or unavailable lecture, or a
+question not in it), then `403`, then `400`.
 
 ## Known Sprint 1 shortcuts (tracked for Sprint 2)
 - No class-code join yet.
@@ -406,7 +486,8 @@ Rules:
 - Includes enrolled users with the student role.
 - Points are the sum of total_points from completed attempts across
   all lectures in this class. Incomplete attempts are excluded.
-- All completed attempts count, including repeat attempts.
+- Only the student's first attempt at each lecture counts, once it is
+  completed. Replays add 0.
 - Attempts from other classes are excluded.
 - Students are ordered by points descending, then user ID ascending
   for consistent ordering within ties.
@@ -486,9 +567,9 @@ Rules:
   completed_at set. Incomplete attempts do not count.
 - quizzes_played is the number of available quizzes the student has
   played. Repeat attempts do not add to it.
-- total_points is the sum of total_points from the student's completed
-  attempts across all lectures in this class, including repeat
-  attempts. It matches the student's points in the leaderboard.
+- total_points is the sum of total_points from the student's first
+  attempt at each lecture in this class, once that attempt is completed.
+  Replays add 0. It matches the student's points in the leaderboard.
 - rank uses competition ranking, the same as the leaderboard:
   1, 1, 3.
 - points_to_next_rank is the gap to the nearest student with strictly
