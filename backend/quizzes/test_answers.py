@@ -288,6 +288,19 @@ class AnswerPermissionTests(APITestCase):
         )
         self.assertFalse(Answer.objects.exists())
 
+    def test_403_comes_before_body_validation(self):
+        professor = make_student("prof", self.classroom, role="professor")
+        self.client.force_authenticate(professor)
+        response = self.client.post(
+            f"/api/lectures/{self.lecture.id}/answers/",
+            {"question_id": self.question.id, "chosen_index": 9},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json(), {"detail": "Only students can answer questions."}
+        )
+
     def test_user_without_profile_gets_403(self):
         user = get_user_model().objects.create_user(username="plain", password="pw")
         response = self.post_as(user)

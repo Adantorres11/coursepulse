@@ -12,6 +12,7 @@ class AttemptAdmin(admin.ModelAdmin):
         "started_at",
         "completed_at",
         "total_points",
+        "is_first",
     )
     list_filter = ("lecture",)
     list_select_related = ("user", "lecture")

@@ -118,7 +118,7 @@ class Answer(models.Model):
         on_delete=models.CASCADE,
         related_name="answers",
     )
-    chosen_index = models.PositiveSmallIntegerField(null=True)
+    chosen_index = models.PositiveSmallIntegerField(null=True, blank=True)
     is_correct = models.BooleanField()
     time_taken_ms = models.PositiveIntegerField()
     points_awarded = models.PositiveIntegerField(default=0)

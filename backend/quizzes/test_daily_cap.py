@@ -86,6 +86,7 @@ class DailyCapTests(APITestCase):
     def test_replay_is_not_capped(self):
         self.seed_answers(35)
         lecture = self.make_lecture(1)
-        self.play(lecture)
+        first = self.play(lecture)
         response = self.play(lecture)
+        self.assertEqual(first.json()["points_awarded"], 25)
         self.assertEqual(response.json()["points_awarded"], 100)
