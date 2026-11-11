@@ -21,16 +21,25 @@ def grade_answer(question, chosen_index, time_taken_ms):
     return is_correct, points
 
 
+def get_open_attempt(user, lecture, for_update=False):
+    """Return the user's newest unfinished attempt for the lecture, or None."""
+    attempts = Attempt.objects.all()
+    if for_update:
+        attempts = attempts.select_for_update()
+    return (
+        attempts
+        .filter(user=user, lecture=lecture, completed_at__isnull=True)
+        .order_by("-id")
+        .first()
+    )
+
+
 def submit_answer(user, lecture, question, chosen_index, time_taken_ms):
     """Save one graded answer on the user's open attempt."""
     is_correct, points = grade_answer(question, chosen_index, time_taken_ms)
     with transaction.atomic():
-        attempt = (
-            Attempt.objects
-            .select_for_update()
-            .filter(user=user, lecture=lecture, completed_at__isnull=True)
-            .order_by("-id")
-            .first()
+        attempt = get_open_attempt(
+            user, lecture, for_update=True
         ) or Attempt.objects.create(user=user, lecture=lecture)
         if attempt.answers.filter(question=question).exists():
             raise AlreadyAnswered()
