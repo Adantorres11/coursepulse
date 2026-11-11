@@ -1,4 +1,4 @@
-import type { AnswerRequest, AnswerResult, ApiResult, ClassStats, ClassSummary, HealthResponse, LeaderboardEntry, Lecture, Quiz } from "../types/api";
+import type { AnswerRequest, AnswerResult, ApiResult, ClassStats, ClassSummary, HealthResponse, LeaderboardEntry, Lecture, Quiz, QuestionStart } from "../types/api";
 import sampleLectures from "../data/lectures.sample.json" with { type: "json" };
 import sampleQuizzes from "../data/quizzes.sample.json" with { type: "json" };
 
@@ -175,6 +175,25 @@ export async function postAnswer(
     },
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Tell the server a question was shown, so it can time the answer.
+ * Matches API contract: POST /api/lectures/{id}/questions/{question_id}/start/
+ * Requires a logged-in student. Safe to repeat: the server keeps the first start time.
+ */
+export async function startQuestion(
+  lectureId: string | number,
+  questionId: number
+): Promise<ApiResult<QuestionStart>> {
+  const token = sessionStorage.getItem("coursepulse_token");
+  return request<QuestionStart>(
+    `/lectures/${encodeURIComponent(String(lectureId).trim())}/questions/${questionId}/start/`,
+    {
+      method: "POST",
+      headers: token ? { Authorization: `Token ${token}` } : {},
+    }
+  );
 }
 
 /** Auth header for the logged-in student, or an empty object when logged out. */
