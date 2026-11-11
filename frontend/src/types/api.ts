@@ -26,6 +26,15 @@ export interface ClassLectureStat {
   is_new: boolean;
 }
 
+export interface ClassSummary {
+  id: number;
+  name: string;
+  course_code: string;
+  professor: { id: number; name: string } | null;
+  quiz_count: number;
+  new_quiz_count: number;
+}
+
 export interface ClassStats {
   classroom_id: number;
   classroom: string;
