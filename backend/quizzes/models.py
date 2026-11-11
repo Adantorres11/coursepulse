@@ -82,6 +82,7 @@ class Attempt(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     total_points = models.PositiveIntegerField(default=0)
     answer_streak = models.PositiveIntegerField(default=0)
+    is_first = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
@@ -91,6 +92,13 @@ class Attempt(models.Model):
                 name="unique_open_attempt_per_user_lecture",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            self.is_first = not Attempt.objects.filter(
+                user=self.user_id, lecture=self.lecture_id
+            ).exists()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return (
