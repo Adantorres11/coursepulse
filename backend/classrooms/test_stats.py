@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -6,7 +7,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from accounts.models import Profile
-from quizzes.models import Answer, Attempt, Lecture, Question
+from quizzes.models import Answer, Attempt, DayStreak, Lecture, Question
 from .models import Classroom, Enrollment
 
 
@@ -260,6 +261,60 @@ class ClassStatsTests(APITestCase):
             self.assertNotIn(lecture.id, ids)
         self.assertEqual(data["quizzes_total"], 3)
 
+    def test_student_with_no_streak_data_gets_zeros(self):
+        data = self.get_stats()
+
+        self.assertEqual(data["day_streak"], 0)
+        self.assertEqual(data["answer_streak"], 0)
+
+    @patch("classrooms.stats.timezone.localdate")
+    def test_day_streak_is_returned(self, localdate):
+        localdate.return_value = date(2026, 11, 11)
+        DayStreak.objects.create(
+            user=self.bharat, count=3, last_day=date(2026, 11, 10)
+        )
+
+        self.assertEqual(self.get_stats()["day_streak"], 3)
+
+    @patch("classrooms.stats.timezone.localdate")
+    def test_day_streak_reads_zero_after_a_missed_day(self, localdate):
+        localdate.return_value = date(2026, 11, 11)
+        DayStreak.objects.create(
+            user=self.bharat, count=3, last_day=date(2026, 11, 9)
+        )
+
+        self.assertEqual(self.get_stats()["day_streak"], 0)
+
+    def test_answer_streak_comes_from_newest_attempt_in_this_class(self):
+        older = self.add_attempt(self.bharat, 100)
+        older.answer_streak = 5
+        older.save()
+        newer = self.add_attempt(self.bharat, 100, completed=False)
+        newer.answer_streak = 2
+        newer.save()
+        elsewhere = self.add_attempt(
+            self.bharat, 100, lecture=self.other_lecture
+        )
+        elsewhere.answer_streak = 9
+        elsewhere.save()
+
+        self.assertEqual(self.get_stats()["answer_streak"], 2)
+
+    @patch("classrooms.stats.timezone.localdate")
+    def test_streaks_are_per_student(self, localdate):
+        localdate.return_value = date(2026, 11, 11)
+        DayStreak.objects.create(
+            user=self.alex, count=4, last_day=date(2026, 11, 11)
+        )
+        attempt = self.add_attempt(self.alex, 100)
+        attempt.answer_streak = 7
+        attempt.save()
+
+        data = self.get_stats()
+
+        self.assertEqual(data["day_streak"], 0)
+        self.assertEqual(data["answer_streak"], 0)
+
     def test_requires_login(self):
         self.client.force_authenticate(user=None)
 
@@ -289,7 +344,7 @@ class ClassStatsTests(APITestCase):
                 )
 
         attempt_on_every_lecture()
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(7):
             self.assertEqual(
                 len(self.client.get(self.url).data["lectures"]), 3
             )
@@ -297,7 +352,7 @@ class ClassStatsTests(APITestCase):
         for index in range(2):
             self.make_lecture(self.classroom, f"Extra {index}", days_ago=5)
         attempt_on_every_lecture()
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(7):
             self.assertEqual(
                 len(self.client.get(self.url).data["lectures"]), 5
             )
