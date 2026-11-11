@@ -23,21 +23,19 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
 
   setClassroomId(undefined);
 
-  if (!lectureId) return;
+  if (lectureId) {
+    request<Lecture[]>("/lectures/", {
+      signal: controller.signal,
+    }).then((result) => {
+      if (!active || !result.data) return;
 
-  request<Lecture[]>("/lectures/", {
-    signal: controller.signal,
-  }).then((result) => {
-    if (!active || !result.data) return;
+      const lecture = result.data.find(
+        (item) => String(item.id) === String(lectureId)
+      );
 
-    const lecture = result.data.find(
-      (item) => String(item.id) === String(lectureId)
-    );
-
-    if (lecture) {
-      setClassroomId(lecture.classroom_id);
-    }
-  });
+      setClassroomId(lecture?.classroom_id);
+    });
+  }
 
   return () => {
     active = false;
@@ -127,6 +125,9 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
           {/* Interactive Gameplay Component */}
           <QuizGame
             questions={quiz.questions}
+            lectureId={lectureId}
+            initialAnsweredIds={quiz.answered_question_ids ?? []}
+            initialScore={quiz.total_points ?? 0}
             classroomId={classroomId}
           />
         </div>
