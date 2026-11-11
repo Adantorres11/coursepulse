@@ -16,6 +16,28 @@ export interface Lecture {
   publishedAt?: string;
 }
 
+export interface ClassLectureStat {
+  id: number;
+  title: string;
+  published_at: string; // ISO date string
+  question_count: number;
+  best_score: number;
+  correct_count: number;
+  is_new: boolean;
+}
+
+export interface ClassStats {
+  classroom_id: number;
+  classroom: string;
+  total_points: number;
+  rank: number;
+  points_to_next_rank: number;
+  quizzes_played: number;
+  quizzes_total: number;
+  up_next: ClassLectureStat | null;
+  lectures: ClassLectureStat[];
+}
+
 export interface QuizQuestion {
   id: number | string;
   prompt: string;

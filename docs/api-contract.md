@@ -352,3 +352,90 @@ Errors:
 - `404`: Unknown class ID.
 - `403`: For an existing class, the requester does not have the
   student role or is not enrolled.
+
+## GET /api/classes/{id}/stats/
+
+Returns one student's progress in one class. The Class Hub screen uses
+it. Requires a student account and token authentication.
+
+Success: `200 OK`
+```json
+{
+  "classroom_id": 1,
+  "classroom": "Intro to Biology",
+  "total_points": 500,
+  "rank": 2,
+  "points_to_next_rank": 120,
+  "quizzes_played": 1,
+  "quizzes_total": 2,
+  "up_next": {
+    "id": 7,
+    "title": "Cell Structure",
+    "published_at": "2026-11-03T15:00:00Z",
+    "question_count": 10,
+    "best_score": 0,
+    "correct_count": 0,
+    "is_new": true
+  },
+  "lectures": [
+    {
+      "id": 7,
+      "title": "Cell Structure",
+      "published_at": "2026-11-03T15:00:00Z",
+      "question_count": 10,
+      "best_score": 0,
+      "correct_count": 0,
+      "is_new": true
+    },
+    {
+      "id": 5,
+      "title": "Intro to Cells",
+      "published_at": "2026-10-27T15:00:00Z",
+      "question_count": 8,
+      "best_score": 500,
+      "correct_count": 7,
+      "is_new": false
+    }
+  ]
+}
+```
+
+Rules:
+- The class is identified by classroom_id. The name is returned in
+  classroom.
+- An available quiz is a lecture in this class with published_at in
+  the past and at least one question. Only available quizzes appear
+  in lectures and count in quizzes_total.
+- A quiz is played when the student has an attempt for it with
+  completed_at set. Incomplete attempts do not count.
+- quizzes_played is the number of available quizzes the student has
+  played. Repeat attempts do not add to it.
+- total_points is the sum of total_points from the student's completed
+  attempts across all lectures in this class, including repeat
+  attempts. It matches the student's points in the leaderboard.
+- rank uses competition ranking, the same as the leaderboard:
+  1, 1, 3.
+- points_to_next_rank is the gap to the nearest student with strictly
+  more points. It is 0 for a student at rank 1.
+- lectures are ordered newest first by published_at, the same as
+  GET /api/lectures/.
+- up_next is the first unplayed lecture in that order, which is the
+  newest unplayed lecture. It has the same shape as a lectures item.
+  It is null when every available quiz is played.
+- best_score is the highest total_points among the student's completed
+  attempts for the lecture.
+- correct_count is the number of correct answers in that same attempt.
+  If two attempts tie on score, the earliest attempt is used, then the
+  lowest attempt ID.
+- An unplayed lecture has best_score 0, correct_count 0, and is_new
+  true. A played lecture has is_new false.
+- A student with no completed attempts gets total_points 0,
+  quizzes_played 0, and points_to_next_rank as defined above. The
+  student shares the last rank with the other zero-point students.
+- Streak fields are not included.
+
+Errors:
+- `401`: Missing or invalid authentication token.
+- `404`: Unknown class ID.
+- `403`: For an existing class, the requester does not have the
+  student role or is not enrolled.
