@@ -54,9 +54,11 @@ export function ClassHub() {
 
   const classInfo = state.status === "ready" ? state.classInfo : null;
   const stats = state.status === "ready" ? state.stats : null;
+  const moreLectures = stats ? stats.lectures.filter((l) => l.id !== stats.up_next?.id) : [];
 
   const handleStartQuiz = (lectureId: number) => {
-    navigate(`/quiz/${lectureId}`);
+    // Remember where the student came from so the quiz can link back here.
+    navigate(`/quiz/${lectureId}`, { state: { from: `/class/${classId}` } });
   };
 
   return (
@@ -247,9 +249,11 @@ export function ClassHub() {
               </div>
 
               {/* Card 2: Class Rank (Acceptance Criterion 5: opens leaderboard modal) */}
-              <div
+              <button
+                type="button"
                 onClick={() => setIsLeaderboardOpen(true)}
-                className="bg-[#111A30] hover:bg-[#142240] border border-slate-800/90 hover:border-slate-700 rounded-2xl p-5 shadow-lg flex flex-col justify-between cursor-pointer transition group"
+                aria-haspopup="dialog"
+                className="bg-[#111A30] hover:bg-[#142240] border border-slate-800/90 hover:border-slate-700 rounded-2xl p-5 shadow-lg flex flex-col justify-between text-left w-full cursor-pointer transition group focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                 title="Click to view class leaderboard"
               >
                 <div>
@@ -275,11 +279,13 @@ export function ClassHub() {
                     <>
                       <span className="text-[#38BDF8] font-semibold">{stats.points_to_next_rank} pts</span> to reach #{stats.rank - 1}
                     </>
+                  ) : stats.rank === 1 ? (
+                    <span>You are in first place</span>
                   ) : (
                     <span>Play a quiz to rank up</span>
                   )}
                 </p>
-              </div>
+              </button>
 
               {/* Card 3: Quizzes Played */}
               <div className="bg-[#111A30] border border-slate-800/90 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
@@ -361,14 +367,15 @@ export function ClassHub() {
               </div>
             )}
 
-            {/* 3. More Lectures List (Acceptance Criterion 3) */}
+            {/* 3. More Lectures List (Acceptance Criterion 3). The Up Next quiz is shown above, so skip it here. */}
+            {moreLectures.length > 0 && (
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
                 More Lectures
               </h3>
 
               <div className="space-y-3">
-                {stats.lectures.map((lecture) => (
+                {moreLectures.map((lecture) => (
                   <div
                     key={lecture.id}
                     onClick={() => handleStartQuiz(lecture.id)}
@@ -443,6 +450,7 @@ export function ClassHub() {
                 ))}
               </div>
             </div>
+            )}
           </div>
         )}
       </main>

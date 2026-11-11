@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useLocation, Link } from "react-router-dom";
 import { getQuiz, request, type Quiz, type Lecture } from "../lib/apiClient";
 import QuizGame from "./quiz";
 
@@ -11,6 +11,12 @@ interface QuizPageProps {
 export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProps = {}) {
   const { lectureId: routeLectureId } = useParams<{ lectureId: string }>();
   const lectureId = propLectureId ?? routeLectureId ?? "";
+
+  // The Class Hub passes the page it came from; otherwise go to the Student Hub.
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from;
+  const backTo = from ?? "/hub";
+  const backLabel = from ? "Class Hub" : "Student Hub";
 
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [classroomId, setClassroomId] = useState<number | undefined>(undefined);
@@ -84,12 +90,12 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
     <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       {/* Back link to Hub */}
       <Link
-        to="/hub"
+        to={backTo}
         onClick={handleBackClick}
         className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-6 cursor-pointer"
       >
         <span>←</span>
-        <span>Back to Student Hub</span>
+        <span>Back to {backLabel}</span>
       </Link>
 
       {loading ? (
@@ -105,11 +111,11 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
             {error || `We couldn't find any quiz questions for lecture #${lectureId}.`}
           </p>
           <Link
-            to="/hub"
+            to={backTo}
             onClick={handleBackClick}
             className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
           >
-            Return to Hub
+            Return to {backLabel}
           </Link>
         </div>
       ) : (
