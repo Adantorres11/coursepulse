@@ -207,6 +207,35 @@ class ClassStatsTests(APITestCase):
         self.assertEqual(data["rank"], 1)
         self.assertEqual(data["points_to_next_rank"], 0)
 
+    def test_points_to_next_rank_uses_nearest_of_several_scores_above(self):
+        dana = self.make_user("dana", "Dana", "Lee")
+        Enrollment.objects.create(user=dana, classroom=self.classroom)
+        self.add_attempt(self.alex, 600)
+        self.add_attempt(self.sam, 500)
+        self.add_attempt(dana, 400)
+        self.add_attempt(self.bharat, 300)
+
+        data = self.get_stats()
+        self.assertEqual(data["rank"], 4)
+        self.assertEqual(data["points_to_next_rank"], 100)
+
+        self.client.force_authenticate(user=self.sam)
+        data = self.get_stats()
+        self.assertEqual(data["rank"], 2)
+        self.assertEqual(data["points_to_next_rank"], 100)
+
+    def test_zero_attempt_student_shares_last_rank_behind_scorers(self):
+        self.add_attempt(self.alex, 300)
+        self.add_attempt(self.sam, 100)
+
+        data = self.get_stats()
+
+        self.assertEqual(data["total_points"], 0)
+        self.assertEqual(data["rank"], 3)
+        self.assertEqual(data["points_to_next_rank"], 100)
+        self.assertEqual(data["quizzes_played"], 0)
+        self.assertIsNotNone(data["up_next"])
+
     def test_other_class_attempts_are_excluded(self):
         self.add_attempt(self.bharat, 900, lecture=self.other_lecture)
 
