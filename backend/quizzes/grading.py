@@ -1,9 +1,14 @@
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.utils import timezone
 
-from .models import Answer, Attempt
+from .models import Answer, Attempt, QuizCompletion
 
 POINTS_BY_DIFFICULTY = {"easy": 100, "medium": 200, "hard": 300}
 QUESTION_TIME_LIMIT_MS = 15000
+
+
+class AlreadyAnswered(Exception):
+    """The open attempt already has an answer for this question."""
 
 
 def grade_answer(question, chosen_index, time_taken_ms):
@@ -27,16 +32,27 @@ def submit_answer(user, lecture, question, chosen_index, time_taken_ms):
             .order_by("-id")
             .first()
         ) or Attempt.objects.create(user=user, lecture=lecture)
-        Answer.objects.create(
-            attempt=attempt,
-            question=question,
-            chosen_index=chosen_index,
-            is_correct=is_correct,
-            time_taken_ms=time_taken_ms,
-            points_awarded=points,
-        )
+        if attempt.answers.filter(question=question).exists():
+            raise AlreadyAnswered()
+        try:
+            with transaction.atomic():
+                Answer.objects.create(
+                    attempt=attempt,
+                    question=question,
+                    chosen_index=chosen_index,
+                    is_correct=is_correct,
+                    time_taken_ms=time_taken_ms,
+                    points_awarded=points,
+                )
+        except IntegrityError:
+            raise AlreadyAnswered()
         attempt.total_points += points
-        attempt.save(update_fields=["total_points"])
+        update_fields = ["total_points"]
+        if attempt.answers.count() == lecture.questions.count():
+            attempt.completed_at = timezone.now()
+            update_fields.append("completed_at")
+            QuizCompletion.objects.get_or_create(user=user, lecture=lecture)
+        attempt.save(update_fields=update_fields)
     return {
         "is_correct": is_correct,
         "points_awarded": points,

@@ -6,7 +6,7 @@ from rest_framework.test import APITestCase
 
 from classrooms.models import Classroom
 from .grading import QUESTION_TIME_LIMIT_MS
-from .models import Answer, Attempt, Lecture
+from .models import Answer, Attempt, Lecture, QuizCompletion
 from .test_lectures import add_questions
 
 
@@ -137,3 +137,57 @@ class AnswerEndpointTests(APITestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertIn(field, response.json())
         self.assertEqual(Answer.objects.count(), 0)
+
+    def answer_all_correctly(self):
+        for question in self.lecture.questions.order_by("position"):
+            response = self.post(question.correct_index, question_id=question.id)
+            self.assertEqual(response.status_code, 201)
+
+    def test_repeat_answer_is_400_and_total_unchanged(self):
+        self.post(self.question.correct_index)
+        response = self.post(self.question.correct_index + 1)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json(),
+            {"detail": "This question was already answered in this attempt."},
+        )
+        self.assertEqual(Answer.objects.count(), 1)
+        self.assertEqual(Attempt.objects.get().total_points, 100)
+
+    def test_total_points_is_the_running_total(self):
+        second = self.lecture.questions.order_by("position").last()
+        second.difficulty = "medium"
+        second.save()
+        self.post(self.question.correct_index)
+        response = self.post(second.correct_index, question_id=second.id)
+        self.assertEqual(response.json()["total_points"], 300)
+
+    def test_last_answer_completes_the_attempt(self):
+        self.answer_all_correctly()
+        self.assertIsNotNone(Attempt.objects.get().completed_at)
+        self.assertEqual(
+            QuizCompletion.objects.filter(
+                user=self.user, lecture=self.lecture
+            ).count(),
+            1,
+        )
+
+    def test_replay_after_completion_starts_new_attempt(self):
+        self.answer_all_correctly()
+        response = self.post(self.question.correct_index)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Attempt.objects.count(), 2)
+        self.assertEqual(response.json()["total_points"], 100)
+        self.assertEqual(QuizCompletion.objects.count(), 1)
+
+    def test_answers_from_two_students_stay_separate(self):
+        other = get_user_model().objects.create_user(
+            username="other", password="pw"
+        )
+        self.post(self.question.correct_index)
+        self.client.force_authenticate(other)
+        response = self.post(self.question.correct_index + 1)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["total_points"], 0)
+        self.assertEqual(Attempt.objects.count(), 2)
+        self.assertEqual(Attempt.objects.get(user=self.user).total_points, 100)

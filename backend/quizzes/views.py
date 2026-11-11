@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .grading import submit_answer
+from .grading import AlreadyAnswered, submit_answer
 from .models import Lecture, Question
 from .serializers import (
     AnswerRequestSerializer,
@@ -70,11 +70,17 @@ class LectureAnswerView(APIView):
             question = lecture.questions.get(pk=data["question_id"])
         except Question.DoesNotExist:
             raise NotFound()
-        result = submit_answer(
-            request.user,
-            lecture,
-            question,
-            data["chosen_index"],
-            data["time_taken_ms"],
-        )
+        try:
+            result = submit_answer(
+                request.user,
+                lecture,
+                question,
+                data["chosen_index"],
+                data["time_taken_ms"],
+            )
+        except AlreadyAnswered:
+            return Response(
+                {"detail": "This question was already answered in this attempt."},
+                status=400,
+            )
         return Response(result, status=201)
