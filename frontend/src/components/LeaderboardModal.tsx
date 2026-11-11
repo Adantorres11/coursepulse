@@ -153,9 +153,10 @@ export function LeaderboardModal({
           )}
 
           <ol className="space-y-2">
-            {entries.map((entry) => (
+            {entries.map((entry, index) => (
               <li
-                key={`${entry.rank}-${entry.display_name}`}
+                // Rank and name repeat (ties, unnamed students); the server order is stable.
+                key={`${entry.rank}-${entry.display_name}-${index}`}
                 className={`flex items-center gap-3 rounded-2xl border p-3 sm:p-4 ${
                   entry.is_current_user
                     ? "border-sky-400 bg-[#223850]"
