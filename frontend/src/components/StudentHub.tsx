@@ -244,27 +244,26 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
             {/* 1. Daily Streak Banner Card */}
             <div className="bg-[#141525] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl mb-6">
               {/* Header: Fire icon and streak title */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3.5">
-                  <div
-                    className={`w-11 h-11 rounded-full bg-[#1A2238] flex items-center justify-center shrink-0 text-xl shadow-inner ${
-                      dayStreak !== null && dayStreak > 0 ? "text-orange-400" : "text-slate-500"
-                    }`}
-                  >
-                    🔥
-                  </div>
-                  <div>
-                    <h3 className="text-lg sm:text-xl font-bold text-white leading-tight">
-                      {dayStreak === null ? "Loading streak…" : `${dayStreak} day streak`}
-                    </h3>
-                    {dayStreak !== null && (
-                      <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-                        {dayStreak === 0
-                          ? "Play a quiz today to start your streak."
-                          : "Play a quiz every day to keep it going."}
-                      </p>
-                    )}
-                  </div>
+              <div className="flex items-center gap-3.5">
+                <div
+                  aria-hidden="true"
+                  className={`w-11 h-11 rounded-full bg-[#1A2238] flex items-center justify-center shrink-0 text-xl shadow-inner ${
+                    dayStreak !== null && dayStreak > 0 ? "" : "grayscale opacity-50"
+                  }`}
+                >
+                  🔥
+                </div>
+                <div aria-live="polite">
+                  <h3 className="text-lg sm:text-xl font-bold text-white leading-tight">
+                    {dayStreak === null ? "Loading streak…" : `${dayStreak} day streak`}
+                  </h3>
+                  {dayStreak !== null && (
+                    <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+                      {dayStreak === 0
+                        ? "Play a quiz today to start your streak."
+                        : "Play a quiz every day to keep it going."}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
