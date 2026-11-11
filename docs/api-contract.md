@@ -103,9 +103,11 @@ Rules:
 - The time limit is 15 seconds per question: `QUESTION_TIME_LIMIT_MS = 15000`.
   An answer timed out when `time_taken_ms` is greater than 15000.
 - `points_awarded` is 100 for an easy question, 200 for medium, and 300 for
-  hard. It gets 50 more once the run of correct answers in the attempt has
-  reached 3, including this answer. It is 0 when the answer is wrong or
-  timed out. A timed-out answer is never correct, so `is_correct` is `false`.
+  hard. A correct answer gets 50 more points when it is the 3rd or later
+  correct answer in a row in the attempt. The current answer counts toward
+  the run. Every correct answer after the 3rd also gets the 50. It is 0
+  when the answer is wrong or timed out. A timed-out answer is never
+  correct, so `is_correct` is `false`.
 - A wrong or timed-out answer sets the run of correct answers to 0.
 - `total_points` is the running total of the attempt, including this answer.
 - `correct_index` is always returned, so the screen can show green and red
