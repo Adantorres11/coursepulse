@@ -8,7 +8,7 @@ Auth: token authentication for protected endpoints.
 Send `Authorization: Token <token>` with protected requests.
 Registration and login do not require a token.
 Lecture data is hardcoded through the seed script.
-The lecture and quiz endpoints below are public in Sprint 1 and need no token.
+GET /api/lectures/ and GET /api/lectures/{id}/quiz/ need no token; an invalid token still returns 401. POST /api/lectures/{id}/answers/ requires a token.
 
 ## GET /api/health/
 Liveness check for Docker and CI.
@@ -47,24 +47,92 @@ Success: `200 OK`.
       "id": 11,
       "prompt": "Why does Scrum use fixed-length sprints?",
       "choices": ["Option A", "Option B", "Option C", "Option D"],
-      "correct_index": 2,
       "difficulty": "easy"
     }
-  ]
+  ],
+  "answered_question_ids": [11],
+  "total_points": 100
 }
 ```
 
 Field rules
-- `choices`: exactly 4 strings. `correct_index`: integer 0-3.
+- `choices`: exactly 4 strings.
+- The quiz does not include the correct answer. The correct answer comes from
+  `POST /api/lectures/{id}/answers/`.
 - `difficulty`: `"easy"` (100 pts), `"medium"` (200 pts) or `"hard"` (300 pts).
 - Questions are returned in a fixed order.
+- `answered_question_ids`: the ids of the questions the logged-in student has
+  answered in their open attempt. `total_points`: the points of that open attempt.
+  The open attempt is the student's newest attempt for this lecture with no
+  `completed_at`. Send the token to get these fields. When the request has no
+  token, or there is no open attempt, they are `[]` and `0`.
 
 Errors: `404` with `{"detail": "Not found."}` for an unknown lecture id. The same
 `404` is returned when the lecture is not published yet or has no questions.
 
+## POST /api/lectures/{id}/answers/
+Grades one answer on the server. The Arena (game screen) calls it after each
+question. Requires a token. Send `Content-Type: application/json`.
+
+Request:
+```json
+{
+  "question_id": 11,
+  "chosen_index": 2,
+  "time_taken_ms": 4200
+}
+```
+
+Success: `201 Created`
+```json
+{
+  "is_correct": true,
+  "points_awarded": 100,
+  "total_points": 100,
+  "correct_index": 2
+}
+```
+
+Rules:
+- The lecture must be available, as in GET /api/lectures/{id}/quiz/.
+  The question must belong to that lecture.
+- `question_id`: integer. `chosen_index`: integer 0-3. `time_taken_ms`:
+  integer, 0 or more. All three are required.
+- `chosen_index` is always required. When time runs out, the screen sends
+  `chosen_index` 0 with a `time_taken_ms` over the limit.
+- The time limit is 15 seconds per question: `QUESTION_TIME_LIMIT_MS = 15000`.
+  An answer timed out when `time_taken_ms` is greater than 15000.
+- `points_awarded` is 100 for an easy question, 200 for medium, and 300 for
+  hard. It is 0 when the answer is wrong or timed out. A timed-out answer
+  is never correct, so `is_correct` is `false`.
+- `total_points` is the running total of the attempt, including this answer.
+- `correct_index` is always returned, so the screen can show green and red
+  feedback.
+- The server picks the attempt. It uses the student's newest attempt for the
+  lecture with no `completed_at`, or starts a new one.
+- When every question in the lecture has an answer, the attempt is completed
+  (`completed_at` is set). The next answer starts a new attempt.
+- A second answer to the same question in the same attempt is rejected.
+
+Errors:
+- `400`: Invalid body. Errors appear under the field name, as in
+  POST /api/auth/register/.
+```json
+{
+  "chosen_index": ["Ensure this value is less than or equal to 3."]
+}
+```
+- `400`: The question already has an answer in this attempt.
+```json
+{
+  "detail": "This question was already answered in this attempt."
+}
+```
+- `401`: Missing or invalid authentication token.
+- `404`: `{"detail": "Not found."}` for an unknown or unavailable lecture, or
+  a question that is not in that lecture.
+
 ## Known Sprint 1 shortcuts (tracked for Sprint 2)
-- `correct_index` is sent to the browser so scoring can happen client-side.
-  Sprint 2 moves grading to a `POST` endpoint on the server so scores cannot be faked.
 - No class-code join yet.
 
 ## Authentication
