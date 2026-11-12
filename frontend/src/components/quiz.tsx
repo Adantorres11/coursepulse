@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { Quiz, DifficultyLevel, AnswerRequest, AnswerResult } from "../types/api";
-import { postAnswer } from "../lib/apiClient";
+import { postAnswer, startQuestion } from "../lib/apiClient";
 import { LeaderboardModal } from "./LeaderboardModal";
 
 type QuizQuestion = Quiz["questions"][number];
@@ -51,13 +51,42 @@ export default function QuizGame({
     { body: AnswerRequest; answerIndex: number | null; index: number } | null
   >(null);
 
-  const questionStartRef = useRef<number>(Date.now());
+  // index of the question the server has started; answers stay off until it matches
+  const [startedIndex, setStartedIndex] = useState<number | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  // bumped by "Try again" to repeat the start call
+  const [startAttempt, setStartAttempt] = useState<number>(0);
+  const questionStarted = startedIndex === questionIndex;
+
   const timeoutSentRef = useRef<boolean>(false);
 
   useEffect(() => {
-    questionStartRef.current = Date.now();
     timeoutSentRef.current = false;
   }, [questionIndex]);
+
+  // ask the server to start the clock for the current question
+  useEffect(() => {
+    if (questionIndex < 0 || questionIndex >= questions.length || currentResult) {
+      return;
+    }
+
+    let cancelled = false;
+    setStartError(null);
+    startQuestion(lectureId, Number(questions[questionIndex].id)).then((result) => {
+      if (cancelled) {
+        return;
+      }
+      if (result.error || !result.data) {
+        setStartError(result.error ?? "Could not start this question.");
+        return;
+      }
+      setStartedIndex(questionIndex);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [questionIndex, startAttempt, currentResult, lectureId, questions.length]);
 
   // sets color of buttons based on user input
   function getAnswerColor(answerIndex: number) {
@@ -85,12 +114,9 @@ export default function QuizGame({
       return;
     }
 
-    const elapsed = Date.now() - questionStartRef.current;
     const body: AnswerRequest = {
       question_id: Number(questions[questionIndex].id),
-      chosen_index: answerIndex ?? 0,
-      // over the 15000 ms server limit when time ran out
-      time_taken_ms: answerIndex === null ? Math.max(elapsed, QUESTION_TIME_LIMIT_SECONDS * 1000 + 1) : elapsed,
+      chosen_index: answerIndex,
     };
     await submitAnswer(body, answerIndex, questionIndex);
   }
@@ -207,6 +233,8 @@ export default function QuizGame({
     setResumeIds([]);
     setError(null);
     setFailedRequest(null);
+    setStartedIndex(null);
+    setStartError(null);
   }
 
   // QUIZ is empty
@@ -331,6 +359,7 @@ export default function QuizGame({
             <button
               key={index}
               className={`flex w-full items-center justify-between gap-4 px-2 py-2 rounded-lg cursor-pointer transition-colors text-left ${getAnswerColor(index)}`}
+              disabled={!questionStarted}
               onClick={() => handleAnswer(index)}
             >
               <div className="flex items-center gap-4">
@@ -348,6 +377,14 @@ export default function QuizGame({
             </button>
           ))}
         </div>
+        {!currentResult && startError &&
+          <div className="flex items-center justify-between w-full">
+            <span className="text-red-400 font-bold">{startError}</span>
+            <button className="bg-blue-300 text-black font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => setStartAttempt((n) => n + 1)}>
+              Try again
+            </button>
+          </div>
+        }
         {!currentResult && error &&
           <div className="flex items-center justify-between w-full">
             <span className="text-red-400 font-bold">{error}</span>

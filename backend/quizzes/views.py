@@ -1,13 +1,13 @@
 from django.db.models import Count
 from django.http import Http404
 from django.utils import timezone
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .grading import AlreadyAnswered, submit_answer
+from .grading import AlreadyAnswered, NotStarted, start_question, submit_answer
 from .models import Lecture, Question
 from .serializers import (
     AnswerRequestSerializer,
@@ -55,6 +55,37 @@ class LectureQuizView(RetrieveAPIView):
             raise NotFound()
 
 
+def check_can_answer(user, lecture):
+    profile = getattr(user, "profile", None)
+    if profile is None or profile.role != "student":
+        raise PermissionDenied("Only students can answer questions.")
+    if not lecture.classroom.enrollments.filter(user=user).exists():
+        raise PermissionDenied("You must be enrolled in this class.")
+
+
+class LectureQuestionStartView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, question_id):
+        try:
+            lecture = available_lectures().get(pk=pk)
+            question = lecture.questions.get(pk=question_id)
+        except (Lecture.DoesNotExist, Question.DoesNotExist):
+            raise NotFound()
+        check_can_answer(request.user, lecture)
+        try:
+            start, created = start_question(request.user, lecture, question)
+        except AlreadyAnswered:
+            return Response(
+                {"detail": "This question was already answered in this attempt."},
+                status=400,
+            )
+        return Response(
+            {"question_id": question.id, "started_at": start.started_at},
+            status=201 if created else 200,
+        )
+
+
 class LectureAnswerView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -63,6 +94,7 @@ class LectureAnswerView(APIView):
             lecture = available_lectures().get(pk=pk)
         except Lecture.DoesNotExist:
             raise NotFound()
+        check_can_answer(request.user, lecture)
         serializer = AnswerRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -76,7 +108,11 @@ class LectureAnswerView(APIView):
                 lecture,
                 question,
                 data["chosen_index"],
-                data["time_taken_ms"],
+            )
+        except NotStarted:
+            return Response(
+                {"detail": "Start this question before answering."},
+                status=400,
             )
         except AlreadyAnswered:
             return Response(

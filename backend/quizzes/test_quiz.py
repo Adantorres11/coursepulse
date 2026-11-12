@@ -1,6 +1,5 @@
 from datetime import timedelta
 
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -8,6 +7,7 @@ from rest_framework.test import APITestCase
 from classrooms.models import Classroom
 from .models import Lecture, Question
 from .test_lectures import add_questions
+from .testing import answer, make_student
 
 
 class LectureQuizTests(TestCase):
@@ -118,20 +118,11 @@ class QuizProgressTests(APITestCase):
         )
         add_questions(cls.lecture, 3)
         cls.questions = list(cls.lecture.questions.order_by("position", "id"))
-        User = get_user_model()
-        cls.student = User.objects.create_user(username="one", password="pw")
-        cls.other = User.objects.create_user(username="two", password="pw")
+        cls.student = make_student("one", classroom)
+        cls.other = make_student("two", classroom)
 
     def answer(self, question):
-        return self.client.post(
-            f"/api/lectures/{self.lecture.id}/answers/",
-            {
-                "question_id": question.id,
-                "chosen_index": question.correct_index,
-                "time_taken_ms": 1000,
-            },
-            format="json",
-        )
+        return answer(self.client, self.lecture, question, question.correct_index)
 
     def get_quiz(self):
         return self.client.get(f"/api/lectures/{self.lecture.id}/quiz/").json()

@@ -72,8 +72,12 @@ export interface Quiz {
 
 export interface AnswerRequest {
   question_id: number;
-  chosen_index: number; // 0-3
-  time_taken_ms: number; // 0 or more
+  chosen_index: number | null; // 0-3, or null when time ran out
+}
+
+export interface QuestionStart {
+  question_id: number;
+  started_at: string;
 }
 
 export interface AnswerResult {

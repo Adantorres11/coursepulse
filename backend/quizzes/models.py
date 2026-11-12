@@ -82,6 +82,23 @@ class Attempt(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     total_points = models.PositiveIntegerField(default=0)
     answer_streak = models.PositiveIntegerField(default=0)
+    is_first = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "lecture"],
+                condition=models.Q(completed_at__isnull=True),
+                name="unique_open_attempt_per_user_lecture",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            self.is_first = not Attempt.objects.filter(
+                user=self.user_id, lecture=self.lecture_id
+            ).exists()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return (
@@ -101,10 +118,11 @@ class Answer(models.Model):
         on_delete=models.CASCADE,
         related_name="answers",
     )
-    chosen_index = models.PositiveSmallIntegerField()
+    chosen_index = models.PositiveSmallIntegerField(null=True, blank=True)
     is_correct = models.BooleanField()
     time_taken_ms = models.PositiveIntegerField()
     points_awarded = models.PositiveIntegerField(default=0)
+    answered_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         constraints = [
@@ -135,6 +153,34 @@ class Answer(models.Model):
     def __str__(self):
         return (
             f"Answer {self.pk}: "
+            f"attempt {self.attempt_id}, question {self.question_id}"
+        )
+
+
+class QuestionStart(models.Model):
+    attempt = models.ForeignKey(
+        Attempt,
+        on_delete=models.CASCADE,
+        related_name="starts",
+    )
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="starts",
+    )
+    started_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["attempt", "question"],
+                name="unique_start_per_attempt_question",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"QuestionStart {self.pk}: "
             f"attempt {self.attempt_id}, question {self.question_id}"
         )
 

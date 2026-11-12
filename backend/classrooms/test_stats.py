@@ -135,7 +135,27 @@ class ClassStatsTests(APITestCase):
         self.assertEqual(item["correct_count"], 3)
         self.assertFalse(item["is_new"])
         self.assertEqual(data["quizzes_played"], 1)
-        self.assertEqual(data["total_points"], 400)
+        self.assertEqual(data["total_points"], 100)
+
+    def test_replay_does_not_change_total_points(self):
+        self.add_attempt(self.bharat, 300, correct=3)
+        self.add_attempt(self.bharat, 500, correct=3)
+
+        self.assertEqual(self.get_stats()["total_points"], 300)
+
+    def test_replay_still_sets_best_score(self):
+        self.add_attempt(self.bharat, 300, correct=3)
+        self.add_attempt(self.bharat, 500, correct=3)
+
+        item = self.lecture_item(self.get_stats(), self.old)
+
+        self.assertEqual(item["best_score"], 500)
+
+    def test_unfinished_first_attempt_counts_nothing(self):
+        self.add_attempt(self.bharat, 300, correct=3, completed=False)
+        self.add_attempt(self.bharat, 500, correct=3)
+
+        self.assertEqual(self.get_stats()["total_points"], 0)
 
     def test_lower_repeat_attempt_does_not_lower_best_score(self):
         self.add_attempt(self.bharat, 300, correct=3)
