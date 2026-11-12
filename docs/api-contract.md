@@ -527,6 +527,38 @@ Errors:
 - `403`: For an existing class, the requester does not have the
   student role or is not enrolled.
 
+## POST /api/classes/
+
+Creates a new class owned by the logged-in professor.
+
+Authentication: Required (professor only).
+
+Request:
+```json
+{
+  "name": "Software Engineering"
+}
+```
+
+Success: 201 Created
+```json
+{
+  "id": 1,
+  "name": "Software Engineering",
+  "access_code": "ABC123"
+}
+```
+
+Rules:
+- Class name is required and cannot be blank.
+- The professor is automatically assigned as the class owner.
+- A unique 6-character access code is generated automatically.
+
+Errors:
+- 400: Missing or blank class name.
+- 403: User is not a professor.
+- 401: Missing or invalid authentication.
+
 ## GET /api/professor/classes/
 
 Returns all classes owned by the logged-in professor.

@@ -1,4 +1,4 @@
-from .serializers import ProfessorClassSerializer
+from .serializers import ClassCreateSerializer, ProfessorClassSerializer
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -18,6 +18,24 @@ class StudentClassListView(ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = ClassroomSerializer
     pagination_class = None
+
+    def post(self, request):
+        profile = getattr(request.user, "profile", None)
+
+        if profile is None or profile.role != "professor":
+            raise PermissionDenied(
+                "Only professors can create classes."
+            )
+
+        serializer = ClassCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        serializer.save(professor=request.user)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
 
     def get_queryset(self):
         user = self.request.user
