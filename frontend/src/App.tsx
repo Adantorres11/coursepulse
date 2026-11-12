@@ -1,13 +1,16 @@
-import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { StudentHub } from "./components/StudentHub";
 import { QuizPage } from "./components/QuizPage";
 import { AuthPage } from "./components/AuthPage";
 import { LandingPage } from "./components/LandingPage";
+import { ClassHub } from "./components/ClassHub";
+import { JoinClassPage } from "./components/JoinClassPage";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
 
 function AppContent() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
 
   const hasCustomHeader =
@@ -15,7 +18,9 @@ function AppContent() {
     location.pathname === "/landing" ||
     location.pathname === "/login" ||
     location.pathname === "/signup" ||
-    location.pathname === "/hub";
+    location.pathname === "/hub" ||
+    location.pathname === "/join" ||
+    location.pathname.startsWith("/class");
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -47,7 +52,10 @@ function AppContent() {
                   )}
                   <button
                     type="button"
-                    onClick={() => logout()}
+                    onClick={() => {
+                      logout();
+                      navigate("/login");
+                    }}
                     className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                   >
                     Log out
@@ -79,7 +87,6 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/landing" element={<LandingPage />} />
-          {/* Protected routes: unauthenticated users are redirected to /login */}
           <Route
             path="/hub"
             element={
@@ -89,6 +96,23 @@ function AppContent() {
             }
           />
           <Route
+            path="/join"
+            element={
+              <ProtectedRoute>
+                <JoinClassPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/class/:classId"
+            element={
+              <ProtectedRoute>
+                <ClassHub />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/class" element={<Navigate to="/hub" replace />} />
+          <Route
             path="/quiz/:lectureId"
             element={
               <ProtectedRoute>
@@ -96,7 +120,6 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
-          {/* Public only routes: authenticated users visiting login/signup are sent to /hub */}
           <Route
             path="/login"
             element={
@@ -129,5 +152,3 @@ export default function App() {
     </BrowserRouter>
   );
 }
-
-

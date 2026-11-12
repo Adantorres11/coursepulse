@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { getQuiz, type Quiz } from "../lib/apiClient";
+import { useParams, useLocation, Link } from "react-router-dom";
+import { getQuiz, request, type Quiz, type Lecture } from "../lib/apiClient";
 import QuizGame from "./quiz";
 
 interface QuizPageProps {
@@ -12,9 +12,45 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
   const { lectureId: routeLectureId } = useParams<{ lectureId: string }>();
   const lectureId = propLectureId ?? routeLectureId ?? "";
 
+  // The Class Hub passes the page it came from; otherwise go to the Student Hub.
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from;
+  const backTo = from ?? "/hub";
+  const backLabel = from ? "Class Hub" : "Student Hub";
+
   const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [classroomId, setClassroomId] = useState<number | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    setClassroomId(undefined);
+
+    if (lectureId) {
+      request<Lecture[]>("/lectures/", {
+        signal: controller.signal,
+      })
+        .then((result) => {
+          if (!active) return;
+
+          // request() never throws. On error the quiz still plays and the
+          // leaderboard button stays disabled because classroomId is undefined.
+          const lecture = result.data?.find(
+            (item) => String(item.id) === String(lectureId)
+          );
+
+          setClassroomId(lecture?.classroom_id);
+        });
+    }
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [lectureId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -54,12 +90,12 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
     <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       {/* Back link to Hub */}
       <Link
-        to="/hub"
+        to={backTo}
         onClick={handleBackClick}
         className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-6 cursor-pointer"
       >
         <span>←</span>
-        <span>Back to Student Hub</span>
+        <span>Back to {backLabel}</span>
       </Link>
 
       {loading ? (
@@ -75,11 +111,11 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
             {error || `We couldn't find any quiz questions for lecture #${lectureId}.`}
           </p>
           <Link
-            to="/hub"
+            to={backTo}
             onClick={handleBackClick}
             className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
           >
-            Return to Hub
+            Return to {backLabel}
           </Link>
         </div>
       ) : (
@@ -96,7 +132,13 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
           </div>
 
           {/* Interactive Gameplay Component */}
-          <QuizGame questions={quiz.questions} />
+          <QuizGame
+            questions={quiz.questions}
+            lectureId={lectureId}
+            initialAnsweredIds={quiz.answered_question_ids ?? []}
+            initialScore={quiz.total_points ?? 0}
+            classroomId={classroomId}
+          />
         </div>
       )}
     </div>

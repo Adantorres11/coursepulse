@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Answer, Attempt
+from .models import Answer, Attempt, QuestionStart
 
 
 @admin.register(Attempt)
@@ -12,6 +12,7 @@ class AttemptAdmin(admin.ModelAdmin):
         "started_at",
         "completed_at",
         "total_points",
+        "is_first",
     )
     list_filter = ("lecture",)
     list_select_related = ("user", "lecture")
@@ -29,4 +30,10 @@ class AnswerAdmin(admin.ModelAdmin):
         "points_awarded",
     )
     list_filter = ("is_correct",)
+    list_select_related = ("attempt", "question")
+
+
+@admin.register(QuestionStart)
+class QuestionStartAdmin(admin.ModelAdmin):
+    list_display = ("id", "attempt", "question", "started_at")
     list_select_related = ("attempt", "question")

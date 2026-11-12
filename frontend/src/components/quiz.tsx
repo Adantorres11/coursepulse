@@ -1,32 +1,100 @@
-import { useState, useEffect } from "react";
-import type { Quiz, DifficultyLevel } from "../types/api";
+import { useState, useEffect, useRef } from "react";
+import type { Quiz, DifficultyLevel, AnswerRequest, AnswerResult } from "../types/api";
+import { postAnswer, startQuestion } from "../lib/apiClient";
+import { LeaderboardModal } from "./LeaderboardModal";
 
 type QuizQuestion = Quiz["questions"][number];
 
+const QUESTION_TIME_LIMIT_SECONDS = 15;
+
 interface QuizGameProps {
   questions: QuizQuestion[];
+  lectureId?: string | number;
+  initialAnsweredIds?: number[];
+  initialScore?: number;
+  classroomId?: number;
 }
 
-export default function QuizGame({ questions }: QuizGameProps) {
-  const [score, setScore] = useState<number>(0);
-  const [questionIndex, setQuestionIndex] = useState<number>(-1);
+export default function QuizGame({
+  questions,
+  lectureId = "",
+  initialAnsweredIds = [],
+  initialScore = 0,
+  classroomId,
+}: QuizGameProps) {
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+
+  // ids answered in an earlier visit; cleared on replay
+  const [resumeIds, setResumeIds] = useState<string[]>(initialAnsweredIds.map(String));
+  const allAnsweredAtLoad =
+    questions.length > 0 && questions.every((q) => resumeIds.includes(String(q.id)));
+
+  const [score, setScore] = useState<number>(initialScore);
+  const [questionIndex, setQuestionIndex] = useState<number>(
+    allAnsweredAtLoad ? questions.length : -1
+  );
 
   const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>(
     Array(questions.length).fill(null)
   );
 
-  // keeps track of which questions have been answered
-  const [answeredQuestions, setAnsweredQuestions] = useState<boolean[]>(
-    questions.map(() => false)
+  // server grading result per question; null until answered in this session
+  const [results, setResults] = useState<(AnswerResult | null)[]>(
+    Array(questions.length).fill(null)
   );
+  const currentResult = results[questionIndex] ?? null;
+
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  // the request that failed, so "Try again" repeats the same call
+  const [failedRequest, setFailedRequest] = useState<
+    { body: AnswerRequest; answerIndex: number | null; index: number } | null
+  >(null);
+
+  // index of the question the server has started; answers stay off until it matches
+  const [startedIndex, setStartedIndex] = useState<number | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  // bumped by "Try again" to repeat the start call
+  const [startAttempt, setStartAttempt] = useState<number>(0);
+  const questionStarted = startedIndex === questionIndex;
+
+  const timeoutSentRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    timeoutSentRef.current = false;
+  }, [questionIndex]);
+
+  // ask the server to start the clock for the current question
+  useEffect(() => {
+    if (questionIndex < 0 || questionIndex >= questions.length || currentResult) {
+      return;
+    }
+
+    let cancelled = false;
+    setStartError(null);
+    startQuestion(lectureId, Number(questions[questionIndex].id)).then((result) => {
+      if (cancelled) {
+        return;
+      }
+      if (result.error || !result.data) {
+        setStartError(result.error ?? "Could not start this question.");
+        return;
+      }
+      setStartedIndex(questionIndex);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [questionIndex, startAttempt, currentResult, lectureId, questions.length]);
 
   // sets color of buttons based on user input
   function getAnswerColor(answerIndex: number) {
-    if (!answeredQuestions[questionIndex]) {
+    if (!currentResult) {
       return "border border-slate-600 bg-slate-800 hover:border-slate-400";
     }
 
-    if (answerIndex === questions[questionIndex].correct_index) {
+    if (answerIndex === currentResult.correct_index) {
       if(selectedAnswers[questionIndex] === answerIndex)
         return "border border-emerald-400 bg-emerald-600";
       else
@@ -40,29 +108,54 @@ export default function QuizGame({ questions }: QuizGameProps) {
     return "border border-slate-600 bg-slate-800";
   }
 
-// adjusts score based on which quiz answer selected
-  function handleAnswer(answerIndex: number | null) {
-    if(answeredQuestions[questionIndex]) {
+// sends the answer to the server, which grades it
+  async function handleAnswer(answerIndex: number | null) {
+    if (currentResult || submitting || failedRequest) {
       return;
     }
 
-    setSelectedAnswers((prev) => {
-      const updated = [...prev];
-      updated[questionIndex] = answerIndex;
-      return updated;
-    });
-
-    if (answerIndex !== null && answerIndex === questions[questionIndex].correct_index) {
-      setScore((prev) => prev + 100 * getDifficultyPoints(questions[questionIndex].difficulty));
-    }
-
-    setAnsweredQuestions((previous) => {
-      const updated = [...previous];
-      updated[questionIndex] = true;
-      return updated;
-    });
+    const body: AnswerRequest = {
+      question_id: Number(questions[questionIndex].id),
+      chosen_index: answerIndex,
+    };
+    await submitAnswer(body, answerIndex, questionIndex);
   }
 
+  async function submitAnswer(body: AnswerRequest, answerIndex: number | null, index: number) {
+    setSubmitting(true);
+    setError(null);
+    const result = await postAnswer(lectureId, body);
+    setSubmitting(false);
+
+    if (result.error || !result.data) {
+      setError(result.error ?? "Could not save your answer.");
+      setFailedRequest({ body, answerIndex, index });
+      return;
+    }
+
+    const answer = result.data;
+    setFailedRequest(null);
+    setSelectedAnswers((prev) => {
+      const updated = [...prev];
+      updated[index] = answerIndex;
+      return updated;
+    });
+    setResults((prev) => {
+      const updated = [...prev];
+      updated[index] = answer;
+      return updated;
+    });
+    setScore(answer.total_points);
+  }
+
+  function retryAnswer() {
+    if (!failedRequest || submitting) {
+      return;
+    }
+    submitAnswer(failedRequest.body, failedRequest.answerIndex, failedRequest.index);
+  }
+
+  // display only; the server decides the points
   function getDifficultyPoints(difficulty: DifficultyLevel | undefined): number {
     switch (difficulty) {
       case "easy":
@@ -76,37 +169,40 @@ export default function QuizGame({ questions }: QuizGameProps) {
     }
   }
 
-  function nextQuestion() {
-    setTimeLeft(20);
-
-    if (questionIndex < questions.length - 1) {
-      setQuestionIndex((prev) => prev + 1);
-    } else {
-      setQuestionIndex(questions.length);
+  // first question after `from` not answered in an earlier visit
+  function nextOpenIndex(from: number): number {
+    for (let i = from + 1; i < questions.length; i++) {
+      if (!resumeIds.includes(String(questions[i].id))) {
+        return i;
+      }
     }
+    return questions.length;
+  }
+
+  function nextQuestion() {
+    setTimeLeft(QUESTION_TIME_LIMIT_SECONDS);
+    setQuestionIndex(nextOpenIndex(questionIndex));
   }
 
 // returns number of questions user got correct.
   function getNumberQuestionsCorrect(): number {
-    var count = 0;
-    for(var i = 0; i < questions.length; i++){
-      if(selectedAnswers[i] === questions[i].correct_index)
-        count += 1;
-    }
-    return count;
+    return results.filter((result) => result?.is_correct).length;
   }
 
   // Timer workings.
   const [timeLeft, setTimeLeft] = useState<number>(3);
 
   useEffect(() => {
-    if (questionIndex >= questions.length || answeredQuestions[questionIndex]){
+    if (questionIndex >= questions.length || currentResult || submitting || failedRequest){
       return;
     }
 
     // question out of time
     if(questionIndex != -1 && timeLeft <= 0) {
-      handleAnswer(null);
+      if (!timeoutSentRef.current) {
+        timeoutSentRef.current = true;
+        handleAnswer(null);
+      }
       return;
     }
     // countdown out of time
@@ -119,7 +215,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, questionIndex, answeredQuestions, questions.length]);
+  }, [timeLeft, questionIndex, currentResult, submitting, failedRequest, questions.length]);
 
   // timer ring config
   const radius = 44;
@@ -133,7 +229,12 @@ export default function QuizGame({ questions }: QuizGameProps) {
     setQuestionIndex(-1);
     setTimeLeft(3);
     setSelectedAnswers(Array(questions.length).fill(null));
-    setAnsweredQuestions(questions.map(() => false));
+    setResults(Array(questions.length).fill(null));
+    setResumeIds([]);
+    setError(null);
+    setFailedRequest(null);
+    setStartedIndex(null);
+    setStartError(null);
   }
 
   // QUIZ is empty
@@ -182,13 +283,13 @@ export default function QuizGame({ questions }: QuizGameProps) {
               {questions.length} questions
             </div>
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
-              20 sec each
+              {QUESTION_TIME_LIMIT_SECONDS} sec each
             </div>
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
               100 to 300 pts
             </div>
           </div>
-          <span className="text-slate-400 text-sm font-medium">Question 1 starts in a moment.</span>
+          <span className="text-slate-400 text-sm font-medium">Question {nextOpenIndex(-1) + 1} starts in a moment.</span>
         </div>
       </div>
     )
@@ -230,9 +331,9 @@ export default function QuizGame({ questions }: QuizGameProps) {
             </span>
           </div>
           <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden relative">
-            <div 
+          <div
               className={"h-full transition-all duration-1000 linear rounded-full bg-sky-400"}
-              style={{ width: `${(timeLeft / 20) * 100}%` }}
+              style={{ width: `${(timeLeft / QUESTION_TIME_LIMIT_SECONDS) * 100}%` }}
             />
           </div>
         </div>
@@ -241,7 +342,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
         <div className="flex items-center justify-between w-full px-2 pt-3 pb-2">
           <div className="flex flex-row inline-flex items-center gap-1">
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
-              {questions[questionIndex]?.difficulty 
+              {questions[questionIndex]?.difficulty
                 ? questions[questionIndex].difficulty.charAt(0).toUpperCase() + questions[questionIndex].difficulty.slice(1)
                 : "Loading..."}
             </div>
@@ -258,6 +359,7 @@ export default function QuizGame({ questions }: QuizGameProps) {
             <button
               key={index}
               className={`flex w-full items-center justify-between gap-4 px-2 py-2 rounded-lg cursor-pointer transition-colors text-left ${getAnswerColor(index)}`}
+              disabled={!questionStarted}
               onClick={() => handleAnswer(index)}
             >
               <div className="flex items-center gap-4">
@@ -266,20 +368,36 @@ export default function QuizGame({ questions }: QuizGameProps) {
                 </span>
                 {choice}
               </div>
-                
+
               <div className="pr-1">
-                {answeredQuestions[questionIndex] && index == questions[questionIndex].correct_index && <span className="text-white font-bold">✓</span>}
-                {selectedAnswers[questionIndex] == index && index != questions[questionIndex].correct_index && <span className="text-white font-bold">✕</span>}
+                {currentResult && index == currentResult.correct_index && <span className="text-white font-bold">✓</span>}
+                {currentResult && selectedAnswers[questionIndex] == index && index != currentResult.correct_index && <span className="text-white font-bold">✕</span>}
               </div>
 
             </button>
           ))}
         </div>
-        {answeredQuestions[questionIndex] &&
+        {!currentResult && startError &&
+          <div className="flex items-center justify-between w-full">
+            <span className="text-red-400 font-bold">{startError}</span>
+            <button className="bg-blue-300 text-black font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => setStartAttempt((n) => n + 1)}>
+              Try again
+            </button>
+          </div>
+        }
+        {!currentResult && error &&
+          <div className="flex items-center justify-between w-full">
+            <span className="text-red-400 font-bold">{error}</span>
+            <button className="bg-blue-300 text-black font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => retryAnswer()}>
+              Try again
+            </button>
+          </div>
+        }
+        {currentResult &&
           <div className="flex items-center justify-between w-full">
             <div>
-              {selectedAnswers[questionIndex] == questions[questionIndex].correct_index && <span className="text-emerald-400 font-bold">✓ Correct! +{getDifficultyPoints(questions[questionIndex].difficulty) * 100} points</span>}
-              {selectedAnswers[questionIndex] != questions[questionIndex].correct_index && <span className="text-red-400 font-bold">✕ Not quite. +0 points</span>}
+              {currentResult.is_correct && <span className="text-emerald-400 font-bold">✓ Correct! +{currentResult.points_awarded} points</span>}
+              {!currentResult.is_correct && <span className="text-red-400 font-bold">✕ Not quite. +{currentResult.points_awarded} points</span>}
             </div>
             <button className="bg-blue-300 text-black font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => nextQuestion()}>
               {questionIndex === questions.length - 1
@@ -298,7 +416,9 @@ export default function QuizGame({ questions }: QuizGameProps) {
         <h1 className="text-3xl font-bold p-6">Quiz Complete</h1>
         <h2 className="text-xs font-bold text-slate-500 p-1">FINAL SCORE</h2>
         <span className="text-9xl font-bold text-blue-300">{score}</span>
-        <span className="text-m text-slate-200 p-1">{getNumberQuestionsCorrect()} of {questions.length} correct</span>
+        {results.every((result) => result !== null) &&
+          <span className="text-m text-slate-200 p-1">{getNumberQuestionsCorrect()} of {questions.length} correct</span>
+        }
       </div>
 
       {/* TODO leaderboard info */}
@@ -307,25 +427,40 @@ export default function QuizGame({ questions }: QuizGameProps) {
         {questions.map((_, index) => (
             <div key={index} className="flex flex-col items-center justify-between px-2 py-2 rounded-lg transition-colors text-left border border-slate-600 bg-slate-800">
               <div>
-                <span className="text-slate-400 text-xs font-medium">Q{index + 1} - {questions[index]?.difficulty 
+                <span className="text-slate-400 text-xs font-medium">Q{index + 1} - {questions[index]?.difficulty
                   ? questions[index].difficulty.charAt(0).toUpperCase() + questions[index].difficulty.slice(1)
                   : "Loading..."}</span>
               </div>
               <div>
-                {selectedAnswers[index] == questions[index].correct_index && <span className="text-emerald-400 font-bold">✓ +{getDifficultyPoints(questions[index].difficulty) * 100}</span>}
-                {selectedAnswers[index] != questions[index].correct_index && <span className="text-red-400 font-bold">✕ 0</span>}
+                {!results[index] && <span className="text-slate-400 text-xs font-medium">Answered earlier</span>}
+                {results[index]?.is_correct && <span className="text-emerald-400 font-bold">✓ +{results[index]?.points_awarded}</span>}
+                {results[index] && !results[index]?.is_correct && <span className="text-red-400 font-bold">✕ 0</span>}
               </div>
             </div>
           ))}
       </div>
 
       <div className="flex items-center justify-center flex-row p-6 gap-2">
-          <button className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors text-left bg-blue-300 text-black leading-none" onClick={() => restartQuiz()}>
-            <span className="font-bold flex items-center justify-center">⟳</span>
-            <span className="font-medium">Replay</span>
-          </button>
+        <button className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors text-left bg-blue-300 text-black leading-none" onClick={() => restartQuiz()}>
+          <span className="font-bold flex items-center justify-center">⟳</span>
+          <span className="font-medium">Replay</span>
+        </button>
 
-          {/* TODO view leaderboard button*/}
+        <button
+          type="button"
+          onClick={() => setIsLeaderboardOpen(true)}
+          disabled={classroomId == null}
+          className="rounded-lg bg-sky-400 px-3 py-2 font-medium text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          View leaderboard
+        </button>
+
+        {isLeaderboardOpen && classroomId != null && (
+          <LeaderboardModal
+            classroomId={classroomId}
+            onClose={() => setIsLeaderboardOpen(false)}
+          />
+        )}
       </div>
 
     </div>

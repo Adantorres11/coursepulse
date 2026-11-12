@@ -68,11 +68,11 @@ class ClassLeaderboardTests(APITestCase):
             completed_at=timezone.now() if completed else None,
         )
 
-    def test_points_sum_across_lectures_and_repeat_attempts(self):
+    def test_points_sum_across_lectures_and_ignore_repeat_attempts(self):
         self.add_attempt(self.bharat, 100)
         self.add_attempt(self.bharat, 100)
         self.add_attempt(self.bharat, 200, lecture=self.second_lecture)
-        self.add_attempt(self.alex, 300)
+        self.add_attempt(self.alex, 250)
 
         response = self.client.get(self.url)
 
@@ -80,12 +80,31 @@ class ClassLeaderboardTests(APITestCase):
         self.assertEqual(response.data[0], {
             "rank": 1,
             "display_name": "Bharat K.",
-            "points": 400,
+            "points": 300,
             "is_current_user": True,
         })
-        self.assertEqual(response.data[1]["points"], 300)
+        self.assertEqual(response.data[1]["points"], 250)
         self.assertEqual(response.data[1]["rank"], 2)
         self.assertEqual(len(response.data), 4)
+
+    def test_replay_does_not_change_points(self):
+        self.add_attempt(self.bharat, 300)
+        self.add_attempt(self.bharat, 500)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.data[0]["points"], 300)
+
+    def test_unfinished_first_attempt_counts_nothing(self):
+        self.add_attempt(self.bharat, 300, completed=False)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [entry["points"] for entry in response.data],
+            [0, 0, 0, 0],
+        )
 
     def test_ties_share_competition_rank(self):
         self.add_attempt(self.bharat, 500)

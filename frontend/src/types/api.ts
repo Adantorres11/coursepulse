@@ -16,15 +16,44 @@ export interface Lecture {
   publishedAt?: string;
 }
 
+export interface ClassLectureStat {
+  id: number;
+  title: string;
+  published_at: string; // ISO date string
+  question_count: number;
+  best_score: number;
+  correct_count: number;
+  is_new: boolean;
+}
+
+export interface ClassSummary {
+  id: number;
+  name: string;
+  course_code: string;
+  professor: { id: number; name: string } | null;
+  quiz_count: number;
+  new_quiz_count: number;
+}
+
+export interface ClassStats {
+  classroom_id: number;
+  classroom: string;
+  total_points: number;
+  rank: number;
+  points_to_next_rank: number;
+  quizzes_played: number;
+  quizzes_total: number;
+  day_streak: number;
+  answer_streak: number;
+  up_next: ClassLectureStat | null;
+  lectures: ClassLectureStat[];
+}
+
 export interface QuizQuestion {
   id: number | string;
   prompt: string;
   choices: string[];
-  correct_index: number;
   difficulty?: DifficultyLevel;
-
-  // Optional legacy alias for backwards compatibility
-  correctChoiceIndex?: number;
 }
 
 export interface Quiz {
@@ -32,9 +61,30 @@ export interface Quiz {
   lecture_id: number | string;
   title: string;
   questions: QuizQuestion[];
+  // For the logged-in student's open attempt. Empty and 0 when there is none.
+  // Optional only because the offline sample data lacks them; the API always sends them (see docs/api-contract.md).
+  answered_question_ids?: number[];
+  total_points?: number;
 
   // Optional legacy alias for backwards compatibility
   lectureId?: number | string;
+}
+
+export interface AnswerRequest {
+  question_id: number;
+  chosen_index: number | null; // 0-3, or null when time ran out
+}
+
+export interface QuestionStart {
+  question_id: number;
+  started_at: string;
+}
+
+export interface AnswerResult {
+  is_correct: boolean;
+  points_awarded: number;
+  total_points: number;
+  correct_index: number;
 }
 
 export interface HealthResponse {
@@ -72,4 +122,14 @@ export interface LoginPayload {
 export interface ApiResult<T> {
   data: T | null;
   error: string | null;
+  /** HTTP status of a non-OK response. Not set for network errors. */
+  status?: number;
+}
+
+// One row of GET /api/classes/{id}/leaderboard/
+export interface LeaderboardEntry {
+  rank: number;
+  display_name: string;
+  points: number;
+  is_current_user: boolean;
 }

@@ -1,12 +1,17 @@
+from datetime import timedelta
+
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.test import APITestCase
 
 from classrooms.models import Classroom
 from .models import Answer, Attempt, Lecture, Question
+from .test_lectures import add_questions
+from .testing import answer, make_student
 
 
 class AttemptAnswerModelTests(TestCase):
@@ -114,6 +119,7 @@ class AttemptAnswerModelTests(TestCase):
         first_attempt = Attempt.objects.create(
             user=self.user,
             lecture=self.lecture,
+            completed_at=timezone.now(),
         )
         second_attempt = Attempt.objects.create(
             user=self.user,
@@ -160,3 +166,45 @@ class AttemptAnswerModelTests(TestCase):
     def test_models_are_registered_in_admin(self):
         self.assertTrue(admin.site.is_registered(Attempt))
         self.assertTrue(admin.site.is_registered(Answer))
+
+
+class FirstAttemptTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.classroom = Classroom.objects.create(name="Any Class")
+        cls.lecture = Lecture.objects.create(
+            classroom=cls.classroom,
+            title="Lecture",
+            published_at=timezone.now() - timedelta(hours=1),
+        )
+        add_questions(cls.lecture, 1)
+        cls.question = cls.lecture.questions.get()
+        cls.user = make_student("student", cls.classroom)
+        cls.other = make_student("other", cls.classroom)
+
+    def play(self, user):
+        self.client.force_authenticate(user)
+        answer(self.client, self.lecture, self.question, 0)
+
+    def test_first_attempt_is_marked_first(self):
+        self.play(self.user)
+
+        self.assertTrue(Attempt.objects.get().is_first)
+
+    def test_replay_is_not_first(self):
+        self.play(self.user)
+        self.play(self.user)
+
+        self.assertEqual(
+            [a.is_first for a in Attempt.objects.order_by("id")],
+            [True, False],
+        )
+
+    def test_other_student_first_attempt_is_first(self):
+        self.play(self.user)
+        self.play(self.other)
+
+        self.assertEqual(
+            [a.is_first for a in Attempt.objects.order_by("id")],
+            [True, True],
+        )
