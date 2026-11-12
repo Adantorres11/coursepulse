@@ -526,3 +526,37 @@ Errors:
 - `404`: Unknown class ID.
 - `403`: For an existing class, the requester does not have the
   student role or is not enrolled.
+
+## POST /api/classes/{id}/lectures/
+
+Allows a professor to upload a lecture recording to a class they own.
+
+Authentication: Required (professor and class owner).
+
+Content-Type: multipart/form-data
+
+Request fields:
+- title: Required string (max 255 characters)
+- recording: Required audio/video file
+- Allowed extensions: .mp3, .mp4, .m4a, .wav
+- Maximum file size: 100 MB
+
+Success: 201 Created
+
+```json
+{
+  "id": 1,
+  "title": "Introduction",
+  "status": "pending"
+}
+```
+
+Errors:
+- 400: Invalid file type, oversized file, or missing fields
+- 403: Student or professor who does not own the class
+- 404: Class does not exist
+- 401: Missing or invalid authentication
+
+Transcription:
+- New lectures are saved with status "pending".
+- Transcription job integration depends on Celery and Redis setup.

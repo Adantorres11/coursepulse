@@ -6,6 +6,7 @@ from .views import (
     ClassLookupView,
     ClassStatsView,
     StudentClassListView,
+    LectureUploadView,
 )
 
 urlpatterns = [
@@ -34,4 +35,9 @@ urlpatterns = [
         ClassStatsView.as_view(),
         name="class-stats",
     ),
+    path(
+    "classes/<int:pk>/lectures/",
+    LectureUploadView.as_view(),
+    name="lecture-upload",
+),
 ]
