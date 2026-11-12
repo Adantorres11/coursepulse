@@ -46,3 +46,9 @@ class ClassCodeSerializer(serializers.Serializer):
             )
 
         return code
+
+class ClassCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Classroom
+        fields = ["id", "name", "access_code"]
+        read_only_fields = ["id", "access_code"]
