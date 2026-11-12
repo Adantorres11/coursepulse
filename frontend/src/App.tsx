@@ -3,9 +3,13 @@ import { StudentHub } from "./components/StudentHub";
 import { QuizPage } from "./components/QuizPage";
 import { AuthPage } from "./components/AuthPage";
 import { LandingPage } from "./components/LandingPage";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
 
 function AppContent() {
   const location = useLocation();
+  const { isAuthenticated, user, logout } = useAuth();
+
   const hasCustomHeader =
     location.pathname === "/" ||
     location.pathname === "/landing" ||
@@ -34,18 +38,37 @@ function AppContent() {
               </Link>
             </div>
             <div className="flex items-center gap-3">
-              <Link
-                to="/login"
-                className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-              >
-                Log in
-              </Link>
-              <Link
-                to="/signup"
-                className="text-sm font-semibold bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] px-3.5 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer"
-              >
-                Sign up
-              </Link>
+              {isAuthenticated ? (
+                <>
+                  {user?.email && (
+                    <span className="text-xs text-slate-400 hidden sm:inline">
+                      {user.email}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => logout()}
+                    className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Log in
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="text-sm font-semibold bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] px-3.5 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer"
+                  >
+                    Sign up
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </nav>
@@ -56,10 +79,40 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/landing" element={<LandingPage />} />
-          <Route path="/hub" element={<StudentHub />} />
-          <Route path="/quiz/:lectureId" element={<QuizPage />} />
-          <Route path="/login" element={<AuthPage initialTab="login" />} />
-          <Route path="/signup" element={<AuthPage initialTab="signup" />} />
+          {/* Protected routes: unauthenticated users are redirected to /login */}
+          <Route
+            path="/hub"
+            element={
+              <ProtectedRoute>
+                <StudentHub />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/quiz/:lectureId"
+            element={
+              <ProtectedRoute>
+                <QuizPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Public only routes: authenticated users visiting login/signup are sent to /hub */}
+          <Route
+            path="/login"
+            element={
+              <PublicOnlyRoute>
+                <AuthPage initialTab="login" />
+              </PublicOnlyRoute>
+            }
+          />
+          <Route
+            path="/signup"
+            element={
+              <PublicOnlyRoute>
+                <AuthPage initialTab="signup" />
+              </PublicOnlyRoute>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
@@ -70,7 +123,9 @@ function AppContent() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </BrowserRouter>
   );
 }

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import type { UserRole } from "../types/api";
 
 type AuthTab = "login" | "signup";
-type UserRole = "student" | "professor";
 
 interface AuthPageProps {
   initialTab?: AuthTab;
@@ -10,7 +11,13 @@ interface AuthPageProps {
 
 export function AuthPage({ initialTab = "login" }: AuthPageProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { login, signup } = useAuth();
+
+  // Target path to redirect after successful login
+  const fromPath =
+    (location.state as { from?: { pathname?: string } })?.from?.pathname || "/hub";
 
   // Determine active tab from URL param (e.g. ?tab=signup) or prop
   const urlTab = searchParams.get("tab") as AuthTab | null;
@@ -23,6 +30,7 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("student");
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasLoginError, setHasLoginError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<{ title: string; subtitle: string }>({
     title: "Incorrect email or password.",
@@ -35,26 +43,38 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
     setSearchParams({ tab });
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Acceptance criterion: A failed login shows the red error banner and red field borders
-    // If empty or test failure credentials (e.g. invalid password or empty), trigger error banner
-    if (!email.trim() || !password.trim() || password === "wrong" || email === "fail@school.edu") {
+    if (!email.trim() || !password.trim()) {
       setErrorMessage({
-        title: "Incorrect email or password.",
-        subtitle: "Check your details and try again.",
+        title: "Missing required fields.",
+        subtitle: "Email and password are required.",
       });
       setHasLoginError(true);
       return;
     }
 
+    setIsSubmitting(true);
     setHasLoginError(false);
-    // On success, redirect to Student Hub
-    navigate("/hub");
+
+    const result = await login(email, password);
+    setIsSubmitting(false);
+
+    if (!result.success) {
+      setErrorMessage({
+        title: "Incorrect email or password.",
+        subtitle: result.error || "Check your details and try again.",
+      });
+      setHasLoginError(true);
+      return;
+    }
+
+    // On success, redirect to target destination or Student Hub
+    navigate(fromPath, { replace: true });
   };
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!email.trim() || !password.trim()) {
@@ -75,9 +95,23 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
       return;
     }
 
+    setIsSubmitting(true);
     setHasLoginError(false);
+
+    const result = await signup(email, password, role);
+    setIsSubmitting(false);
+
+    if (!result.success) {
+      setErrorMessage({
+        title: "Sign up failed.",
+        subtitle: result.error || "Please check your information and try again.",
+      });
+      setHasLoginError(true);
+      return;
+    }
+
     // On success, redirect to Student Hub
-    navigate("/hub");
+    navigate("/hub", { replace: true });
   };
 
   return (
@@ -396,10 +430,20 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="w-full bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-sky-500/10 mt-2"
+                disabled={isSubmitting}
+                className="w-full bg-[#38BDF8] hover:bg-[#0EA5E9] disabled:opacity-60 disabled:cursor-not-allowed text-[#0A101D] font-bold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-sky-500/10 mt-2"
               >
-                <span>{activeTab === "login" ? "Log in" : "Create account"}</span>
-                <span>→</span>
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-[#0A101D] border-t-transparent rounded-full animate-spin" />
+                    <span>{activeTab === "login" ? "Logging in..." : "Creating account..."}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{activeTab === "login" ? "Log in" : "Create account"}</span>
+                    <span>→</span>
+                  </>
+                )}
               </button>
             </form>
           </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getLectures, type Lecture } from "../lib/apiClient";
+import { useAuth } from "../context/AuthContext";
 
 interface EnrolledClass {
   id: string | number;
@@ -18,6 +19,7 @@ interface StudentHubProps {
 
 export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
   const navigate = useNavigate();
+  const { logout, user } = useAuth();
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -150,13 +152,24 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
           <span className="text-xl font-bold tracking-tight text-white">CoursePulse</span>
         </Link>
 
-        {/* Log out link matching mockups */}
-        <Link
-          to="/login"
-          className="text-sm font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
-        >
-          Log out
-        </Link>
+        {/* Log out button matching mockups - clears session and redirects to /login */}
+        <div className="flex items-center gap-3">
+          {user?.email && (
+            <span className="hidden sm:inline text-xs text-slate-400">
+              {user.email}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              navigate("/login");
+            }}
+            className="text-sm font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
+          >
+            Log out
+          </button>
+        </div>
       </header>
 
       {/* Main Container */}
