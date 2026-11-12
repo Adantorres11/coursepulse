@@ -10,7 +10,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from quizzes.models import QuizCompletion
 from .models import Classroom, Enrollment
-from .serializers import ClassCodeSerializer, ClassroomSerializer
+from .serializers import (
+    ClassCodeSerializer,
+    ClassroomSerializer,
+    ClassRosterSerializer,
+)
 from .stats import build_class_stats, class_standings
 
 
@@ -253,3 +257,35 @@ class ProfessorClassListView(ListAPIView):
             )
             .order_by("name", "id")
         )
+
+class ClassRosterView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        classroom = get_object_or_404(Classroom, pk=pk)
+
+        profile = getattr(request.user, "profile", None)
+
+        if profile is None or profile.role != "professor":
+            raise PermissionDenied(
+                "Only professors can access the class roster."
+            )
+
+        if classroom.professor_id != request.user.id:
+            raise PermissionDenied(
+                "You do not own this class."
+            )
+
+        enrollments = (
+            Enrollment.objects
+            .filter(classroom=classroom)
+            .select_related("user")
+            .order_by("joined_at", "id")
+        )
+
+        serializer = ClassRosterSerializer(
+            enrollments,
+            many=True,
+        )
+
+        return Response(serializer.data)

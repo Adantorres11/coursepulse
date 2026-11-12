@@ -671,3 +671,36 @@ Rules:
 Errors:
 - 401: Missing or invalid authentication.
 - 403: User is not a professor.
+
+## GET /api/classes/{id}/roster/
+
+Returns all students enrolled in the specified classroom.
+
+Authentication: Required (professor only).
+
+Success: 200 OK
+
+```json
+[
+  {
+    "name": "John Smith",
+    "joined_at": "2026-11-12T18:00:00Z"
+  },
+  {
+    "name": "Jane Doe",
+    "joined_at": "2026-11-12T18:05:00Z"
+  }
+]
+```
+
+Rules:
+- Only the professor who owns the classroom can access its roster.
+- Returns each enrolled student's name and join date.
+- Uses the username if the student's full name is unavailable.
+- Students are ordered by join date, earliest first.
+- Returns an empty array if no students are enrolled.
+
+Errors:
+- 401: Missing or invalid authentication.
+- 403: User is not a professor or does not own the classroom.
+- 404: Unknown classroom ID.
