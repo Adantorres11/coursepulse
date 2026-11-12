@@ -52,3 +52,18 @@ class ClassCreateSerializer(serializers.ModelSerializer):
         model = Classroom
         fields = ["id", "name", "access_code"]
         read_only_fields = ["id", "access_code"]
+
+
+class ProfessorClassSerializer(serializers.ModelSerializer):
+    student_count = serializers.IntegerField(read_only=True)
+    lecture_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Classroom
+        fields = [
+            "id",
+            "name",
+            "access_code",
+            "student_count",
+            "lecture_count",
+        ]
