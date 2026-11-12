@@ -1,3 +1,4 @@
+from .serializers import ProfessorClassSerializer
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -7,9 +8,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from quizzes.models import QuizCompletion
-
 from .models import Classroom, Enrollment
 from .serializers import ClassCodeSerializer, ClassroomSerializer
 from .stats import build_class_stats, class_standings
@@ -206,3 +205,33 @@ class ClassStatsView(APIView):
             )
 
         return Response(build_class_stats(classroom, request.user))
+
+class ProfessorClassListView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ProfessorClassSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        user = self.request.user
+        profile = getattr(user, "profile", None)
+
+        if profile is None or profile.role != "professor":
+            raise PermissionDenied(
+                "Only professors can access this class list."
+            )
+
+        return (
+            Classroom.objects
+            .filter(professor=user)
+            .annotate(
+                student_count=Count(
+                    "enrollments",
+                    distinct=True,
+                ),
+                lecture_count=Count(
+                    "lectures",
+                    distinct=True,
+                ),
+            )
+            .order_by("name", "id")
+        )

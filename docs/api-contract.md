@@ -526,3 +526,33 @@ Errors:
 - `404`: Unknown class ID.
 - `403`: For an existing class, the requester does not have the
   student role or is not enrolled.
+
+## GET /api/professor/classes/
+
+Returns all classes owned by the logged-in professor.
+
+Authentication: Required (professor only).
+
+Success: 200 OK
+
+```json
+[
+  {
+    "id": 1,
+    "name": "Software Engineering",
+    "access_code": "ABC123",
+    "student_count": 25,
+    "lecture_count": 8
+  }
+]
+```
+
+Rules:
+- Returns only classes owned by the logged-in professor.
+- Student count includes enrolled students.
+- Lecture count includes all lectures in the class.
+- Returns an empty array if the professor has no classes.
+
+Errors:
+- 401: Missing or invalid authentication.
+- 403: User is not a professor.

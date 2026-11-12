@@ -46,3 +46,17 @@ class ClassCodeSerializer(serializers.Serializer):
             )
 
         return code
+
+class ProfessorClassSerializer(serializers.ModelSerializer):
+    student_count = serializers.IntegerField(read_only=True)
+    lecture_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Classroom
+        fields = [
+            "id",
+            "name",
+            "access_code",
+            "student_count",
+            "lecture_count",
+        ]
