@@ -81,7 +81,19 @@ const submitAuth = async (mode: AuthTab) => {
     }
 
     sessionStorage.setItem("coursepulse_token", data.token);
-    navigate("/hub");
+    if (data.user) {
+      sessionStorage.setItem("coursepulse_user", JSON.stringify(data.user));
+    }
+    const resolvedRole = data.user?.role || (mode === "signup" ? role : null);
+    if (resolvedRole) {
+      sessionStorage.setItem("coursepulse_role", resolvedRole);
+    }
+
+    if (resolvedRole === "professor") {
+      navigate("/professor");
+    } else {
+      navigate("/hub");
+    }
   } catch {
     setErrorMessage({
       title: "Unable to complete your request.",

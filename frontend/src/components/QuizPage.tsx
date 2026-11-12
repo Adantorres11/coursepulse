@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation, Link } from "react-router-dom";
-import { getQuiz, request, type Quiz, type Lecture } from "../lib/apiClient";
+import { getClassesRoute, getQuiz, isProfessor, request, type Quiz, type Lecture } from "../lib/apiClient";
 import QuizGame from "./quiz";
 
 interface QuizPageProps {
@@ -15,8 +15,12 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
   // The Class Hub passes the page it came from; otherwise go to the Student Hub.
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from;
-  const backTo = from ?? "/hub";
-  const backLabel = from ? "Class Hub" : "Student Hub";
+  const backTo = from ?? getClassesRoute();
+  const backLabel = from
+    ? "Class Hub"
+    : isProfessor()
+    ? "Created classes"
+    : "Student Hub";
 
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [classroomId, setClassroomId] = useState<number | undefined>(undefined);

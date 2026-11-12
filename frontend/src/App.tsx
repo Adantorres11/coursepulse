@@ -5,12 +5,14 @@ import { AuthPage } from "./components/AuthPage";
 import { LandingPage } from "./components/LandingPage";
 import { ClassHub } from "./components/ClassHub";
 import { JoinClassPage } from "./components/JoinClassPage";
+import { ProfessorDashboard } from "./components/ProfessorDashboard";
 
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
   // Read on every render; each route change re-renders this component.
   const isLoggedIn = Boolean(sessionStorage.getItem("coursepulse_token"));
+  const role = sessionStorage.getItem("coursepulse_role");
   const hasCustomHeader =
     location.pathname === "/" ||
     location.pathname === "/landing" ||
@@ -18,7 +20,8 @@ function AppContent() {
     location.pathname === "/signup" ||
     location.pathname === "/hub" ||
     location.pathname === "/join" ||
-    location.pathname.startsWith("/class");
+    location.pathname.startsWith("/class") ||
+    location.pathname.startsWith("/professor");
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -34,10 +37,10 @@ function AppContent() {
                 <span>CoursePulse</span>
               </Link>
               <Link
-                to="/hub"
+                to={role === "professor" ? "/professor" : "/hub"}
                 className="text-sm font-medium text-slate-400 hover:text-white transition-colors"
               >
-                Student Hub
+                {role === "professor" ? "Dashboard" : "Student Hub"}
               </Link>
             </div>
             <div className="flex items-center gap-3">
@@ -46,6 +49,7 @@ function AppContent() {
                   type="button"
                   onClick={() => {
                     sessionStorage.removeItem("coursepulse_token");
+                    sessionStorage.removeItem("coursepulse_role");
                     navigate("/login");
                   }}
                   className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
@@ -81,7 +85,11 @@ function AppContent() {
           <Route path="/hub" element={<StudentHub />} />
           <Route path="/join" element={<JoinClassPage />} />
           <Route path="/class/:classId" element={<ClassHub />} />
-          <Route path="/class" element={<Navigate to="/hub" replace />} />
+          <Route path="/class" element={<Navigate to={role === "professor" ? "/professor" : "/hub"} replace />} />
+          <Route path="/professor" element={<ProfessorDashboard />} />
+          <Route path="/professor/classes" element={<ProfessorDashboard />} />
+          <Route path="/professor/dashboard" element={<Navigate to="/professor" replace />} />
+          <Route path="/professor/class/:classId" element={<ClassHub />} />
           <Route path="/quiz/:lectureId" element={<QuizPage />} />
           <Route path="/login" element={<AuthPage initialTab="login" />} />
           <Route path="/signup" element={<AuthPage initialTab="signup" />} />

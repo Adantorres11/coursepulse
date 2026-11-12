@@ -108,3 +108,20 @@ export interface LeaderboardEntry {
   points: number;
   is_current_user: boolean;
 }
+
+// GET /api/professor/classes/
+export interface ProfessorClass {
+  id: number;
+  name: string;
+  access_code: string;
+  student_count: number;
+  lecture_count: number;
+}
+
+// POST /api/classes/ response
+export interface CreateClassResponse {
+  id: number;
+  name: string;
+  access_code: string;
+}
+
