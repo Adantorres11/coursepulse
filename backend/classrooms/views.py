@@ -1,3 +1,6 @@
+from rest_framework.parsers import MultiPartParser, FormParser
+from quizzes.models import Lecture
+from .serializers import LectureUploadSerializer
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -206,3 +209,40 @@ class ClassStatsView(APIView):
             )
 
         return Response(build_class_stats(classroom, request.user))
+
+class LectureUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk):
+        classroom = get_object_or_404(Classroom, pk=pk)
+
+        profile = getattr(request.user, "profile", None)
+
+        if (
+            profile is None
+            or profile.role != "professor"
+            or classroom.professor_id != request.user.id
+        ):
+            raise PermissionDenied(
+                "Only the class owner can upload lectures."
+            )
+
+        serializer = LectureUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        lecture = Lecture.objects.create(
+            classroom=classroom,
+            title=serializer.validated_data["title"],
+            recording=serializer.validated_data["recording"],
+            status="pending",
+        )
+
+        return Response(
+            {
+                "id": lecture.id,
+                "title": lecture.title,
+                "status": lecture.status,
+            },
+            status=status.HTTP_201_CREATED,
+        )
