@@ -5,12 +5,14 @@ import { AuthPage } from "./components/AuthPage";
 import { LandingPage } from "./components/LandingPage";
 import { ClassHub } from "./components/ClassHub";
 import { JoinClassPage } from "./components/JoinClassPage";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
 
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
-  // Read on every render; each route change re-renders this component.
-  const isLoggedIn = Boolean(sessionStorage.getItem("coursepulse_token"));
+  const { isAuthenticated, user, logout } = useAuth();
+
   const hasCustomHeader =
     location.pathname === "/" ||
     location.pathname === "/landing" ||
@@ -41,17 +43,24 @@ function AppContent() {
               </Link>
             </div>
             <div className="flex items-center gap-3">
-              {isLoggedIn ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    sessionStorage.removeItem("coursepulse_token");
-                    navigate("/login");
-                  }}
-                  className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                >
-                  Log out
-                </button>
+              {isAuthenticated ? (
+                <>
+                  {user?.email && (
+                    <span className="text-xs text-slate-400 hidden sm:inline">
+                      {user.email}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      logout();
+                      navigate("/login");
+                    }}
+                    className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Log out
+                  </button>
+                </>
               ) : (
                 <>
                   <Link
@@ -78,13 +87,55 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/landing" element={<LandingPage />} />
-          <Route path="/hub" element={<StudentHub />} />
-          <Route path="/join" element={<JoinClassPage />} />
-          <Route path="/class/:classId" element={<ClassHub />} />
+          <Route
+            path="/hub"
+            element={
+              <ProtectedRoute>
+                <StudentHub />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/join"
+            element={
+              <ProtectedRoute>
+                <JoinClassPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/class/:classId"
+            element={
+              <ProtectedRoute>
+                <ClassHub />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/class" element={<Navigate to="/hub" replace />} />
-          <Route path="/quiz/:lectureId" element={<QuizPage />} />
-          <Route path="/login" element={<AuthPage initialTab="login" />} />
-          <Route path="/signup" element={<AuthPage initialTab="signup" />} />
+          <Route
+            path="/quiz/:lectureId"
+            element={
+              <ProtectedRoute>
+                <QuizPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/login"
+            element={
+              <PublicOnlyRoute>
+                <AuthPage initialTab="login" />
+              </PublicOnlyRoute>
+            }
+          />
+          <Route
+            path="/signup"
+            element={
+              <PublicOnlyRoute>
+                <AuthPage initialTab="signup" />
+              </PublicOnlyRoute>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
@@ -95,9 +146,9 @@ function AppContent() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </BrowserRouter>
   );
 }
-
-

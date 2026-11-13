@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { API_BASE_URL } from "../lib/apiClient";
+import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import type { UserRole } from "../types/api";
 
 type AuthTab = "login" | "signup";
-type UserRole = "student" | "professor";
 
 interface AuthPageProps {
   initialTab?: AuthTab;
@@ -11,7 +11,13 @@ interface AuthPageProps {
 
 export function AuthPage({ initialTab = "login" }: AuthPageProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { login, signup } = useAuth();
+
+  // Target path to redirect after successful login
+  const fromPath =
+    (location.state as { from?: { pathname?: string } })?.from?.pathname || "/hub";
 
   // Determine active tab from URL param (e.g. ?tab=signup) or prop
   const urlTab = searchParams.get("tab") as AuthTab | null;
@@ -24,8 +30,8 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("student");
   const [showPassword, setShowPassword] = useState(false);
-  const [hasLoginError, setHasLoginError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasLoginError, setHasLoginError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<{ title: string; subtitle: string }>({
     title: "Incorrect email or password.",
     subtitle: "Check your details and try again.",
@@ -36,72 +42,77 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
     setHasLoginError(false);
     setSearchParams({ tab });
   };
-const submitAuth = async (mode: AuthTab) => {
-  if (isSubmitting) return;
 
-  setHasLoginError(false);
-  setIsSubmitting(true);
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-  try {
-    const endpoint = mode === "login" ? "login" : "register";
-
-    const response = await fetch(`${API_BASE_URL}/auth/${endpoint}/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: email.trim(),
-        password,
-        ...(mode === "signup" ? { role } : {}),
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      const message = Object.entries(data)
-        .map(([field, value]) => {
-          const text = Array.isArray(value)
-            ? value.join(" ")
-            : String(value);
-
-          return field === "detail" ? text : `${field}: ${text}`;
-        })
-        .join(" ");
-
+    if (!email.trim() || !password.trim()) {
       setErrorMessage({
-        title: mode === "login" ? "Login failed." : "Signup failed.",
-        subtitle: message || "Please check your details and try again.",
+        title: "Missing required fields.",
+        subtitle: "Email and password are required.",
       });
       setHasLoginError(true);
       return;
     }
 
-    if (typeof data.token !== "string" || !data.token) {
-      throw new Error("Missing authentication token");
+    setIsSubmitting(true);
+    setHasLoginError(false);
+
+    const result = await login(email, password);
+    setIsSubmitting(false);
+
+    if (!result.success) {
+      setErrorMessage({
+        title: "Incorrect email or password.",
+        subtitle: result.error || "Check your details and try again.",
+      });
+      setHasLoginError(true);
+      return;
     }
 
-    sessionStorage.setItem("coursepulse_token", data.token);
-    navigate("/hub");
-  } catch {
-    setErrorMessage({
-      title: "Unable to complete your request.",
-      subtitle: "Check that the backend is running and try again.",
-    });
-    setHasLoginError(true);
-  } finally {
+    // On success, redirect to target destination or Student Hub
+    navigate(fromPath, { replace: true });
+  };
+
+  const handleSignupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!email.trim() || !password.trim()) {
+      setErrorMessage({
+        title: "Missing required fields.",
+        subtitle: "Please enter your email and password.",
+      });
+      setHasLoginError(true);
+      return;
+    }
+
+    if (password.length < 8) {
+      setErrorMessage({
+        title: "Password too short.",
+        subtitle: "Password must be at least 8 characters.",
+      });
+      setHasLoginError(true);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setHasLoginError(false);
+
+    const result = await signup(email, password, role);
     setIsSubmitting(false);
-  }
-};
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
-  void submitAuth("login");
-};
+    if (!result.success) {
+      setErrorMessage({
+        title: "Sign up failed.",
+        subtitle: result.error || "Please check your information and try again.",
+      });
+      setHasLoginError(true);
+      return;
+    }
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
-  void submitAuth("signup");
-};
+    // On success, redirect to Student Hub
+    navigate("/hub", { replace: true });
+  };
 
   return (
     <div className="min-h-screen bg-[#0B1220] text-white flex flex-col justify-between selection:bg-sky-500/30">
@@ -420,10 +431,19 @@ const submitAuth = async (mode: AuthTab) => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-sky-500/10 mt-2"
+                className="w-full bg-[#38BDF8] hover:bg-[#0EA5E9] disabled:opacity-60 disabled:cursor-not-allowed text-[#0A101D] font-bold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-sky-500/10 mt-2"
               >
-                <span>{activeTab === "login" ? "Log in" : "Create account"}</span>
-                <span>→</span>
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-[#0A101D] border-t-transparent rounded-full animate-spin" />
+                    <span>{activeTab === "login" ? "Logging in..." : "Creating account..."}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{activeTab === "login" ? "Log in" : "Create account"}</span>
+                    <span>→</span>
+                  </>
+                )}
               </button>
             </form>
           </div>
