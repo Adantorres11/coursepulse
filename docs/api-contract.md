@@ -490,6 +490,8 @@ Rules:
   all lectures in this class. Incomplete attempts are excluded.
 - Only the student's first attempt at each lecture counts, once it is
   completed. Replays add 0.
+- Attempts at a lecture whose published_at is empty or still in the
+  future add 0.
 - Attempts from other classes are excluded.
 - Students are ordered by points descending, then user ID ascending
   for consistent ordering within ties.
@@ -571,7 +573,9 @@ Rules:
   played. Repeat attempts do not add to it.
 - total_points is the sum of total_points from the student's first
   attempt at each lecture in this class, once that attempt is completed.
-  Replays add 0. It matches the student's points in the leaderboard.
+  Replays add 0. Attempts at a lecture whose published_at is empty or
+  still in the future add 0. It matches the student's points in the
+  leaderboard.
 - rank uses competition ranking, the same as the leaderboard:
   1, 1, 3.
 - points_to_next_rank is the gap to the nearest student with strictly
