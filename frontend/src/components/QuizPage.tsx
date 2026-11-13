@@ -26,6 +26,8 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
   const [classroomId, setClassroomId] = useState<number | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | undefined>(undefined);
+  const [reloadKey, setReloadKey] = useState<number>(0);
 
   useEffect(() => {
     let active = true;
@@ -60,6 +62,7 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
     let isMounted = true;
     setLoading(true);
     setError(null);
+    setErrorStatus(undefined);
 
     if (!lectureId) {
       setError("No lecture ID provided.");
@@ -70,7 +73,9 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
     getQuiz(lectureId).then((result) => {
       if (!isMounted) return;
       if (result.error || !result.data) {
-        setError(result.error || `Quiz for lecture "${lectureId}" was not found.`);
+        // With no error text, the Not Found card shows its own message.
+        setError(result.error ?? null);
+        setErrorStatus(result.status);
         setQuiz(null);
       } else {
         setQuiz(result.data);
@@ -81,7 +86,10 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
     return () => {
       isMounted = false;
     };
-  }, [lectureId]);
+  }, [lectureId, reloadKey]);
+
+  // Any failure except 404 can be retried. No lecture ID and empty data keep the Not Found card.
+  const loadFailed = Boolean(lectureId) && Boolean(error) && errorStatus !== 404;
 
   const handleBackClick = (e: React.MouseEvent) => {
     if (onBackToHub) {
@@ -105,6 +113,28 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
       {loading ? (
         <div className="bg-slate-800/40 border border-slate-700/60 rounded-2xl p-6 sm:p-8 text-center animate-pulse">
           <p className="text-slate-400">Loading quiz questions...</p>
+        </div>
+      ) : loadFailed ? (
+        <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 sm:p-10 text-center max-w-lg mx-auto">
+          <div className="text-4xl mb-3">⚠️</div>
+          <h2 className="text-xl font-bold text-white mb-2">Could not load the quiz</h2>
+          <p className="text-slate-400 text-sm mb-6 leading-relaxed">{error}</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              type="button"
+              onClick={() => setReloadKey((n) => n + 1)}
+              className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+            >
+              Try again
+            </button>
+            <Link
+              to={backTo}
+              onClick={handleBackClick}
+              className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+            >
+              Return to {backLabel}
+            </Link>
+          </div>
         </div>
       ) : error || !quiz ? (
         /* Not-Found / Error Placeholder Screen */
