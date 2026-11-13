@@ -5,10 +5,12 @@ import type {
   AuthResponse,
   ClassStats,
   ClassSummary,
+  CreateClassResponse,
   HealthResponse,
   LeaderboardEntry,
   Lecture,
   LoginPayload,
+  ProfessorClass,
   Quiz,
   QuestionStart,
   RegisterPayload,
@@ -29,6 +31,7 @@ export type {
   LeaderboardEntry,
   Lecture,
   LoginPayload,
+  ProfessorClass,
   Quiz,
   QuizQuestion,
   RegisterPayload,
@@ -318,6 +321,42 @@ function authHeaders(): Record<string, string> {
 }
 
 /**
+ * Reads the active user's role from session storage.
+ */
+export function getUserRole(): string | null {
+  const directRole = sessionStorage.getItem("coursepulse_role");
+  if (directRole) return directRole;
+
+  try {
+    const rawUser = sessionStorage.getItem("coursepulse_user");
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser) as { role?: string };
+      if (parsed?.role) return parsed.role;
+    }
+  } catch {
+    // Ignore JSON parse error
+  }
+
+  return null;
+}
+
+/**
+ * Returns true if the logged-in user is a professor.
+ */
+export function isProfessor(): boolean {
+  return getUserRole() === "professor";
+}
+
+/**
+ * Resolves the primary classes route based on the logged-in user's role:
+ * returns "/professor" for professors and "/hub" for students.
+ */
+export function getClassesRoute(): string {
+  return isProfessor() ? "/professor" : "/hub";
+}
+
+
+/**
  * Fetch the logged-in student's classes.
  * Matches API contract: GET /api/classes/
  */
@@ -377,6 +416,34 @@ export async function getLeaderboard(
  */
 export async function getHealth(): Promise<ApiResult<HealthResponse>> {
   return request<HealthResponse>("/health/");
+}
+
+/**
+ * Fetch all classes owned by the logged-in professor.
+ * Matches API contract: GET /api/professor/classes/
+ * Requires a professor account and token authentication.
+ */
+export async function getProfessorClasses(): Promise<ApiResult<ProfessorClass[]>> {
+  return request<ProfessorClass[]>("/professor/classes/", {
+    headers: authHeaders(),
+  });
+}
+
+/**
+ * Creates a new class owned by the logged-in professor.
+ * Matches API contract: POST /api/classes/
+ * Requires a professor account and token authentication.
+ */
+export async function createClass(name: string): Promise<ApiResult<CreateClassResponse>> {
+  const token = sessionStorage.getItem("coursepulse_token");
+  return request<CreateClassResponse>("/classes/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+    body: JSON.stringify({ name }),
+  });
 }
 
 /**

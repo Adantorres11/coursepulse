@@ -5,6 +5,7 @@ import { AuthPage } from "./components/AuthPage";
 import { LandingPage } from "./components/LandingPage";
 import { ClassHub } from "./components/ClassHub";
 import { JoinClassPage } from "./components/JoinClassPage";
+import { ProfessorDashboard } from "./components/ProfessorDashboard";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
 
@@ -111,7 +112,35 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
-          <Route path="/class" element={<Navigate to="/hub" replace />} />
+          <Route
+            path="/class"
+            element={<Navigate to={user?.role === "professor" ? "/professor" : "/hub"} replace />}
+          />
+          <Route
+            path="/professor"
+            element={
+              <ProtectedRoute>
+                <ProfessorDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/professor/classes"
+            element={
+              <ProtectedRoute>
+                <ProfessorDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/professor/dashboard" element={<Navigate to="/professor" replace />} />
+          <Route
+            path="/professor/class/:classId"
+            element={
+              <ProtectedRoute>
+                <ClassHub />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/quiz/:lectureId"
             element={

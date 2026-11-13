@@ -34,17 +34,17 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
 /**
  * Route guard for auth pages (Login / Sign Up).
- * If the user is already authenticated, redirects them directly to the Student Hub.
+ * If the user is already authenticated, redirects them directly to their home screen (Student Hub or Professor Dashboard).
  */
 export function PublicOnlyRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return null;
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/hub" replace />;
+    return <Navigate to={user?.role === "professor" ? "/professor" : "/hub"} replace />;
   }
 
   return <>{children}</>;

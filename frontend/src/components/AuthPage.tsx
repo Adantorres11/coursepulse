@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { getStoredUser } from "../lib/apiClient";
 import type { UserRole } from "../types/api";
 
 type AuthTab = "login" | "signup";
@@ -71,7 +72,7 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
     }
 
     // On success, redirect to target destination or Student Hub
-    navigate(fromPath, { replace: true });
+    navigate(getStoredUser()?.role === "professor" ? "/professor" : fromPath, { replace: true });
   };
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
@@ -111,7 +112,7 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
     }
 
     // On success, redirect to Student Hub
-    navigate("/hub", { replace: true });
+    navigate(getStoredUser()?.role === "professor" ? "/professor" : "/hub", { replace: true });
   };
 
   return (
