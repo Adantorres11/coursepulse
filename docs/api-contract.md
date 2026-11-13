@@ -490,6 +490,8 @@ Rules:
   all lectures in this class. Incomplete attempts are excluded.
 - Only the student's first attempt at each lecture counts, once it is
   completed. Replays add 0.
+- Attempts at a lecture whose published_at is empty or still in the
+  future add 0.
 - Attempts from other classes are excluded.
 - Students are ordered by points descending, then user ID ascending
   for consistent ordering within ties.
@@ -571,7 +573,9 @@ Rules:
   played. Repeat attempts do not add to it.
 - total_points is the sum of total_points from the student's first
   attempt at each lecture in this class, once that attempt is completed.
-  Replays add 0. It matches the student's points in the leaderboard.
+  Replays add 0. Attempts at a lecture whose published_at is empty or
+  still in the future add 0. It matches the student's points in the
+  leaderboard.
 - rank uses competition ranking, the same as the leaderboard:
   1, 1, 3.
 - points_to_next_rank is the gap to the nearest student with strictly
@@ -671,3 +675,36 @@ Rules:
 Errors:
 - 401: Missing or invalid authentication.
 - 403: User is not a professor.
+
+## GET /api/classes/{id}/roster/
+
+Returns all students enrolled in the specified classroom.
+
+Authentication: Required (professor only).
+
+Success: 200 OK
+
+```json
+[
+  {
+    "name": "John Smith",
+    "joined_at": "2026-11-12T18:00:00Z"
+  },
+  {
+    "name": "Jane Doe",
+    "joined_at": "2026-11-12T18:05:00Z"
+  }
+]
+```
+
+Rules:
+- Only the professor who owns the classroom can access its roster.
+- Returns each enrolled student's name and join date.
+- Uses the username if the student's full name is unavailable.
+- Students are ordered by join date, earliest first.
+- Returns an empty array if no students are enrolled.
+
+Errors:
+- 401: Missing or invalid authentication.
+- 403: User is not a professor or does not own the classroom.
+- 404: Unknown classroom ID.

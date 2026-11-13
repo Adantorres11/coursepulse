@@ -5,6 +5,7 @@ import {
   getProfessorClasses,
   type ProfessorClass,
 } from "../lib/apiClient";
+import { useAuth } from "../context/AuthContext";
 
 interface ProfessorDashboardProps {
   onSelectClass?: (classId: number) => void;
@@ -12,6 +13,7 @@ interface ProfessorDashboardProps {
 
 export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = {}) {
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   // Dashboard class list state
   const [classes, setClasses] = useState<ProfessorClass[]>([]);
@@ -75,8 +77,7 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem("coursepulse_token");
-    sessionStorage.removeItem("coursepulse_role");
+    logout();
     navigate("/login");
   };
 

@@ -92,6 +92,31 @@ export interface HealthResponse {
   service: string;
 }
 
+// User and Auth interfaces conforming to docs/api-contract.md
+export type UserRole = "student" | "professor";
+
+export interface User {
+  id: number;
+  email: string;
+  role: UserRole | null;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
+
+export interface RegisterPayload {
+  email: string;
+  password: string;
+  role?: UserRole;
+}
+
+export interface LoginPayload {
+  email: string;
+  password: string;
+}
+
 // Every API function returns this shape instead of throwing, so calling
 // components can just check `error` rather than wrapping calls in try/catch.
 export interface ApiResult<T> {
