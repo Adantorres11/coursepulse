@@ -56,7 +56,7 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
       active = false;
       controller.abort();
     };
-  }, [lectureId]);
+  }, [lectureId, reloadKey]);
 
   useEffect(() => {
     let isMounted = true;
@@ -73,7 +73,7 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
     getQuiz(lectureId).then((result) => {
       if (!isMounted) return;
       if (result.error || !result.data) {
-        // With no error text, the Not Found card shows its own message.
+        // A 404 normally has server text; only an empty 200 body has none, and the Not Found card then shows its own message.
         setError(result.error ?? null);
         setErrorStatus(result.status);
         setQuiz(null);
