@@ -17,7 +17,6 @@ import type {
   User,
 } from "../types/api";
 import sampleLectures from "../data/lectures.sample.json" with { type: "json" };
-import sampleQuizzes from "../data/quizzes.sample.json" with { type: "json" };
 
 export type {
   AnswerRequest,
@@ -222,57 +221,10 @@ export async function getLectures(): Promise<ApiResult<Lecture[]>> {
 /**
  * Fetch the full quiz for a given lecture id.
  * Matches API contract: GET /api/lectures/{id}/quiz/
- * Falls back to local sample data until the backend endpoint is available.
+ * There is no sample-data fallback; errors and status codes pass through.
  */
 export async function getQuiz(id: string | number): Promise<ApiResult<Quiz>> {
-  const queryId = String(id).trim();
-
-  // Send the token (when logged in) so the server can return the student's progress
-  const token = sessionStorage.getItem("coursepulse_token");
-  const authOptions: RequestInit | undefined = token
-    ? { headers: { Authorization: `Token ${token}` } }
-    : undefined;
-
-  // Primary contract endpoint: GET /api/lectures/{id}/quiz/
-  let result = await request<Quiz>(`/lectures/${encodeURIComponent(queryId)}/quiz/`, authOptions);
-
-  // Secondary fallback for legacy/alternative route /quizzes/{id}/ if contract endpoint 404s
-  if (result.error && !result.error.includes("Could not reach API")) {
-    const altResult = await request<Quiz>(`/quizzes/${encodeURIComponent(queryId)}/`, authOptions);
-    if (!altResult.error) {
-      result = altResult;
-    }
-  }
-
-  // If backend endpoint is unavailable or returned an error, fallback to local sample data
-  if (result.error) {
-    const quizzesRecord = sampleQuizzes as Record<string, Quiz>;
-    const fallback =
-      quizzesRecord[queryId] ??
-      Object.values(quizzesRecord).find(
-        (q) =>
-          String(q.id) === queryId ||
-          String(q.lecture_id) === queryId ||
-          String(q.lectureId) === queryId
-      );
-
-    if (fallback) {
-      return { data: fallback, error: null };
-    }
-
-    const isNetworkError = result.error?.startsWith("Could not reach API");
-    const isStatusError = result.error?.startsWith("Request failed");
-
-    return {
-      data: null,
-      error:
-        result.error && !isNetworkError && !isStatusError
-          ? result.error
-          : `Quiz for lecture "${queryId}" not found in API or sample data.`,
-    };
-  }
-
-  return result;
+  return request<Quiz>(`/lectures/${encodeURIComponent(String(id).trim())}/quiz/`);
 }
 
 /**
