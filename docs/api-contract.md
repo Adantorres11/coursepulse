@@ -1,28 +1,22 @@
-# API Contract (Sprint 1)
-
+API Contract (Sprint 1)
 The single source of truth for what the frontend and backend agree on.
-**Change this file in a PR before changing any endpoint shape**, so both sides can review it.
+Change this file in a PR before changing any endpoint shape, so both sides can review it.
 
-Base URL (local): `http://localhost:8000`
+Base URL (local): http://localhost:8000
 Auth: token authentication for protected endpoints.
-Send `Authorization: Token <token>` with protected requests.
+Send Authorization: Token <token> with protected requests.
 Registration and login do not require a token.
 Lecture data is hardcoded through the seed script.
 GET /api/lectures/ and GET /api/lectures/{id}/quiz/ need no token; an invalid token still returns 401. POST /api/lectures/{id}/answers/ requires a token.
-
-## GET /api/health/
+GET /api/health/
 Liveness check for Docker and CI.
-```json
 { "status": "ok", "service": "coursepulse-api" }
-```
-
-## GET /api/lectures/
+GET /api/lectures/
 Lectures with a published quiz, newest first. Powers the Student Hub.
-A lecture is listed when its `published_at` has arrived and it has at least one question.
+A lecture is listed when its published_at has arrived and it has at least one question.
 Drafts, future publications, and lectures without questions are never returned.
-Success: `200 OK`. Returns `[]` when no lecture qualifies.
-`classroom_id` identifies the classroom. `classroom` is its name, set by whoever created it.
-```json
+Success: 200 OK. Returns [] when no lecture qualifies.
+classroom_id identifies the classroom. classroom is its name, set by whoever created it.
 [
   {
     "id": 1,
@@ -33,12 +27,9 @@ Success: `200 OK`. Returns `[]` when no lecture qualifies.
     "question_count": 5
   }
 ]
-```
-
-## GET /api/lectures/{id}/quiz/
+GET /api/lectures/{id}/quiz/
 The full quiz for one lecture. Powers the Arena (game screen).
-Success: `200 OK`.
-```json
+Success: 200 OK.
 {
   "lecture_id": 1,
   "title": "Tuesday's Lecture: Agile and Scrum",
@@ -53,68 +44,58 @@ Success: `200 OK`.
   "answered_question_ids": [11],
   "total_points": 100
 }
-```
-
 Field rules
-- `choices`: exactly 4 strings.
+- choices: exactly 4 strings.
 - The quiz does not include the correct answer. The correct answer comes from
-  `POST /api/lectures/{id}/answers/`.
-- `difficulty`: `"easy"` (100 pts), `"medium"` (200 pts) or `"hard"` (300 pts).
+  POST /api/lectures/{id}/answers/.
+- difficulty: "easy" (100 pts), "medium" (200 pts) or "hard" (300 pts).
 - Questions are returned in a fixed order.
-- `answered_question_ids`: the ids of the questions the logged-in student has
-  answered in their open attempt. `total_points`: the points of that open attempt.
+- answered_question_ids: the ids of the questions the logged-in student has
+  answered in their open attempt. total_points: the points of that open attempt.
   The open attempt is the student's newest attempt for this lecture with no
-  `completed_at`. Send the token to get these fields. When the request has no
-  token, or there is no open attempt, they are `[]` and `0`.
-
-Errors: `404` with `{"detail": "Not found."}` for an unknown lecture id. The same
-`404` is returned when the lecture is not published yet or has no questions.
-
-## POST /api/lectures/{id}/answers/
+  completed_at. Send the token to get these fields. When the request has no
+  token, or there is no open attempt, they are [] and 0.
+Errors: 404 with {"detail": "Not found."} for an unknown lecture id. The same
+404 is returned when the lecture is not published yet or has no questions.
+POST /api/lectures/{id}/answers/
 Grades one answer on the server. The Arena (game screen) calls it after each
-question. Requires a token. Send `Content-Type: application/json`.
+question. Requires a token. Send Content-Type: application/json.
 
 Request:
-```json
 {
   "question_id": 11,
   "chosen_index": 2
 }
-```
-
-Success: `201 Created`
-```json
+Success: 201 Created
 {
   "is_correct": true,
   "points_awarded": 100,
   "total_points": 100,
   "correct_index": 2
 }
-```
-
 Rules:
 - The lecture must be available, as in GET /api/lectures/{id}/quiz/.
   The question must belong to that lecture.
-- `question_id`: integer. `chosen_index`: integer 0-3, or `null` when time
-  ran out. Both fields are required. `chosen_index` is still required
-  when it is `null`.
+- question_id: integer. chosen_index: integer 0-3, or null when time
+  ran out. Both fields are required. chosen_index is still required
+  when it is null.
 - The server measures the time. It counts from the question's start call
   (POST /api/lectures/{id}/questions/{question_id}/start/) to the moment
   the answer arrives. The client does not send a time.
-- The screen shows 15 seconds per question: `QUESTION_TIME_LIMIT_MS = 15000`.
-  The server allows 1000 ms more for network delay: `TIME_GRACE_MS = 1000`.
+- The screen shows 15 seconds per question: QUESTION_TIME_LIMIT_MS = 15000.
+  The server allows 1000 ms more for network delay: TIME_GRACE_MS = 1000.
   An answer timed out when the measured time is greater than 16000 ms.
-- A `null` answer is never correct, so `is_correct` is `false`.
+- A null answer is never correct, so is_correct is false.
 - An answer to a question that was not started in the open attempt is
   rejected. Call the start endpoint first.
 - Only an enrolled student can answer. The student must have the student
   role and must be enrolled in the class of the lecture.
-- `points_awarded` is 100 for an easy question, 200 for medium, and 300 for
+- points_awarded is 100 for an easy question, 200 for medium, and 300 for
   hard. A correct answer gets 50 more points when it is the 3rd or later
   correct answer in a row in the attempt. The current answer counts toward
   the run. Every correct answer after the 3rd also gets the 50. It is 0
   when the answer is wrong or timed out. A timed-out answer is never
-  correct, so `is_correct` is `false`.
+  correct, so is_correct is false.
 - Daily cap: each student gets full base points for the first 35
   first-attempt questions answered in a UTC day. After that, a correct
   answer earns 25% of the base points: 25 for easy, 50 for medium, and 75
@@ -122,134 +103,104 @@ Rules:
   answers count toward the cap, and only first-attempt answers are reduced
   by it. Replay answers never count toward the cap and are never reduced.
 - The first attempt at each lecture is the only attempt that counts toward
-  class totals. For a replay, `points_awarded` and `total_points` are the
+  class totals. For a replay, points_awarded and total_points are the
   score of that replay only. They do not change the leaderboard or the
   class stats.
 - A wrong or timed-out answer sets the run of correct answers to 0.
 - A new attempt starts with a run of correct answers of 0, so a replay
   starts the bonus count again.
-- `total_points` is the running total of the attempt, including this answer.
-- `correct_index` is always returned, so the screen can show green and red
+- total_points is the running total of the attempt, including this answer.
+- correct_index is always returned, so the screen can show green and red
   feedback.
 - The server picks the attempt. It uses the student's open attempt for the
   lecture, the one that the start call created or reused.
 - When every question in the lecture has an answer, the attempt is completed
-  (`completed_at` is set). The next start call, not the next answer, begins a
+  (completed_at is set). The next start call, not the next answer, begins a
   new attempt.
 - A second answer to the same question in the same attempt is rejected.
-
 Errors:
-- `400`: Invalid body. Errors appear under the field name, as in
+- 400: Invalid body. Errors appear under the field name, as in
   POST /api/auth/register/.
-```json
 {
   "chosen_index": ["Ensure this value is less than or equal to 3."]
 }
-```
-- `400`: The question already has an answer in this attempt.
-```json
+- 400: The question already has an answer in this attempt.
 {
   "detail": "This question was already answered in this attempt."
 }
-```
-- `400`: The question was not started in the open attempt.
-```json
+- 400: The question was not started in the open attempt.
 {
   "detail": "Start this question before answering."
 }
-```
-- `401`: Missing or invalid authentication token.
-- `403`: The user does not have the student role.
-```json
+- 401: Missing or invalid authentication token.
+- 403: The user does not have the student role.
 {
   "detail": "Only students can answer questions."
 }
-```
-- `403`: The student is not enrolled in the class of the lecture.
-```json
+- 403: The student is not enrolled in the class of the lecture.
 {
   "detail": "You must be enrolled in this class."
 }
-```
-- `404`: `{"detail": "Not found."}` for an unknown or unavailable lecture, or
+- 404: {"detail": "Not found."} for an unknown or unavailable lecture, or
   a question that is not in that lecture.
-
-Check order: `401`, then `404` for the lecture, then `403`, then `400` for
-body validation, then `404` for a question not in the lecture, then `400`
+Check order: 401, then 404 for the lecture, then 403, then 400 for
+body validation, then 404 for a question not in the lecture, then 400
 for a question that was not started or was already answered.
-
-## POST /api/lectures/{id}/questions/{question_id}/start/
+POST /api/lectures/{id}/questions/{question_id}/start/
 Marks the moment a question appears. The Arena calls it when it shows the
 question. Requires a token. Send no body.
 
-Success: `201 Created` the first time the question is started in the open
-attempt. `200 OK` when it was already started in the open attempt. The
+Success: 201 Created the first time the question is started in the open
+attempt. 200 OK when it was already started in the open attempt. The
 original time is kept.
-```json
 {
   "question_id": 11,
   "started_at": "2026-11-11T15:00:00Z"
 }
-```
-
 Rules:
 - The lecture must be available, as in GET /api/lectures/{id}/quiz/.
   The question must belong to that lecture.
 - The server uses the student's open attempt for the lecture (the newest one
-  with no `completed_at`), or starts a new one. A student has at most one open
+  with no completed_at), or starts a new one. A student has at most one open
   attempt per lecture.
 - Only an enrolled student can start a question. The student must have the
   student role and must be enrolled in the class of the lecture.
-- The server measures the answer time from `started_at`.
-
+- The server measures the answer time from started_at.
 Errors:
-- `400`: The question already has an answer in this attempt.
-```json
+- 400: The question already has an answer in this attempt.
 {
   "detail": "This question was already answered in this attempt."
 }
-```
-- `401`: Missing or invalid authentication token.
-- `403`: `{"detail": "Only students can answer questions."}` when the user
+- 401: Missing or invalid authentication token.
+- 403: {"detail": "Only students can answer questions."} when the user
   does not have the student role.
-- `403`: `{"detail": "You must be enrolled in this class."}` when the
+- 403: {"detail": "You must be enrolled in this class."} when the
   student is not enrolled in the class of the lecture.
-- `404`: `{"detail": "Not found."}` for an unknown or unavailable lecture, or
+- 404: {"detail": "Not found."} for an unknown or unavailable lecture, or
   a question that is not in that lecture.
-
-Check order: `401`, then `404` (unknown or unavailable lecture, or a
-question not in it), then `403`, then `400`.
-
-## Known Sprint 1 shortcuts (tracked for Sprint 2)
+Check order: 401, then 404 (unknown or unavailable lecture, or a
+question not in it), then 403, then 400.
+Known Sprint 1 shortcuts (tracked for Sprint 2)
 - No class-code join yet.
-
-## Authentication
-
-Send JSON request bodies with `Content-Type: application/json`.
-
-### POST /api/auth/register/
-
+Authentication
+Send JSON request bodies with Content-Type: application/json.
+POST /api/auth/register/
 Creates an account. No token required.
 
 Request:
-```json
 {
   "email": "student@example.com",
   "password": "Maple!River82",
   "role": "student"
 }
-```
-
 Rules:
 - Email must be valid and at most 150 characters.
 - Emails are trimmed and stored in lowercase.
 - Duplicate emails are rejected regardless of capitalization.
-- Role must be `"student"` or `"professor"`.
+- Role must be "student" or "professor".
 - Password must have at least 8 characters and pass Django's
   checks for common, entirely numeric, and user-similar passwords.
-
-Success: `201 Created`
-```json
+Success: 201 Created
 {
   "token": "<token>",
   "user": {
@@ -258,102 +209,62 @@ Success: `201 Created`
     "role": "student"
   }
 }
-```
-
-Invalid input: `400 Bad Request`, with errors under the relevant field.
+Invalid input: 400 Bad Request, with errors under the relevant field.
 
 Duplicate email example:
-```json
 {
   "email": ["An account with this email already exists."]
 }
-```
-
 Weak password example:
-```json
 {
   "password": [
     "This password is too short. It must contain at least 8 characters."
   ]
 }
-```
-
 Password error wording can vary according to the failed check.
-
-### POST /api/auth/login/
-
+POST /api/auth/login/
 Logs in using email and password. No token required.
 
 Request:
-```json
 {
   "email": "student@example.com",
   "password": "Maple!River82"
 }
-```
-
-Success: `200 OK`, with the same token and user response
+Success: 200 OK, with the same token and user response
 structure as registration.
 
-Invalid credentials: `401 Unauthorized`
-```json
+Invalid credentials: 401 Unauthorized
 {
   "detail": "Invalid email or password."
 }
-```
-
-Missing or non-string credentials: `400 Bad Request`
-```json
+Missing or non-string credentials: 400 Bad Request
 {
   "detail": "Email and password are required."
 }
-```
-
-### GET /api/auth/me/
-
+GET /api/auth/me/
 Returns the current user's information. Requires this header:
-
-```text
 Authorization: Token <token>
-```
-
-Success: `200 OK`
-```json
+Success: 200 OK
 {
   "id": 1,
   "email": "student@example.com",
   "role": "student"
 }
-```
-
-Missing token: `401 Unauthorized`
-```json
+Missing token: 401 Unauthorized
 {
   "detail": "Authentication credentials were not provided."
 }
-```
-
-Invalid token: `401 Unauthorized`
-```json
+Invalid token: 401 Unauthorized
 {
   "detail": "Invalid token."
 }
-```
-
 Tokens are reused on login and do not automatically expire.
-Existing users without a role profile receive `"role": null`.
-
-## GET /api/classes/
-
+Existing users without a role profile receive "role": null.
+GET /api/classes/
 Returns only the logged-in student's enrolled classrooms.
 Requires a student account and this header:
-
-```text
 Authorization: Token <token>
-```
-
-Success: `200 OK`
-```json
+Success: 200 OK
 [
   {
     "id": 1,
@@ -367,12 +278,10 @@ Success: `200 OK`
     "new_quiz_count": 3
   }
 ]
-```
-
 Rules:
 - Classes are ordered by name, then ID.
-- No enrollments returns `[]` with `200 OK`.
-- Professor is `null` if no professor is assigned.
+- No enrollments returns [] with 200 OK.
+- Professor is null if no professor is assigned.
 - Professor name falls back to username when their full name is empty.
 - Course code may be empty for existing classrooms.
 - Each lecture with questions counts as one quiz if its publication
@@ -383,30 +292,21 @@ Rules:
   handler must create this record when a student completes a quiz;
   this endpoint only reads completion records.
 - Duplicate enrollment in the same classroom is prevented by the database.
-
 Errors:
-- `401`: Missing or invalid authentication token.
-- `403`: Authenticated user does not have the student role.
-
-## Class access codes
-
+- 401: Missing or invalid authentication token.
+- 403: Authenticated user does not have the student role.
+Class access codes
 Each classroom has a unique six-character access code.
 Generated codes use uppercase letters and numbers.
 Code input is case-insensitive; surrounding whitespace is ignored.
-The demo classroom's code is `DEMO01`.
+The demo classroom's code is DEMO01.
 
 Both endpoints below require a student account and this header:
-
-```text
 Authorization: Token <token>
-```
-
-### GET /api/classes/lookup/?code=ABC123
-
+GET /api/classes/lookup/?code=ABC123
 Previews a classroom without enrolling the student.
 
-Success: `200 OK`
-```json
+Success: 200 OK
 {
   "id": 1,
   "name": "Software Engineering",
@@ -418,50 +318,35 @@ Success: `200 OK`
   "quiz_count": 5,
   "new_quiz_count": 3
 }
-```
-
 Fields and quiz-count rules match GET /api/classes/.
 Professor may be null when no professor is assigned.
-
-### POST /api/classes/join/
-
+POST /api/classes/join/
 Enrolls the logged-in student in the classroom.
 
-Send `Content-Type: application/json`.
+Send Content-Type: application/json.
 
 Request:
-```json
 {
   "code": "ABC123"
 }
-```
-
 Success:
-- `201 Created` for a new enrollment.
-- `200 OK` if already enrolled; no duplicate is created.
+- 201 Created for a new enrollment.
+- 200 OK if already enrolled; no duplicate is created.
 - Both return the same classroom response structure as lookup.
-
-### Lookup and join errors
-
-Unknown six-character code: `404 Not Found`
-```json
+Lookup and join errors
+Unknown six-character code: 404 Not Found
 {
   "detail": "We couldn't find a class with that code"
 }
-```
-
 Other errors:
-- `400`: Missing or malformed code; errors appear under `code`.
-- `401`: Missing or invalid authentication token.
-- `403`: Authenticated user does not have the student role.
-
-## GET /api/classes/{id}/leaderboard/
-
+- 400: Missing or malformed code; errors appear under code.
+- 401: Missing or invalid authentication token.
+- 403: Authenticated user does not have the student role.
+GET /api/classes/{id}/leaderboard/
 Returns the class's enrolled students ranked by total quiz points.
 Requires a student account and token authentication.
 
-Success: `200 OK`
-```json
+Success: 200 OK
 [
   {
     "rank": 1,
@@ -482,14 +367,14 @@ Success: `200 OK`
     "is_current_user": false
   }
 ]
-```
-
 Rules:
 - Includes enrolled users with the student role.
 - Points are the sum of total_points from completed attempts across
   all lectures in this class. Incomplete attempts are excluded.
 - Only the student's first attempt at each lecture counts, once it is
   completed. Replays add 0.
+- Attempts at a lecture whose published_at is empty or still in the
+  future add 0.
 - Attempts from other classes are excluded.
 - Students are ordered by points descending, then user ID ascending
   for consistent ordering within ties.
@@ -503,20 +388,16 @@ Rules:
   Email addresses and usernames are not used as name fallbacks.
 - is_current_user is true only for the requesting student's entry.
 - The response is an unpaginated array.
-
 Errors:
-- `401`: Missing or invalid authentication token.
-- `404`: Unknown class ID.
-- `403`: For an existing class, the requester does not have the
+- 401: Missing or invalid authentication token.
+- 404: Unknown class ID.
+- 403: For an existing class, the requester does not have the
   student role or is not enrolled.
-
-## GET /api/classes/{id}/stats/
-
+GET /api/classes/{id}/stats/
 Returns one student's progress in one class. The Class Hub screen uses
 it. Requires a student account and token authentication.
 
-Success: `200 OK`
-```json
+Success: 200 OK
 {
   "classroom_id": 1,
   "classroom": "Intro to Biology",
@@ -557,8 +438,6 @@ Success: `200 OK`
     }
   ]
 }
-```
-
 Rules:
 - The class is identified by classroom_id. The name is returned in
   classroom.
@@ -571,7 +450,9 @@ Rules:
   played. Repeat attempts do not add to it.
 - total_points is the sum of total_points from the student's first
   attempt at each lecture in this class, once that attempt is completed.
-  Replays add 0. It matches the student's points in the leaderboard.
+  Replays add 0. Attempts at a lecture whose published_at is empty or
+  still in the future add 0. It matches the student's points in the
+  leaderboard.
 - rank uses competition ranking, the same as the leaderboard:
   1, 1, 3.
 - points_to_next_rank is the gap to the nearest student with strictly
@@ -603,54 +484,40 @@ Rules:
 - A student who has never answered a question gets day_streak 0.
 - A student with no attempt in this class gets answer_streak 0. Their
   day_streak can still be above 0 from answers in other classes.
-
 Errors:
-- `401`: Missing or invalid authentication token.
-- `404`: Unknown class ID.
-- `403`: For an existing class, the requester does not have the
+- 401: Missing or invalid authentication token.
+- 404: Unknown class ID.
+- 403: For an existing class, the requester does not have the
   student role or is not enrolled.
-
-## POST /api/classes/
-
+POST /api/classes/
 Creates a new class owned by the logged-in professor.
 
 Authentication: Required (professor only).
 
 Request:
-```json
 {
   "name": "Software Engineering"
 }
-```
-
 Success: 201 Created
-```json
 {
   "id": 1,
   "name": "Software Engineering",
   "access_code": "ABC123"
 }
-```
-
 Rules:
 - Class name is required and cannot be blank.
 - The professor is automatically assigned as the class owner.
 - A unique 6-character access code is generated automatically.
-
 Errors:
 - 400: Missing or blank class name.
 - 403: User is not a professor.
 - 401: Missing or invalid authentication.
-
-## GET /api/professor/classes/
-
+GET /api/professor/classes/
 Returns all classes owned by the logged-in professor.
 
 Authentication: Required (professor only).
 
 Success: 200 OK
-
-```json
 [
   {
     "id": 1,
@@ -660,29 +527,21 @@ Success: 200 OK
     "lecture_count": 8
   }
 ]
-```
-
 Rules:
 - Returns only classes owned by the logged-in professor.
 - Student count includes enrolled students.
 - Lecture count includes all lectures in the class.
 - Returns an empty array if the professor has no classes.
-
 Errors:
 - 401: Missing or invalid authentication.
 - 403: User is not a professor.
-
-## Class Results
-
-### GET /api/classes/{id}/results/
-
+Class Results
+GET /api/classes/{id}/results/
 Returns student results and per-question accuracy for a class.
 
-**Authentication:** Required. Only the professor who owns the class can access the results.
+Authentication: Required. Only the professor who owns the class can access the results.
 
-**Response: 200 OK**
-
-```json
+Response: 200 OK
 {
   "students": [
     {
@@ -708,40 +567,56 @@ Returns student results and per-question accuracy for a class.
     }
   ]
 }
-```
-
-- `quizzes_played` counts distinct lectures with completed attempts.
+- quizzes_played counts distinct lectures with completed attempts.
 - Question accuracy is calculated from completed attempts.
-- `accuracy_percent` is null when no answers exist.
+- accuracy_percent is null when no answers exist.
 - Students without completed quizzes have zero quizzes played.
-
-**Errors:**
+Errors:
 - 401: Authentication required.
 - 403: User is not a professor or does not own the class.
 - 404: Class not found.
+Unpublish Lecture
+POST /api/lectures/{id}/unpublish/
+Unpublishes a lecture by setting its published_at field to null.
 
-## Unpublish Lecture
+Authentication: Required. Only the professor who owns the lecture's class can unpublish it.
 
-### POST /api/lectures/{id}/unpublish/
+Request body: None.
 
-Unpublishes a lecture by setting its `published_at` field to null.
-
-**Authentication:** Required. Only the professor who owns the lecture's class can unpublish it.
-
-**Request body:** None.
-
-**Response: 200 OK**
-
-```json
+Response: 200 OK
 {
   "id": 1,
   "published_at": null
 }
-```
-
 Unpublishing hides the quiz from students while preserving existing attempts and answers.
 
-**Errors:**
+Errors:
 - 401: Authentication required.
 - 403: User is not a professor or does not own the lecture.
 - 404: Lecture not found.
+GET /api/classes/{id}/roster/
+Returns all students enrolled in the specified classroom.
+
+Authentication: Required (professor only).
+
+Success: 200 OK
+[
+  {
+    "name": "John Smith",
+    "joined_at": "2026-11-12T18:00:00Z"
+  },
+  {
+    "name": "Jane Doe",
+    "joined_at": "2026-11-12T18:05:00Z"
+  }
+]
+Rules:
+- Only the professor who owns the classroom can access its roster.
+- Returns each enrolled student's name and join date.
+- Uses the username if the student's full name is unavailable.
+- Students are ordered by join date, earliest first.
+- Returns an empty array if no students are enrolled.
+Errors:
+- 401: Missing or invalid authentication.
+- 403: User is not a professor or does not own the classroom.
+- 404: Unknown classroom ID.

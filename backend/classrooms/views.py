@@ -1,4 +1,4 @@
-from .serializers import ClassCreateSerializer, ProfessorClassSerializer
+
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -8,14 +8,23 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
 from quizzes.models import QuizCompletion, Lecture
+
 from .models import Classroom, Enrollment
-from .serializers import ClassCodeSerializer, ClassroomSerializer
+from .serializers import (
+    ClassCreateSerializer,
+    ProfessorClassSerializer,
+    ClassCodeSerializer,
+    ClassroomSerializer,
+    ClassRosterSerializer,
+)
 from .stats import (
     build_class_stats,
     class_standings,
     build_class_results,
 )
+
 
 class StudentClassListView(ListAPIView):
     permission_classes = [IsAuthenticated]
@@ -227,6 +236,7 @@ class ClassStatsView(APIView):
 
         return Response(build_class_stats(classroom, request.user))
 
+
 class ProfessorClassListView(ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = ProfessorClassSerializer
@@ -257,6 +267,40 @@ class ProfessorClassListView(ListAPIView):
             .order_by("name", "id")
         )
 
+
+class ClassRosterView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        classroom = get_object_or_404(Classroom, pk=pk)
+
+        profile = getattr(request.user, "profile", None)
+
+        if profile is None or profile.role != "professor":
+            raise PermissionDenied(
+                "Only professors can access the class roster."
+            )
+
+        if classroom.professor_id != request.user.id:
+            raise PermissionDenied(
+                "You do not own this class."
+            )
+
+        enrollments = (
+            Enrollment.objects
+            .filter(classroom=classroom)
+            .select_related("user")
+            .order_by("joined_at", "id")
+        )
+
+        serializer = ClassRosterSerializer(
+            enrollments,
+            many=True,
+        )
+
+        return Response(serializer.data)
+
+
 class ClassResultsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -276,6 +320,7 @@ class ClassResultsView(APIView):
             )
 
         return Response(build_class_results(classroom))
+
 
 class LectureUnpublishView(APIView):
     permission_classes = [IsAuthenticated]

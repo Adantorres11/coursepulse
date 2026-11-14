@@ -1,8 +1,96 @@
-import type { AnswerRequest, AnswerResult, ApiResult, ClassStats, ClassSummary, HealthResponse, LeaderboardEntry, Lecture, Quiz, QuestionStart } from "../types/api";
+import type {
+  AnswerRequest,
+  AnswerResult,
+  ApiResult,
+  AuthResponse,
+  ClassStats,
+  ClassSummary,
+  CreateClassResponse,
+  HealthResponse,
+  LeaderboardEntry,
+  Lecture,
+  LoginPayload,
+  ProfessorClass,
+  Quiz,
+  QuestionStart,
+  RegisterPayload,
+  User,
+} from "../types/api";
 import sampleLectures from "../data/lectures.sample.json" with { type: "json" };
 import sampleQuizzes from "../data/quizzes.sample.json" with { type: "json" };
 
-export type { AnswerRequest, AnswerResult, ApiResult, ClassStats, ClassSummary, HealthResponse, LeaderboardEntry, Lecture, Quiz, QuizQuestion, DifficultyLevel } from "../types/api";
+export type {
+  AnswerRequest,
+  AnswerResult,
+  ApiResult,
+  AuthResponse,
+  ClassStats,
+  ClassSummary,
+  DifficultyLevel,
+  HealthResponse,
+  LeaderboardEntry,
+  Lecture,
+  LoginPayload,
+  ProfessorClass,
+  Quiz,
+  QuizQuestion,
+  RegisterPayload,
+  User,
+  UserRole,
+} from "../types/api";
+
+const TOKEN_KEY = "coursepulse_token";
+const USER_KEY = "coursepulse_user";
+
+export function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredToken(token: string | null): void {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function getStoredUser(): User | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY) || sessionStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredUser(user: User | null): void {
+  try {
+    if (user) {
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+      sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(USER_KEY);
+      sessionStorage.removeItem(USER_KEY);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearSession(): void {
+  setStoredToken(null);
+  setStoredUser(null);
+}
 
 /**
  * Resolves the API base URL from Vite or runtime environment variables.
@@ -39,6 +127,7 @@ export const API_BASE_URL: string = resolveApiBaseUrl();
 
 /**
  * Wraps fetch with consistent JSON parsing and error handling.
+ * Automatically injects the Authorization token from session if available.
  * Never throws — callers can safely inspect `data` and `error`.
  */
 export async function request<T>(
@@ -48,7 +137,23 @@ export async function request<T>(
   try {
     const formattedPath = path.startsWith("/") ? path : `/${path}`;
     const url = `${API_BASE_URL}${formattedPath}`;
-    const response = await fetch(url, options);
+
+    const headers = new Headers(options?.headers || {});
+
+    // Automatically inject Authorization header if a session token is stored
+    const token = getStoredToken();
+    if (token && !headers.has("Authorization")) {
+      headers.set("Authorization", `Token ${token}`);
+    }
+
+    if (!headers.has("Content-Type") && options?.body && typeof options.body === "string") {
+      headers.set("Content-Type", "application/json");
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
 
     if (!response.ok) {
       let errorMessage = `Request failed (${response.status} ${response.statusText || "Error"})`;
@@ -62,6 +167,19 @@ export async function request<T>(
             errorMessage = errorJson.message;
           } else if (typeof errorJson.error === "string") {
             errorMessage = errorJson.error;
+          } else {
+            // Handle field-level DRF errors (e.g. { email: ["..."], password: ["..."] })
+            const messages: string[] = [];
+            for (const [_, val] of Object.entries(errorJson)) {
+              if (Array.isArray(val)) {
+                messages.push(val.join(" "));
+              } else if (typeof val === "string") {
+                messages.push(val);
+              }
+            }
+            if (messages.length > 0) {
+              errorMessage = messages.join(" ");
+            }
           }
         }
       } catch {
@@ -203,6 +321,42 @@ function authHeaders(): Record<string, string> {
 }
 
 /**
+ * Reads the active user's role from session storage.
+ */
+export function getUserRole(): string | null {
+  const directRole = sessionStorage.getItem("coursepulse_role");
+  if (directRole) return directRole;
+
+  try {
+    const rawUser = sessionStorage.getItem("coursepulse_user");
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser) as { role?: string };
+      if (parsed?.role) return parsed.role;
+    }
+  } catch {
+    // Ignore JSON parse error
+  }
+
+  return null;
+}
+
+/**
+ * Returns true if the logged-in user is a professor.
+ */
+export function isProfessor(): boolean {
+  return getUserRole() === "professor";
+}
+
+/**
+ * Resolves the primary classes route based on the logged-in user's role:
+ * returns "/professor" for professors and "/hub" for students.
+ */
+export function getClassesRoute(): string {
+  return isProfessor() ? "/professor" : "/hub";
+}
+
+
+/**
  * Fetch the logged-in student's classes.
  * Matches API contract: GET /api/classes/
  */
@@ -262,4 +416,105 @@ export async function getLeaderboard(
  */
 export async function getHealth(): Promise<ApiResult<HealthResponse>> {
   return request<HealthResponse>("/health/");
+}
+
+/**
+ * Fetch all classes owned by the logged-in professor.
+ * Matches API contract: GET /api/professor/classes/
+ * Requires a professor account and token authentication.
+ */
+export async function getProfessorClasses(): Promise<ApiResult<ProfessorClass[]>> {
+  return request<ProfessorClass[]>("/professor/classes/", {
+    headers: authHeaders(),
+  });
+}
+
+/**
+ * Creates a new class owned by the logged-in professor.
+ * Matches API contract: POST /api/classes/
+ * Requires a professor account and token authentication.
+ */
+export async function createClass(name: string): Promise<ApiResult<CreateClassResponse>> {
+  const token = sessionStorage.getItem("coursepulse_token");
+  return request<CreateClassResponse>("/classes/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+    body: JSON.stringify({ name }),
+  });
+}
+
+/**
+ * Log in using email and password.
+ * Matches API contract: POST /api/auth/login/
+ * Automatically persists session token and user info on success.
+ */
+export async function login(payload: LoginPayload): Promise<ApiResult<AuthResponse>> {
+  const result = await request<AuthResponse>("/auth/login/", {
+    method: "POST",
+    body: JSON.stringify({
+      email: payload.email.trim().toLowerCase(),
+      password: payload.password,
+    }),
+  });
+
+  if (result.data) {
+    setStoredToken(result.data.token);
+    setStoredUser(result.data.user);
+  }
+
+  return result;
+}
+
+/**
+ * Register a new user account.
+ * Matches API contract: POST /api/auth/register/
+ * Automatically persists session token and user info on success.
+ */
+export async function register(payload: RegisterPayload): Promise<ApiResult<AuthResponse>> {
+  const result = await request<AuthResponse>("/auth/register/", {
+    method: "POST",
+    body: JSON.stringify({
+      email: payload.email.trim().toLowerCase(),
+      password: payload.password,
+      role: payload.role || "student",
+    }),
+  });
+
+  if (result.data) {
+    setStoredToken(result.data.token);
+    setStoredUser(result.data.user);
+  }
+
+  return result;
+}
+
+/**
+ * Get currently authenticated user details.
+ * Matches API contract: GET /api/auth/me/
+ */
+export async function getCurrentUser(): Promise<ApiResult<User>> {
+  const result = await request<User>("/auth/me/");
+
+  if (result.data) {
+    setStoredUser(result.data);
+  } else if (
+    result.error &&
+    (result.error.includes("401") ||
+      result.error.includes("Invalid token") ||
+      result.error.includes("credentials were not provided"))
+  ) {
+    clearSession();
+  }
+
+  return result;
+}
+
+/**
+ * Log out and clear session tokens.
+ */
+export function logout(): void {
+  clearSession();
 }

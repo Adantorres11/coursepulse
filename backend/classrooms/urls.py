@@ -1,3 +1,4 @@
+
 from django.urls import path
 
 from .views import (
@@ -8,6 +9,7 @@ from .views import (
     StudentClassListView,
     ProfessorClassListView,
     ClassResultsView,
+    ClassRosterView,
 )
 
 urlpatterns = [
@@ -45,5 +47,10 @@ urlpatterns = [
         "classes/<int:pk>/results/",
         ClassResultsView.as_view(),
         name="class-results",
+    ),
+    path(
+        "classes/<int:pk>/roster/",
+        ClassRosterView.as_view(),
+        name="class-roster",
     ),
 ]
