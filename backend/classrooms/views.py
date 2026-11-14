@@ -8,11 +8,14 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from quizzes.models import QuizCompletion
+from quizzes.models import QuizCompletion, Lecture
 from .models import Classroom, Enrollment
 from .serializers import ClassCodeSerializer, ClassroomSerializer
-from .stats import build_class_stats, class_standings
-
+from .stats import (
+    build_class_stats,
+    class_standings,
+    build_class_results,
+)
 
 class StudentClassListView(ListAPIView):
     permission_classes = [IsAuthenticated]
@@ -253,3 +256,52 @@ class ProfessorClassListView(ListAPIView):
             )
             .order_by("name", "id")
         )
+
+class ClassResultsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        classroom = get_object_or_404(Classroom, pk=pk)
+
+        profile = getattr(request.user, "profile", None)
+
+        if profile is None or profile.role != "professor":
+            raise PermissionDenied(
+                "Only professors can access class results."
+            )
+
+        if classroom.professor_id != request.user.id:
+            raise PermissionDenied(
+                "You do not own this class."
+            )
+
+        return Response(build_class_results(classroom))
+
+class LectureUnpublishView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        lecture = get_object_or_404(
+            Lecture.objects.select_related("classroom"),
+            pk=pk,
+        )
+
+        profile = getattr(request.user, "profile", None)
+
+        if profile is None or profile.role != "professor":
+            raise PermissionDenied(
+                "Only professors can unpublish quizzes."
+            )
+
+        if lecture.classroom.professor_id != request.user.id:
+            raise PermissionDenied(
+                "You do not own this lecture."
+            )
+
+        lecture.published_at = None
+        lecture.save(update_fields=["published_at"])
+
+        return Response({
+            "id": lecture.id,
+            "published_at": lecture.published_at,
+        })

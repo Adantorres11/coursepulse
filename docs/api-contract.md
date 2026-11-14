@@ -671,3 +671,77 @@ Rules:
 Errors:
 - 401: Missing or invalid authentication.
 - 403: User is not a professor.
+
+## Class Results
+
+### GET /api/classes/{id}/results/
+
+Returns student results and per-question accuracy for a class.
+
+**Authentication:** Required. Only the professor who owns the class can access the results.
+
+**Response: 200 OK**
+
+```json
+{
+  "students": [
+    {
+      "student_id": 1,
+      "name": "Example Student",
+      "total_points": 150,
+      "quizzes_played": 3
+    }
+  ],
+  "lectures": [
+    {
+      "lecture_id": 1,
+      "title": "Introduction to Python",
+      "questions": [
+        {
+          "question_id": 1,
+          "prompt": "What is Python?",
+          "answer_count": 10,
+          "correct_count": 8,
+          "accuracy_percent": 80.0
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `quizzes_played` counts distinct lectures with completed attempts.
+- Question accuracy is calculated from completed attempts.
+- `accuracy_percent` is null when no answers exist.
+- Students without completed quizzes have zero quizzes played.
+
+**Errors:**
+- 401: Authentication required.
+- 403: User is not a professor or does not own the class.
+- 404: Class not found.
+
+## Unpublish Lecture
+
+### POST /api/lectures/{id}/unpublish/
+
+Unpublishes a lecture by setting its `published_at` field to null.
+
+**Authentication:** Required. Only the professor who owns the lecture's class can unpublish it.
+
+**Request body:** None.
+
+**Response: 200 OK**
+
+```json
+{
+  "id": 1,
+  "published_at": null
+}
+```
+
+Unpublishing hides the quiz from students while preserving existing attempts and answers.
+
+**Errors:**
+- 401: Authentication required.
+- 403: User is not a professor or does not own the lecture.
+- 404: Lecture not found.
