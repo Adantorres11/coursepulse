@@ -174,17 +174,7 @@ export default function QuizGame({
 
   // display only; the server decides the points
   function getStreakBonus(currentStreak: number) {
-    if (currentStreak <= 1) {
-      return 0;
-    }
-    switch (currentStreak) {
-      case 2:
-        return 25;
-      case 3:
-        return 50;
-      default:
-        return 100;
-    }
+    return currentStreak >= 3 ? 50 : 0;
   }
 
   // display only; the server decides the points
