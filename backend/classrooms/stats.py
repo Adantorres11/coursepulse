@@ -2,9 +2,9 @@ from django.contrib.auth import get_user_model
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
-from quizzes.models import Attempt, DayStreak
+from quizzes.models import Answer, Attempt, DayStreak
 from quizzes.streaks import current_day_streak
-
+from quizzes.models import Answer, Attempt, DayStreak
 
 def class_standings(classroom):
     students = (
@@ -127,4 +127,89 @@ def build_class_stats(classroom, user):
             None,
         ),
         "lectures": items,
+    }
+
+def build_class_results(classroom):
+    standings = class_standings(classroom)
+    student_ids = [
+        standing["user"].id for standing in standings
+    ]
+
+    completed_attempts = Attempt.objects.filter(
+        lecture__classroom=classroom,
+        user_id__in=student_ids,
+        completed_at__isnull=False,
+    )
+
+    quiz_counts = {
+        item["user_id"]: item["quizzes_played"]
+        for item in completed_attempts
+        .values("user_id")
+        .annotate(
+            quizzes_played=Count("lecture", distinct=True)
+        )
+    }
+
+    students = []
+
+    for standing in standings:
+        student = standing["user"]
+
+        students.append({
+            "student_id": student.id,
+            "name": student.get_full_name() or student.username,
+            "total_points": standing["points"],
+            "quizzes_played": quiz_counts.get(student.id, 0),
+        })
+
+    question_results = {
+        item["question_id"]: item
+        for item in Answer.objects.filter(
+            attempt__in=completed_attempts,
+            question__lecture__classroom=classroom,
+        )
+        .values("question_id")
+        .annotate(
+            answer_count=Count("id"),
+            correct_count=Count(
+                "id",
+                filter=Q(is_correct=True),
+            ),
+        )
+    }
+
+    lectures = []
+
+    for lecture in classroom.lectures.prefetch_related(
+        "questions"
+    ).order_by("id"):
+        questions = []
+
+        for question in lecture.questions.all():
+            result = question_results.get(question.id, {})
+            answer_count = result.get("answer_count", 0)
+            correct_count = result.get("correct_count", 0)
+
+            accuracy = (
+                round(correct_count / answer_count * 100, 2)
+                if answer_count else None
+            )
+
+            questions.append({
+                "question_id": question.id,
+                "prompt": question.prompt,
+                "answer_count": answer_count,
+                "correct_count": correct_count,
+                "accuracy_percent": accuracy,
+            })
+
+        lectures.append({
+            "lecture_id": lecture.id,
+            "title": lecture.title,
+            "questions": questions,
+        })
+
+    return {
+        "students": students,
+        "lectures": lectures,
     }
