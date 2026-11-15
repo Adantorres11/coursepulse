@@ -11,6 +11,8 @@ import {
   type ProfessorClass,
 } from "../lib/apiClient";
 import { LeaderboardModal } from "./LeaderboardModal";
+import { UploadLecturePage } from "./LectureUpload";
+
 
 type HubState =
   | { status: "loading" }
@@ -309,6 +311,11 @@ export function ClassHub() {
                 </div>
                 <p className="text-xs text-slate-400 mt-3">Quizzes created for this class</p>
               </div>
+            </div>
+
+            {/* Upload Lecture Recording Section */}
+            <div className="bg-[#111A30] border border-slate-800/90 rounded-2xl p-5 sm:p-6 shadow-lg">
+              <UploadLecturePage overrideClassId={state.classInfo.id} />
             </div>
 
             <div className="pt-2">
