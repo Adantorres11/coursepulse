@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { request, getStudentDayStreak, type Lecture } from "../lib/apiClient";
+import { request, getStudentDayStreak, isProfessor, type Lecture } from "../lib/apiClient";
 import { LeaderboardModal } from "./LeaderboardModal";
 import { ClassRankCard } from "./ClassRankCard";
+import { useAuth } from "../context/AuthContext";
 
 interface ClassroomResponse {
   id: number;
@@ -33,6 +34,7 @@ interface StudentHubProps {
 
 export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
   const navigate = useNavigate();
+  const { logout, user } = useAuth();
   const [leaderboardClassId, setLeaderboardClassId] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,8 +95,12 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 };
 
   useEffect(() => {
+    if (isProfessor()) {
+      navigate("/professor", { replace: true });
+      return;
+    }
     fetchLectures();
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,13 +178,24 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
           <span className="text-xl font-bold tracking-tight text-white">CoursePulse</span>
         </Link>
 
-        {/* Log out link matching mockups */}
-        <Link
-          to="/login"
-          className="text-sm font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
-        >
-          Log out
-        </Link>
+        {/* Log out button matching mockups - clears session and redirects to /login */}
+        <div className="flex items-center gap-3">
+          {user?.email && (
+            <span className="hidden sm:inline text-xs text-slate-400">
+              {user.email}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              navigate("/login");
+            }}
+            className="text-sm font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
+          >
+            Log out
+          </button>
+        </div>
       </header>
 
       {/* Main Container */}
@@ -207,12 +224,22 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
           <div className="bg-red-950/40 border border-red-800/60 rounded-2xl p-8 text-center max-w-md mx-auto">
             <h2 className="text-xl font-semibold text-white mb-2">Failed to load classes</h2>
             <p className="text-red-300 text-sm mb-4">{error}</p>
-            <button
-              onClick={fetchLectures}
-              className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition cursor-pointer"
-            >
-              Retry
-            </button>
+            {error.toLowerCase().includes("student role") ? (
+              <button
+                type="button"
+                onClick={() => navigate("/professor")}
+                className="px-4 py-2 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold rounded-lg text-sm transition cursor-pointer"
+              >
+                Go to Professor Dashboard →
+              </button>
+            ) : (
+              <button
+                onClick={fetchLectures}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition cursor-pointer"
+              >
+                Retry
+              </button>
+            )}
           </div>
         ) : classes.length === 0 ? (
           /* Empty State — Matches Mockup 1 (No classes yet) */

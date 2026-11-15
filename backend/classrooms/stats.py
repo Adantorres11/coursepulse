@@ -19,6 +19,8 @@ def class_standings(classroom):
                 filter=Q(
                     quiz_attempts__lecture__classroom=classroom,
                     quiz_attempts__completed_at__isnull=False,
+                    quiz_attempts__is_first=True,
+                    quiz_attempts__lecture__published_at__lte=timezone.now(),
                 ),
                 default=0,
             ),

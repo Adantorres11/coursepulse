@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { API_BASE_URL } from "../lib/apiClient";
+import { API_BASE_URL, getClassesRoute, isProfessor } from "../lib/apiClient";
 
 interface Classroom {
   id: number;
@@ -125,7 +125,7 @@ const handleJoin = async () => {
   return (
     <div className="min-h-screen bg-[#141625] text-white px-4 py-6">
       <header className="max-w-5xl mx-auto">
-        <Link to="/hub" className="inline-flex items-center gap-2 font-bold">
+        <Link to={getClassesRoute()} className="inline-flex items-center gap-2 font-bold">
           <img
             src="/assets/coursePulseLogo.png"
             alt=""
@@ -136,8 +136,8 @@ const handleJoin = async () => {
       </header>
 
       <section className="max-w-md mx-auto mt-12 sm:mt-16">
-        <Link to="/hub" className="text-sm text-sky-300 hover:underline">
-          &larr; All classes
+        <Link to={getClassesRoute()} className="text-sm text-sky-300 hover:underline">
+          &larr; {isProfessor() ? "Created classes" : "All classes"}
         </Link>
 
         <h1 className="mt-8 text-center text-3xl font-bold">
@@ -240,8 +240,8 @@ const handleJoin = async () => {
             {joinSuccess && (
               <p className="text-sm text-emerald-400">
                 You successfully joined this class.{" "}
-                <Link to="/hub" className="underline">
-                  All classes
+                <Link to={getClassesRoute()} className="underline">
+                  {isProfessor() ? "Created classes" : "All classes"}
                 </Link>
               </p>
             )}

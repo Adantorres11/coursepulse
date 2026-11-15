@@ -72,8 +72,12 @@ export interface Quiz {
 
 export interface AnswerRequest {
   question_id: number;
-  chosen_index: number; // 0-3
-  time_taken_ms: number; // 0 or more
+  chosen_index: number | null; // 0-3, or null when time ran out
+}
+
+export interface QuestionStart {
+  question_id: number;
+  started_at: string;
 }
 
 export interface AnswerResult {
@@ -86,6 +90,31 @@ export interface AnswerResult {
 export interface HealthResponse {
   status: string;
   service: string;
+}
+
+// User and Auth interfaces conforming to docs/api-contract.md
+export type UserRole = "student" | "professor";
+
+export interface User {
+  id: number;
+  email: string;
+  role: UserRole | null;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
+
+export interface RegisterPayload {
+  email: string;
+  password: string;
+  role?: UserRole;
+}
+
+export interface LoginPayload {
+  email: string;
+  password: string;
 }
 
 // Every API function returns this shape instead of throwing, so calling
@@ -103,4 +132,20 @@ export interface LeaderboardEntry {
   display_name: string;
   points: number;
   is_current_user: boolean;
+}
+
+// GET /api/professor/classes/
+export interface ProfessorClass {
+  id: number;
+  name: string;
+  access_code: string;
+  student_count: number;
+  lecture_count: number;
+}
+
+// POST /api/classes/ response
+export interface CreateClassResponse {
+  id: number;
+  name: string;
+  access_code: string;
 }

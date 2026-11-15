@@ -1,6 +1,10 @@
 from rest_framework.parsers import MultiPartParser, FormParser
 from quizzes.models import Lecture
-from .serializers import LectureUploadSerializer
+from .serializers import (
+    LectureUploadSerializer,
+    ClassCreateSerializer,
+    ProfessorClassSerializer,
+)
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -10,11 +14,13 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from quizzes.models import QuizCompletion
-
 from .models import Classroom, Enrollment
-from .serializers import ClassCodeSerializer, ClassroomSerializer
+from .serializers import (
+    ClassCodeSerializer,
+    ClassroomSerializer,
+    ClassRosterSerializer,
+)
 from .stats import build_class_stats, class_standings
 
 
@@ -22,6 +28,24 @@ class StudentClassListView(ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = ClassroomSerializer
     pagination_class = None
+
+    def post(self, request):
+        profile = getattr(request.user, "profile", None)
+
+        if profile is None or profile.role != "professor":
+            raise PermissionDenied(
+                "Only professors can create classes."
+            )
+
+        serializer = ClassCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        serializer.save(professor=request.user)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
 
     def get_queryset(self):
         user = self.request.user
@@ -210,6 +234,7 @@ class ClassStatsView(APIView):
 
         return Response(build_class_stats(classroom, request.user))
 
+
 class LectureUploadView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -246,3 +271,67 @@ class LectureUploadView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class ProfessorClassListView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ProfessorClassSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        user = self.request.user
+        profile = getattr(user, "profile", None)
+
+        if profile is None or profile.role != "professor":
+            raise PermissionDenied(
+                "Only professors can access this class list."
+            )
+
+        return (
+            Classroom.objects
+            .filter(professor=user)
+            .annotate(
+                student_count=Count(
+                    "enrollments",
+                    distinct=True,
+                ),
+                lecture_count=Count(
+                    "lectures",
+                    distinct=True,
+                ),
+            )
+            .order_by("name", "id")
+        )
+
+
+class ClassRosterView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        classroom = get_object_or_404(Classroom, pk=pk)
+
+        profile = getattr(request.user, "profile", None)
+
+        if profile is None or profile.role != "professor":
+            raise PermissionDenied(
+                "Only professors can access the class roster."
+            )
+
+        if classroom.professor_id != request.user.id:
+            raise PermissionDenied(
+                "You do not own this class."
+            )
+
+        enrollments = (
+            Enrollment.objects
+            .filter(classroom=classroom)
+            .select_related("user")
+            .order_by("joined_at", "id")
+        )
+
+        serializer = ClassRosterSerializer(
+            enrollments,
+            many=True,
+        )
+
+        return Response(serializer.data)

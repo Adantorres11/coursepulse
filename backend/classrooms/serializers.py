@@ -2,8 +2,7 @@ from pathlib import Path
 
 from rest_framework import serializers
 
-from .models import Classroom
-
+from .models import Classroom, Enrollment
 
 class ClassroomSerializer(serializers.ModelSerializer):
     professor = serializers.SerializerMethodField()
@@ -51,7 +50,6 @@ class ClassCodeSerializer(serializers.Serializer):
             )
 
         return code
-
 
 class LectureUploadSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255)
@@ -120,3 +118,37 @@ class LectureUploadSerializer(serializers.Serializer):
             )
 
         return file
+
+class ClassCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Classroom
+        fields = ["id", "name", "access_code"]
+        read_only_fields = ["id", "access_code"]
+
+
+class ProfessorClassSerializer(serializers.ModelSerializer):
+    student_count = serializers.IntegerField(read_only=True)
+    lecture_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Classroom
+        fields = [
+            "id",
+            "name",
+            "access_code",
+            "student_count",
+            "lecture_count",
+        ]
+
+class ClassRosterSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Enrollment
+        fields = ["name", "joined_at"]
+
+    def get_name(self, enrollment):
+        return (
+            enrollment.user.get_full_name()
+            or enrollment.user.username
+        )

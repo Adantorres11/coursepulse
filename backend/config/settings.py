@@ -94,6 +94,28 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
+# Celery (background jobs). Redis carries the jobs and stores the results.
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/0")
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TIMEZONE = TIME_ZONE
+# Acknowledge a job only after it finishes, and take one job at a time,
+# so a job is delivered again if the worker dies while running it.
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# Seconds. Sized for transcribing a 75-minute lecture.
+CELERY_TASK_TIME_LIMIT = int(os.environ.get("CELERY_TASK_TIME_LIMIT", "1800"))
+CELERY_TASK_SOFT_TIME_LIMIT = int(os.environ.get("CELERY_TASK_SOFT_TIME_LIMIT", "1500"))
+# Eager means tasks run inline with no Redis and no worker. That is the default
+# outside Docker (DB_HOST not set), so tests and local runs work alone.
+CELERY_TASK_ALWAYS_EAGER = (
+    os.environ.get("CELERY_TASK_ALWAYS_EAGER", "0" if os.environ.get("DB_HOST") else "1") == "1"
+)
+CELERY_TASK_EAGER_PROPAGATES = CELERY_TASK_ALWAYS_EAGER
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

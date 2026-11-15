@@ -1,13 +1,16 @@
 from datetime import timedelta
+from unittest.mock import patch
 
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from rest_framework.test import APITestCase
+from rest_framework.test import APIRequestFactory, APITestCase
 
 from classrooms.models import Classroom
+from .grading import get_open_attempt
 from .models import Lecture, Question
+from .serializers import QuizSerializer
 from .test_lectures import add_questions
+from .testing import answer, make_student
 
 
 class LectureQuizTests(TestCase):
@@ -118,20 +121,17 @@ class QuizProgressTests(APITestCase):
         )
         add_questions(cls.lecture, 3)
         cls.questions = list(cls.lecture.questions.order_by("position", "id"))
-        User = get_user_model()
-        cls.student = User.objects.create_user(username="one", password="pw")
-        cls.other = User.objects.create_user(username="two", password="pw")
+        cls.student = make_student("one", classroom)
+        cls.other = make_student("two", classroom)
+        cls.other_lecture = Lecture.objects.create(
+            classroom=classroom,
+            title="Another Lecture",
+            published_at=timezone.now() - timedelta(days=1),
+        )
+        add_questions(cls.other_lecture, 1)
 
     def answer(self, question):
-        return self.client.post(
-            f"/api/lectures/{self.lecture.id}/answers/",
-            {
-                "question_id": question.id,
-                "chosen_index": question.correct_index,
-                "time_taken_ms": 1000,
-            },
-            format="json",
-        )
+        return answer(self.client, self.lecture, question, question.correct_index)
 
     def get_quiz(self):
         return self.client.get(f"/api/lectures/{self.lecture.id}/quiz/").json()
@@ -174,3 +174,37 @@ class QuizProgressTests(APITestCase):
 
         self.assertEqual(body["answered_question_ids"], [])
         self.assertEqual(body["total_points"], 0)
+
+    def test_quiz_loads_the_open_attempt_once(self):
+        self.client.force_authenticate(self.student)
+        self.answer(self.questions[0])
+
+        with patch(
+            "quizzes.serializers.get_open_attempt", wraps=get_open_attempt
+        ) as spy:
+            body = self.get_quiz()
+
+        self.assertEqual(spy.call_count, 1)
+        self.assertEqual(body["answered_question_ids"], [self.questions[0].id])
+
+    def test_logged_out_quiz_does_not_look_up_an_attempt(self):
+        with patch(
+            "quizzes.serializers.get_open_attempt", wraps=get_open_attempt
+        ) as spy:
+            self.get_quiz()
+
+        self.assertEqual(spy.call_count, 0)
+
+    def test_serializer_reused_for_two_lectures_uses_each_attempt(self):
+        self.client.force_authenticate(self.student)
+        self.answer(self.questions[0])
+        request = APIRequestFactory().get("/")
+        request.user = self.student
+        serializer = QuizSerializer(context={"request": request})
+
+        first = serializer.to_representation(self.lecture)
+        second = serializer.to_representation(self.other_lecture)
+
+        self.assertEqual(first["answered_question_ids"], [self.questions[0].id])
+        self.assertEqual(second["answered_question_ids"], [])
+        self.assertEqual(second["total_points"], 0)

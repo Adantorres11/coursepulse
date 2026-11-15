@@ -28,8 +28,8 @@ The repository includes a demo class and one published lecture, Agile and Scrum,
 │   ├── accounts/            Registration, login, and roles
 │   ├── classrooms/          Classes, join codes, standings, and stats
 │   ├── quizzes/             Lectures, questions, attempts, and the demo seed
-│   ├── config/              Settings and URL routing
-│   ├── core/                Health check
+│   ├── config/              Settings, URL routing, and the Celery app
+│   ├── core/                Health check and the sample background task
 │   ├── Dockerfile
 │   ├── manage.py
 │   └── requirements.txt
@@ -48,7 +48,7 @@ The repository includes a demo class and one published lecture, Agile and Scrum,
 ├── docs/
 │   └── api-contract.md      Request and response shapes
 ├── .env.example             Local environment template
-├── docker-compose.yml       Postgres, API, and frontend
+├── docker-compose.yml       Postgres, Redis, API, worker, and frontend
 └── README.md
 ```
 
@@ -78,9 +78,48 @@ Stop with Ctrl+C. Reset the database with `docker compose down -v`.
 
 Local database credentials live in `.env`, which is not committed.
 
+## Background jobs
+
+Celery runs slow work in a separate worker process, so the API does not wait for it. Redis is the queue between the API and the worker. A queue is a list of jobs that wait for a worker. `docker compose up --build` starts the `redis` and `worker` services with the rest of the stack.
+
+To run the sample task, start the stack and run this command. It sends the task `core.tasks.ping` to the queue, waits for the worker, and prints `pong`.
+
+```bash
+docker compose exec backend python manage.py shell -c "from core.tasks import ping; print(ping.delay().get(timeout=10))"
+```
+
+To watch the worker, run this command in a second terminal:
+
+```bash
+docker compose logs -f worker
+```
+
+The log shows three lines for each run of the sample task. The first says `Task core.tasks.ping[<id>] received`. The second says `core.tasks.ping[<id>]: ping task ran`. The third says `Task core.tasks.ping[<id>] succeeded in ...s: 'pong'`. The worker also prints a warning that it runs as root. The warning is harmless inside the container.
+
+The worker does not reload code. After you change a task, run `docker compose restart worker`.
+
+`.env.example` lists the five `CELERY_*` variables and what each one does.
+
+### Planned lecture pipeline
+
+This pipeline is planned. It is not built yet. These are the decisions for it:
+
+1. Two tasks run in order: `transcribe_lecture(lecture_id)`, then `generate_questions(lecture_id)`.
+2. Each task takes only a lecture id and reads and writes the database. You can retry either task alone.
+3. The upload endpoint links the tasks after it saves the file, with the line below. A chain runs tasks one after another. `.si` stops the first task's return value from going to the second task.
+4. The job logic lives in plain functions. The Celery tasks only call them. The trigger can later move to AWS (S3, Lambda, SQS) without a rewrite.
+5. Whisper and the LLM sit behind small wrapper functions, so tests can replace them with fakes.
+6. `generate_questions` saves all questions in one database transaction. A transaction either saves everything or saves nothing, so a lecture never has a partial question set.
+
+```python
+chain(transcribe_lecture.si(lecture.id), generate_questions.si(lecture.id)).delay()
+```
+
+The tickets are SCRUM-69 (upload), SCRUM-70 (transcription), SCRUM-71 (questions), and SCRUM-92 (pipeline tests).
+
 ## Without Docker
 
-With `DB_HOST` unset, the API uses SQLite.
+With `DB_HOST` unset, the API uses SQLite. Tasks also run eagerly, which means inline in the same process, so you need no Redis and no worker. Run the real pipeline through Docker, so it uses Postgres. SQLite locks the whole database file when the web server and the worker write at the same time.
 
 ```bash
 cd backend
@@ -102,3 +141,5 @@ npm install && npm run dev
 cd backend && python manage.py test
 cd frontend && npm run build
 ```
+
+The tests run tasks inline and need no Redis.
