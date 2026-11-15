@@ -22,10 +22,15 @@ class Lecture(models.Model):
         choices=[
             ("pending", "Pending"),
             ("processing", "Processing"),
-            ("completed", "Completed"),
+            ("ready", "Ready"),
             ("failed", "Failed"),
         ],
         default="pending",
+    )
+
+    error_message = models.TextField(
+        blank=True,
+        default="",
     )
     published_at = models.DateTimeField(null=True, blank=True)
 

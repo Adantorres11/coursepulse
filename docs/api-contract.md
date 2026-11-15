@@ -742,3 +742,81 @@ Errors:
 Transcription:
 - New lectures are saved with status "pending".
 - Transcription job integration depends on Celery and Redis setup.
+
+
+## GET /api/lectures/{id}/status/
+
+Returns the current processing status of a lecture.
+
+Authentication: Required (professor and class owner).
+
+Success: 200 OK
+
+```json
+{
+  "id": 1,
+  "status": "processing",
+  "error_message": ""
+}
+```
+
+Possible statuses:
+
+- pending: Lecture is waiting to be processed.
+- processing: Lecture is being transcribed or questions are being generated.
+- ready: Processing is complete and questions are ready for review.
+- failed: Processing failed.
+
+For a failed lecture:
+
+```json
+{
+  "id": 1,
+  "status": "failed",
+  "error_message": "Transcription failed."
+}
+```
+
+Rules:
+- Only the professor who owns the lecture's classroom can access its status.
+- The error message is empty unless the lecture status is failed.
+
+Errors:
+- 401: Missing or invalid authentication.
+- 403: User is not a professor or does not own the classroom.
+- 404: Unknown lecture ID.
+
+## POST /api/lectures/{id}/retry/
+
+Restarts processing for a failed lecture.
+
+Authentication: Required (professor and class owner).
+
+Request: No body required.
+
+Success: 202 Accepted
+
+```json
+{
+  "id": 1,
+  "status": "pending",
+  "error_message": ""
+}
+```
+
+Rules:
+- Only failed lectures can be retried.
+- The lecture status is reset to pending.
+- The previous error message is cleared.
+- The lecture is submitted to the Celery processing pipeline.
+- If the pipeline is unavailable, the failed status and previous error message are restored.
+
+Errors:
+- 400: Lecture is not failed or is already being retried.
+- 401: Missing or invalid authentication.
+- 403: User is not a professor or does not own the classroom.
+- 404: Unknown lecture ID.
+- 503: Processing pipeline is unavailable.
+
+Dependency:
+- Actual processing requires the transcription and question generation tasks from SCRUM-70 and SCRUM-71.
