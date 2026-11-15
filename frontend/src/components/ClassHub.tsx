@@ -256,6 +256,16 @@ export function ClassHub() {
         {/* ======================================================== */}
         {state.status === "professor" && (
           <div className="space-y-6">
+
+            <div className="flex justify-end">
+              <Link
+                to={`/class/${classId}/results`}
+                className="inline-flex items-center gap-2 bg-sky-400 hover:bg-sky-500 text-slate-950 font-bold text-sm px-5 py-3 rounded-xl transition"
+              >
+                View Results
+              </Link>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
               {/* Card 1: Join Code */}
               <div className="bg-[#111A30] border border-slate-800/90 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
