@@ -102,6 +102,27 @@ class ClassStatsTests(APITestCase):
             item for item in data["lectures"] if item["id"] == lecture.id
         )
 
+    def test_unpublished_lecture_points_do_not_count(self):
+        draft = self.make_lecture(self.classroom, "Draft")
+        draft.published_at = None
+        draft.save()
+        future = self.make_lecture(self.classroom, "Future", days_ago=-2)
+        self.add_attempt(self.bharat, 300, lecture=draft, correct=3)
+        self.add_attempt(self.bharat, 200, lecture=future, correct=2)
+        self.add_attempt(self.bharat, 100, lecture=self.old, correct=1)
+
+        self.assertEqual(self.get_stats()["total_points"], 100)
+
+    def test_lecture_points_count_once_it_is_published(self):
+        future = self.make_lecture(self.classroom, "Future", days_ago=-2)
+        self.add_attempt(self.bharat, 300, lecture=future, correct=3)
+        self.assertEqual(self.get_stats()["total_points"], 0)
+
+        future.published_at = self.now - timedelta(days=1)
+        future.save()
+
+        self.assertEqual(self.get_stats()["total_points"], 300)
+
     def test_response_names_class_by_id_and_name(self):
         data = self.get_stats()
 

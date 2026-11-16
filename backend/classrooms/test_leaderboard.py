@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
@@ -17,14 +19,17 @@ class ClassLeaderboardTests(APITestCase):
         cls.lecture = Lecture.objects.create(
             classroom=cls.classroom,
             title="Scrum",
+            published_at=timezone.now() - timedelta(days=1),
         )
         cls.second_lecture = Lecture.objects.create(
             classroom=cls.classroom,
             title="Testing",
+            published_at=timezone.now() - timedelta(days=1),
         )
         cls.other_lecture = Lecture.objects.create(
             classroom=cls.other_classroom,
             title="Search",
+            published_at=timezone.now() - timedelta(days=1),
         )
 
         cls.bharat = cls.make_user("bharat", "Bharat", "Kawar")
@@ -86,6 +91,19 @@ class ClassLeaderboardTests(APITestCase):
         self.assertEqual(response.data[1]["points"], 250)
         self.assertEqual(response.data[1]["rank"], 2)
         self.assertEqual(len(response.data), 4)
+
+    def test_unpublished_lecture_points_do_not_count(self):
+        self.second_lecture.published_at = None
+        self.second_lecture.save()
+        self.add_attempt(self.bharat, 100)
+        self.add_attempt(self.bharat, 500, lecture=self.second_lecture)
+        self.add_attempt(self.alex, 500, lecture=self.second_lecture)
+
+        rows = {row["display_name"]: row for row in self.client.get(self.url).data}
+        self.assertEqual(rows["Bharat K."]["points"], 100)
+        self.assertEqual(rows["Alex S."]["points"], 0)
+        self.assertEqual(rows["Alex S."]["rank"], 2)
+        self.assertEqual(rows["Zero P."]["rank"], 2)
 
     def test_replay_does_not_change_points(self):
         self.add_attempt(self.bharat, 300)

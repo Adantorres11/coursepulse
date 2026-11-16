@@ -48,15 +48,17 @@ class QuizSerializer(serializers.ModelSerializer):
             return None
         return get_open_attempt(request.user, lecture)
 
+    def to_representation(self, lecture):
+        self._attempt = self._open_attempt(lecture)
+        return super().to_representation(lecture)
+
     def get_answered_question_ids(self, lecture):
-        attempt = self._open_attempt(lecture)
-        if attempt is None:
+        if self._attempt is None:
             return []
-        return list(attempt.answers.values_list("question_id", flat=True))
+        return list(self._attempt.answers.values_list("question_id", flat=True))
 
     def get_total_points(self, lecture):
-        attempt = self._open_attempt(lecture)
-        return attempt.total_points if attempt else 0
+        return self._attempt.total_points if self._attempt else 0
 
 
 class AnswerRequestSerializer(serializers.Serializer):

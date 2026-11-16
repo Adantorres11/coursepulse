@@ -1,7 +1,6 @@
 from rest_framework import serializers
 
-from .models import Classroom
-
+from .models import Classroom, Enrollment
 
 class ClassroomSerializer(serializers.ModelSerializer):
     professor = serializers.SerializerMethodField()
@@ -67,3 +66,16 @@ class ProfessorClassSerializer(serializers.ModelSerializer):
             "student_count",
             "lecture_count",
         ]
+
+class ClassRosterSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Enrollment
+        fields = ["name", "joined_at"]
+
+    def get_name(self, enrollment):
+        return (
+            enrollment.user.get_full_name()
+            or enrollment.user.username
+        )

@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { clearSession } from "../lib/apiClient";
+import { useAuth } from "../context/AuthContext";
 
 export interface CurrentClassInfo {
   id: number | string;
@@ -14,12 +14,13 @@ interface StudentNavProps {
 export function StudentNav({ currentClass, onJoinClass }: StudentNavProps = {}) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout } = useAuth();
 
   const isDashboardActive = location.pathname === "/hub";
   const isCurrentClassActive = Boolean(currentClass && !isDashboardActive);
 
   const handleLogout = () => {
-    clearSession();
+    logout();
     navigate("/login");
   };
 

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Answer, Attempt, QuestionStart
+from .models import Answer, Attempt, DayStreak, QuestionStart
 
 
 @admin.register(Attempt)
@@ -37,3 +37,9 @@ class AnswerAdmin(admin.ModelAdmin):
 class QuestionStartAdmin(admin.ModelAdmin):
     list_display = ("id", "attempt", "question", "started_at")
     list_select_related = ("attempt", "question")
+
+
+@admin.register(DayStreak)
+class DayStreakAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "count", "last_day")
+    list_select_related = ("user",)

@@ -159,13 +159,13 @@ export default function QuizGame({
   function getDifficultyPoints(difficulty: DifficultyLevel | undefined): number {
     switch (difficulty) {
       case "easy":
-        return 1;
+        return 100;
       case "medium":
-        return 2;
+        return 200;
       case "hard":
-        return 3;
+        return 300;
       default:
-        return 1;
+        return 100;
     }
   }
 
@@ -346,7 +346,7 @@ export default function QuizGame({
                 ? questions[questionIndex].difficulty.charAt(0).toUpperCase() + questions[questionIndex].difficulty.slice(1)
                 : "Loading..."}
             </div>
-            <span className="text-slate-400 text-sm font-medium">{getDifficultyPoints(questions[questionIndex].difficulty) * 100} pts</span>
+            <span className="text-slate-400 text-sm font-medium">{getDifficultyPoints(questions[questionIndex].difficulty)} pts</span>
           </div>
         </div>
 
