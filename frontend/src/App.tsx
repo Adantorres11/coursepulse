@@ -21,7 +21,8 @@ function AppContent() {
     location.pathname === "/signup" ||
     location.pathname === "/hub" ||
     location.pathname === "/join" ||
-    location.pathname.startsWith("/class");
+    location.pathname.startsWith("/class") ||
+    location.pathname.startsWith("/professor");
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -37,10 +38,10 @@ function AppContent() {
                 <span>CoursePulse</span>
               </Link>
               <Link
-                to="/hub"
+                to={user?.role === "professor" ? "/professor" : "/hub"}
                 className="text-sm font-medium text-slate-400 hover:text-white transition-colors"
               >
-                Student Hub
+                {user?.role === "professor" ? "Dashboard" : "Student Hub"}
               </Link>
             </div>
             <div className="flex items-center gap-3">
@@ -91,7 +92,7 @@ function AppContent() {
           <Route
             path="/hub"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="student">
                 <StudentHub />
               </ProtectedRoute>
             }
@@ -99,7 +100,7 @@ function AppContent() {
           <Route
             path="/join"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="student">
                 <JoinClassPage />
               </ProtectedRoute>
             }
@@ -119,7 +120,7 @@ function AppContent() {
           <Route
             path="/professor"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="professor">
                 <ProfessorDashboard />
               </ProtectedRoute>
             }
@@ -127,16 +128,23 @@ function AppContent() {
           <Route
             path="/professor/classes"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="professor">
                 <ProfessorDashboard />
               </ProtectedRoute>
             }
           />
-          <Route path="/professor/dashboard" element={<Navigate to="/professor" replace />} />
+          <Route
+            path="/professor/dashboard"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <Navigate to="/professor" replace />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/professor/class/:classId"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="professor">
                 <ClassHub />
               </ProtectedRoute>
             }
@@ -144,7 +152,7 @@ function AppContent() {
           <Route
             path="/quiz/:lectureId"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="student">
                 <QuizPage />
               </ProtectedRoute>
             }

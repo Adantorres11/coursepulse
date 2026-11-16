@@ -324,11 +324,15 @@ function authHeaders(): Record<string, string> {
  * Reads the active user's role from session storage.
  */
 export function getUserRole(): string | null {
-  const directRole = sessionStorage.getItem("coursepulse_role");
+  const directRole =
+    sessionStorage.getItem("coursepulse_role") ||
+    localStorage.getItem("coursepulse_role");
   if (directRole) return directRole;
 
   try {
-    const rawUser = sessionStorage.getItem("coursepulse_user");
+    const rawUser =
+      sessionStorage.getItem("coursepulse_user") ||
+      localStorage.getItem("coursepulse_user");
     if (rawUser) {
       const parsed = JSON.parse(rawUser) as { role?: string };
       if (parsed?.role) return parsed.role;
