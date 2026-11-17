@@ -25,4 +25,19 @@ urlpatterns = [
         views.LectureRetryView.as_view(),
         name="lecture-retry",
     ),
+    path(
+    "lectures/<int:pk>/questions/",
+    views.ProfessorLectureQuestionsView.as_view(),
+    name="professor-lecture-questions",
+    ),
+    path(
+    "lectures/<int:pk>/questions/<int:question_id>/",
+    views.ProfessorQuestionDetailView.as_view(),
+    name="professor-question-detail",
+    ),
+    path(
+    "lectures/<int:pk>/publish/",
+    views.LecturePublishView.as_view(),
+    name="lecture-publish",
+    ),
 ]
