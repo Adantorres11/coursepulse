@@ -805,3 +805,96 @@ Errors:
 
 Dependency:
 - Transcription is built in SCRUM-70. Question generation is built in SCRUM-71.
+
+## SCRUM-73 — Professor Question Management
+
+Authentication: Required. Only the professor who owns the lecture's classroom can access these endpoints.
+
+### GET /api/lectures/{id}/questions/
+
+Returns all questions for a lecture, including correct answers.
+
+Success: 200 OK
+
+```json
+[
+  {
+    "id": 1,
+    "prompt": "What is Python?",
+    "choices": ["Language", "Database", "Browser", "OS"],
+    "correct_index": 0,
+    "difficulty": "easy",
+    "position": 1
+  }
+]
+```
+
+### POST /api/lectures/{id}/questions/
+
+Adds a question to an unpublished lecture.
+
+Request:
+
+```json
+{
+  "prompt": "What is Django?",
+  "choices": ["Framework", "OS", "Browser", "Database"],
+  "correct_index": 0,
+  "difficulty": "easy",
+  "position": 2
+}
+```
+
+Success: 201 Created. Returns the created question.
+
+### PATCH /api/lectures/{id}/questions/{question_id}/
+
+Updates an existing question before publication.
+
+Request (example):
+
+```json
+{
+  "prompt": "Updated question",
+  "correct_index": 1
+}
+```
+
+Success: 200 OK. Returns the updated question.
+
+### DELETE /api/lectures/{id}/questions/{question_id}/
+
+Deletes a question from an unpublished lecture.
+
+Success: 204 No Content.
+
+### POST /api/lectures/{id}/publish/
+
+Publishes a lecture's quiz after validating its questions.
+
+Request: No body required.
+
+Success: 200 OK
+
+```json
+{
+  "id": 1,
+  "published_at": "2026-11-16T18:00:00Z",
+  "message": "Quiz published successfully."
+}
+```
+
+Rules:
+- A quiz must contain at least one question.
+- Every question must have exactly four choices.
+- `correct_index` must be between 0 and 3.
+- Difficulty must be easy, medium, or hard.
+- Published quizzes cannot be edited or deleted through these endpoints.
+- A quiz cannot be published twice.
+- The student-facing quiz serializer does not expose correct answers.
+
+Errors:
+- 400: Invalid question data, missing questions, or quiz already published.
+- 401: Missing or invalid authentication (authentication configuration may return 403).
+- 403: User is not the classroom owner.
+- 404: Unknown lecture or question.
