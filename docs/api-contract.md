@@ -632,8 +632,9 @@ Content-Type: multipart/form-data
 Request fields:
 - title: Required string (max 255 characters)
 - recording: Required audio/video file
-- Allowed extensions: .mp3, .mp4, .m4a, .wav
-- Maximum file size: 100 MB
+- Allowed extensions: .mp3, .mp4, .m4a, .wav (any letter case)
+- The file must start with the matching audio/video signature. The browser-sent content type is not checked, since browsers and curl send different values for the same file.
+- Maximum file size: `LECTURE_UPLOAD_MAX_BYTES`, 2 GB by default, so a full 75-minute lecture fits
 
 Success: 201 Created
 
@@ -652,8 +653,9 @@ Errors:
 - 401: Missing or invalid authentication
 
 Transcription:
-- New lectures are saved with status "pending".
-- Transcription job integration depends on Celery and Redis setup.
+- New lectures are saved with status "pending" and are not visible to students (published_at is null).
+- Status values are "pending", "processing", "ready", and "failed".
+- Queueing the transcription job after upload lands with SCRUM-70 (Whisper transcription task). Until then an uploaded lecture stays "pending".
 
 ## GET /api/professor/classes/{id}/lectures/
 
@@ -686,8 +688,8 @@ Rules:
 - Only the professor who owns the classroom can access its lectures.
 - Includes published and unpublished lectures.
 - Returns an empty array when the class has no lectures.
-- On the current base branch, unpublished lectures are labeled "pending".
-- After SCRUM-72 is merged, the endpoint can also return "processing", "ready", and "failed" using the lecture's actual status.
+- A published lecture is labeled "published". Otherwise the label is the lecture's processing status: "pending", "processing", "ready", or "failed".
+- Lectures made before uploads existed have no recording and are labeled "ready".
 
 Errors:
 - 401: Authentication required.
