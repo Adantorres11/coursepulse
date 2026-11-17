@@ -131,8 +131,15 @@ class LectureUploadTests(LectureUploadTestBase):
         )
 
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["recording"],
+            ["Only MP3, MP4, M4A, and WAV files are allowed."],
+        )
+        self.assertEqual(Lecture.objects.count(), 0)
 
-    def test_invalid_content_type(self):
+    def test_bad_contents_rejected_whatever_the_content_type(self):
+        # The content type is not checked any more. This file is refused
+        # because its first bytes are not audio.
         self.authenticate(self.professor)
 
         fake_recording = SimpleUploadedFile(
@@ -151,6 +158,10 @@ class LectureUploadTests(LectureUploadTestBase):
         )
 
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["recording"],
+            ["Invalid audio or video file."],
+        )
         self.assertEqual(Lecture.objects.count(), 0)
 
     @override_settings(LECTURE_UPLOAD_MAX_BYTES=1000)
@@ -206,6 +217,10 @@ class LectureUploadTests(LectureUploadTestBase):
         )
 
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["recording"],
+            ["Invalid audio or video file."],
+        )
         self.assertEqual(Lecture.objects.count(), 0)
 
 
