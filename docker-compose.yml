@@ -19,6 +19,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory-policy noeviction
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -38,11 +41,15 @@ services:
       DB_NAME: ${POSTGRES_DB:-coursepulse}
       DB_USER: ${POSTGRES_USER:-coursepulse}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-coursepulse}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in .env}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
-      CELERY_TASK_TIME_LIMIT: ${CELERY_TASK_TIME_LIMIT:-1800}
-      CELERY_TASK_SOFT_TIME_LIMIT: ${CELERY_TASK_SOFT_TIME_LIMIT:-1500}
+      CELERY_TASK_TIME_LIMIT: ${CELERY_TASK_TIME_LIMIT:-3000}
+      CELERY_TASK_SOFT_TIME_LIMIT: ${CELERY_TASK_SOFT_TIME_LIMIT:-2700}
       CELERY_TASK_ALWAYS_EAGER: ${CELERY_TASK_ALWAYS_EAGER:-0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      TRANSCRIPTION_MAX_COST_USD: ${TRANSCRIPTION_MAX_COST_USD:-2.00}
+      TRANSCRIPTION_MAX_SECONDS: ${TRANSCRIPTION_MAX_SECONDS:-14400}
+      LECTURE_UPLOAD_MAX_BYTES: ${LECTURE_UPLOAD_MAX_BYTES:-2147483648}
     volumes:
       - ./backend:/app
     ports:
@@ -55,7 +62,8 @@ services:
 
   worker:
     build: ./backend
-    command: celery -A config worker -l info
+    command: celery -A config worker -l info -c ${CELERY_WORKER_CONCURRENCY:-2}
+    stop_grace_period: 3m
     environment: *backend-env
     volumes:
       - ./backend:/app
@@ -79,3 +87,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
