@@ -5,6 +5,7 @@ Every write below is one guarded UPDATE, so two jobs can never both win.
 """
 
 import logging
+from datetime import datetime
 from contextlib import contextmanager
 
 import redis
@@ -67,11 +68,19 @@ def heartbeat(lecture_id: int, token: str, message: str) -> None:
         raise LostOwnership(f"lecture {lecture_id} is no longer owned by {token}")
 
 
-def fail(lecture_id: int, token: str | None, message: str) -> bool:
+def fail(
+    lecture_id: int,
+    token: str | None,
+    message: str,
+    stale_before: datetime | None = None,
+) -> bool:
+    """Fail the lecture. With `stale_before`, skip a job that reported progress since then."""
     refresh_db_connection()
     lectures = Lecture.objects.filter(pk=lecture_id)
     if token is not None:
         lectures = lectures.filter(job_token=token)
+    if stale_before is not None:
+        lectures = lectures.filter(last_progress_at__lt=stale_before)
     updated = lectures.update(
         status="failed",
         error_message=message,

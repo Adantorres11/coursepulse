@@ -74,6 +74,18 @@ class ReaperTests(TestCase):
         self.assertEqual(lecture.status, "processing")
         self.assertEqual(lecture.job_token, "new")
 
+    def test_reaper_leaves_a_job_that_reports_progress_before_it_is_failed(self):
+        lecture = self.make(status="processing", job_token="t", last_progress_at=minutes_ago(16))
+
+        def heartbeat_now(lecture_id, token):
+            Lecture.objects.filter(pk=lecture_id).update(last_progress_at=timezone.now())
+
+        self.release_stale_lock.side_effect = heartbeat_now
+        tasks.reap_stuck_lectures()
+        lecture = self.reload(lecture)
+        self.assertEqual(lecture.status, "processing")
+        self.assertEqual(lecture.job_token, "t")
+
     def test_reaper_then_retry_can_take_the_lock(self):
         lecture = self.make(status="processing", job_token="t", last_progress_at=minutes_ago(16))
         tasks.reap_stuck_lectures()

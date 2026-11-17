@@ -1,8 +1,10 @@
+from datetime import timedelta
 from unittest import mock
 
 import redis
 from django.conf import settings
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from classrooms.models import Classroom
 from quizzes import jobs
@@ -118,6 +120,25 @@ class HeartbeatAndFailTests(JobsTestBase):
         self.assertEqual(lecture.error_message, "msg")
         self.assertEqual(lecture.job_token, "")
         self.assertEqual(lecture.progress_message, "")
+
+    def test_fail_with_stale_before_skips_a_job_that_just_reported_progress(self):
+        claim_transcription(self.lecture.id, "t1")
+        heartbeat(self.lecture.id, "t1", "Preparing audio")
+        cutoff = timezone.now() - timedelta(minutes=15)
+        self.assertFalse(fail(self.lecture.id, "t1", "msg", stale_before=cutoff))
+        lecture = self.reload()
+        self.assertEqual(lecture.status, "processing")
+        self.assertEqual(lecture.job_token, "t1")
+        self.assertEqual(lecture.progress_message, "Preparing audio")
+
+    def test_fail_with_stale_before_fails_a_job_with_old_progress(self):
+        claim_transcription(self.lecture.id, "t1")
+        Lecture.objects.filter(pk=self.lecture.id).update(
+            last_progress_at=timezone.now() - timedelta(minutes=16)
+        )
+        cutoff = timezone.now() - timedelta(minutes=15)
+        self.assertTrue(fail(self.lecture.id, "t1", "msg", stale_before=cutoff))
+        self.assertEqual(self.reload().status, "failed")
 
     def test_fail_without_token_fails_any_owner(self):
         claim_transcription(self.lecture.id, "t1")

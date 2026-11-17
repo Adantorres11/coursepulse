@@ -68,8 +68,9 @@ def reap_stuck_lectures():
     for lecture_id, stale in stuck:
         # Free the dead job's lock first, or a professor retry could not take it.
         release_stale_lock(lecture_id, stale)
-        # Passing the token means a job that took over meanwhile is not overwritten.
-        fail(lecture_id, stale, INTERRUPTED)
+        # The token protects a job that took over. The cutoff protects a job that
+        # reported progress since the read above.
+        fail(lecture_id, stale, INTERRUPTED, stale_before=job_cutoff)
 
     lost = list(
         Lecture.objects.filter(
