@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { request, getStudentDayStreak, isProfessor, type Lecture } from "../lib/apiClient";
+import {
+  request,
+  getStoredToken,
+  getStudentDayStreak,
+  isProfessor,
+  type Lecture,
+} from "../lib/apiClient";
 import { LeaderboardModal } from "./LeaderboardModal";
 import { ClassRankCard } from "./ClassRankCard";
 import { useAuth } from "../context/AuthContext";
@@ -50,49 +56,54 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 
   // Fetch real backend / sample lectures
   const fetchLectures = async () => {
-  setLoading(true);
-  setError(null);
+    setLoading(true);
+    setError(null);
 
-  const token = sessionStorage.getItem("coursepulse_token");
+    try {
+      const token = getStoredToken();
 
-  if (!token) {
-    setClasses([]);
-    setError("Please log in to see your classes.");
-    setLoading(false);
-    return;
-  }
+      if (!token) {
+        setClasses([]);
+        setError("Please log in to see your classes.");
+        return;
+      }
 
-  const result = await request<ClassroomResponse[]>("/classes/", {
-    headers: { Authorization: `Token ${token}` },
-  });
+      const result = await request<ClassroomResponse[]>("/classes/", {
+        headers: { Authorization: `Token ${token}` },
+      });
 
-  if (result.error || !result.data) {
-    setClasses([]);
-    setError(result.error || "Unable to load your classes.");
-    setLoading(false);
-    return;
-  }
+      if (result.error || !result.data) {
+        setClasses([]);
+        setError(result.error || "Unable to load your classes.");
+        return;
+      }
 
-  const lectureResult = await request<Lecture[]>("/lectures/");
-  const lectures = lectureResult.data ?? [];
+      const lectureResult = await request<Lecture[]>("/lectures/");
+      const lectures = Array.isArray(lectureResult.data) ? lectureResult.data : [];
 
-  setClasses(
-    result.data.map((classroom) => ({
-      id: classroom.id,
-      classroomId: classroom.id,
-      name: classroom.name,
-      code: classroom.course_code,
-      instructor: classroom.professor?.name || "Professor not assigned",
-      quizCount: classroom.quiz_count,
-      newQuizCount: classroom.new_quiz_count,
-      lectureId: lectures.find(
-        (lecture) => lecture.classroom_id === classroom.id
-      )?.id,
-    }))
-  );
-
-  setLoading(false);
-};
+      const rawClassrooms = Array.isArray(result.data) ? result.data : [];
+      setClasses(
+        rawClassrooms.map((classroom) => ({
+          id: classroom.id,
+          classroomId: classroom.id,
+          name: classroom.name,
+          code: classroom.course_code,
+          instructor: classroom.professor?.name || "Professor not assigned",
+          quizCount: classroom.quiz_count,
+          newQuizCount: classroom.new_quiz_count,
+          lectureId: lectures.find(
+            (lecture) => lecture.classroom_id === classroom.id
+          )?.id,
+        }))
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load classes.";
+      setError(msg);
+      setClasses([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isProfessor()) {
@@ -233,12 +244,22 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
                 Go to Professor Dashboard →
               </button>
             ) : (
-              <button
-                onClick={fetchLectures}
-                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition cursor-pointer"
-              >
-                Retry
-              </button>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={fetchLectures}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition cursor-pointer"
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/join")}
+                  className="px-4 py-2 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold rounded-lg text-sm transition cursor-pointer"
+                >
+                  Join a class →
+                </button>
+              </div>
             )}
           </div>
         ) : classes.length === 0 ? (
