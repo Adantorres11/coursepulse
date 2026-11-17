@@ -1,3 +1,4 @@
+import { ProfessorClassResults } from "./components/ProfessorClassResults";
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { StudentHub } from "./components/StudentHub";
 import { QuizPage } from "./components/QuizPage";
@@ -110,6 +111,26 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <ClassHub />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/class/:classId"
+            element={
+              <ProtectedRoute>
+                <ClassHub />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/class/:classId/results"
+            element={
+              <ProtectedRoute>
+                {user?.role === "professor" ? (
+                  <ProfessorClassResults />
+                ) : (
+                  <Navigate to="/hub" replace />
+                )}
               </ProtectedRoute>
             }
           />

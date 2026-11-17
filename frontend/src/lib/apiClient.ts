@@ -15,6 +15,7 @@ import type {
   QuestionStart,
   RegisterPayload,
   User,
+  ClassResults,
 } from "../types/api";
 import sampleLectures from "../data/lectures.sample.json" with { type: "json" };
 
@@ -491,4 +492,14 @@ export async function getCurrentUser(): Promise<ApiResult<User>> {
  */
 export function logout(): void {
   clearSession();
+}
+
+export async function getClassResults(
+  classId: number | string,
+  signal?: AbortSignal
+): Promise<ApiResult<ClassResults>> {
+  return request<ClassResults>(
+    `/classes/${encodeURIComponent(String(classId))}/results/`,
+    { signal }
+  );
 }
