@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   createClass,
   getProfessorClasses,
+  isProfessor,
   type ProfessorClass,
 } from "../lib/apiClient";
-import { useAuth } from "../context/AuthContext";
+import { ProfessorNav } from "./ProfessorNav";
 
 interface ProfessorDashboardProps {
   onSelectClass?: (classId: number) => void;
@@ -13,7 +14,6 @@ interface ProfessorDashboardProps {
 
 export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = {}) {
   const navigate = useNavigate();
-  const { logout } = useAuth();
 
   // Dashboard class list state
   const [classes, setClasses] = useState<ProfessorClass[]>([]);
@@ -56,8 +56,12 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
   };
 
   useEffect(() => {
+    if (!isProfessor()) {
+      navigate("/hub", { replace: true });
+      return;
+    }
     void fetchClasses();
-  }, []);
+  }, [navigate]);
 
   const handleClassClick = (classId: number) => {
     if (onSelectClass) {
@@ -74,11 +78,6 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
     setTimeout(() => {
       setCopiedCode((current) => (current === code ? null : current));
     }, 2000);
-  };
-
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
   };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
@@ -124,67 +123,14 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
 
   return (
     <div className="min-h-screen bg-[#0B1220] text-white flex flex-col justify-between selection:bg-sky-500/30">
-      {/* Top Header Bar */}
-      <header className="px-4 sm:px-10 py-5 w-full max-w-6xl mx-auto flex items-center justify-between">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity"
-        >
-          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center overflow-hidden shadow-sm">
-            <img
-              src="/assets/coursePulseLogo.png"
-              alt="CoursePulse"
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                const fallback = e.currentTarget.parentElement?.querySelector(".prof-fallback-icon");
-                if (fallback) fallback.classList.remove("hidden");
-              }}
-            />
-            <svg
-              className="prof-fallback-icon hidden w-5 h-5 text-white"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M2 12a10 10 0 0 1 18-6" />
-              <path d="M5 14a6 6 0 0 1 10-3" />
-              <path d="M8 16a2 2 0 0 1 2-1" />
-            </svg>
-          </div>
-          <span className="text-xl font-bold tracking-tight text-white">CoursePulse</span>
-          <span className="hidden sm:inline-block ml-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">
-            Professor
-          </span>
-        </Link>
-
-        {/* Right actions: Create class button + Logout */}
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              setCreateError(null);
-              setCreateSuccessMsg(null);
-              setIsCreateModalOpen(true);
-            }}
-            className="inline-flex items-center gap-1.5 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-xs sm:text-sm px-3.5 sm:px-4 py-2 rounded-xl transition cursor-pointer shadow-md shadow-sky-500/20"
-          >
-            <span className="text-base leading-none font-extrabold">+</span>
-            <span>Create class</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="text-xs sm:text-sm font-semibold text-slate-300 hover:text-white px-2 py-1.5 rounded-lg transition-colors cursor-pointer"
-          >
-            Log out
-          </button>
-        </div>
-      </header>
+      {/* Top Navigation */}
+      <ProfessorNav
+        onCreateClass={() => {
+          setCreateError(null);
+          setCreateSuccessMsg(null);
+          setIsCreateModalOpen(true);
+        }}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getStoredUser } from "../lib/apiClient";
+import { getStoredUser, getUserRole } from "../lib/apiClient";
 import type { UserRole } from "../types/api";
 
 type AuthTab = "login" | "signup";
@@ -18,7 +18,26 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
 
   // Target path to redirect after successful login
   const fromPath =
-    (location.state as { from?: { pathname?: string } })?.from?.pathname || "/hub";
+    (location.state as { from?: { pathname?: string } })?.from?.pathname;
+
+  // Resolve destination route after login/signup according to role and origin
+  const resolveTargetDestination = (userRole?: string | null): string => {
+    const isProf = userRole === "professor";
+
+    // If redirected from a protected route, preserve it only if it belongs to this role
+    if (fromPath && fromPath !== "/login" && fromPath !== "/signup" && fromPath !== "/") {
+      const isProfPath = fromPath.startsWith("/professor");
+      if (isProf && isProfPath) {
+        return fromPath;
+      }
+      if (!isProf && !isProfPath) {
+        return fromPath;
+      }
+    }
+
+    // Default home for each role (Acceptance criteria: professors -> /professor, students -> /hub)
+    return isProf ? "/professor" : "/hub";
+  };
 
   // Determine active tab from URL param (e.g. ?tab=signup) or prop
   const urlTab = searchParams.get("tab") as AuthTab | null;
@@ -71,8 +90,9 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
       return;
     }
 
-    // On success, redirect to target destination or Student Hub
-    navigate(getStoredUser()?.role === "professor" ? "/professor" : fromPath, { replace: true });
+    // On success, redirect to professor dashboard or student hub based on role
+    const activeRole = getStoredUser()?.role || (getUserRole() as UserRole | null);
+    navigate(resolveTargetDestination(activeRole), { replace: true });
   };
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
@@ -111,8 +131,9 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
       return;
     }
 
-    // On success, redirect to Student Hub
-    navigate(getStoredUser()?.role === "professor" ? "/professor" : "/hub", { replace: true });
+    // On success, redirect to professor dashboard or student hub based on role
+    const activeRole = getStoredUser()?.role || role;
+    navigate(resolveTargetDestination(activeRole), { replace: true });
   };
 
   return (
