@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from django.conf import settings
 from rest_framework import serializers
 
 from .models import Classroom, Enrollment
@@ -67,11 +68,11 @@ class LectureUploadSerializer(serializers.Serializer):
                 "Only MP3, MP4, M4A, and WAV files are allowed."
             )
 
-        max_size = 100 * 1024 * 1024
+        max_size = settings.LECTURE_UPLOAD_MAX_BYTES
 
         if file.size > max_size:
             raise serializers.ValidationError(
-                "File must be 100 MB or smaller."
+                f"File must be {max_size // (1024 * 1024)} MB or smaller."
             )
 
         header = file.read(12)

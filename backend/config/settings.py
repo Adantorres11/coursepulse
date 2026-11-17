@@ -130,3 +130,7 @@ REST_FRAMEWORK = {
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# Largest lecture recording the upload endpoint accepts. A 75-minute lecture
+# recording is often 200+ MB as audio and well over 1 GB as video.
+LECTURE_UPLOAD_MAX_BYTES = int(os.environ.get("LECTURE_UPLOAD_MAX_BYTES", str(2 * 1024 ** 3)))

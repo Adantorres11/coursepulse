@@ -2,6 +2,7 @@ import shutil
 import tempfile
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
@@ -152,12 +153,11 @@ class LectureUploadTests(LectureUploadTestBase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(Lecture.objects.count(), 0)
 
+    @override_settings(LECTURE_UPLOAD_MAX_BYTES=1000)
     def test_oversized_file(self):
         self.authenticate(self.professor)
 
-        large_recording = self.recording(
-            size=100 * 1024 * 1024 + 1
-        )
+        large_recording = self.recording(size=1001)
 
         response = self.client.post(
             self.url,
@@ -253,3 +253,35 @@ class LectureUploadSavesFileTests(LectureUploadTestBase):
         )
 
         self.assertEqual(response.status_code, 201)
+
+    def test_default_limit_fits_a_full_lecture(self):
+        # Real 75-minute lecture recordings are 200+ MB (lecture 4 is 239 MB).
+        self.assertGreaterEqual(
+            settings.LECTURE_UPLOAD_MAX_BYTES,
+            1024 * 1024 * 1024,
+        )
+
+    @override_settings(LECTURE_UPLOAD_MAX_BYTES=2 * 1024 * 1024)
+    def test_accepts_file_at_the_limit(self):
+        response = self.post_recording(
+            "lecture.mp3",
+            b"ID3" + b"a" * (2 * 1024 * 1024 - 3),
+            "audio/mpeg",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+    @override_settings(LECTURE_UPLOAD_MAX_BYTES=2 * 1024 * 1024)
+    def test_rejects_file_over_the_limit_with_the_limit_in_mb(self):
+        response = self.post_recording(
+            "lecture.mp3",
+            b"ID3" + b"a" * (2 * 1024 * 1024 - 2),
+            "audio/mpeg",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["recording"],
+            ["File must be 2 MB or smaller."],
+        )
+        self.assertEqual(Lecture.objects.count(), 0)
