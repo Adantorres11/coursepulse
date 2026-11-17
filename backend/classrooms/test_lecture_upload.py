@@ -1,8 +1,10 @@
+import shutil
+import tempfile
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
@@ -12,7 +14,7 @@ from classrooms.models import Classroom
 from quizzes.models import Lecture
 
 
-class LectureUploadTests(TestCase):
+class LectureUploadTestBase(TestCase):
     def setUp(self):
         self.client = APIClient()
 
@@ -68,6 +70,8 @@ class LectureUploadTests(TestCase):
             content_type="audio/mpeg",
         )
 
+
+class LectureUploadTests(LectureUploadTestBase):
     @patch("django.db.models.fields.files.FieldFile.save")
     def test_successful_upload(self, mock_save):
         self.authenticate(self.professor)
@@ -202,3 +206,50 @@ class LectureUploadTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(Lecture.objects.count(), 0)
         self.assertEqual(response.status_code, 400)
+
+
+class LectureUploadSavesFileTests(LectureUploadTestBase):
+    """Uploads that really write the file, into a throwaway media folder."""
+
+    def setUp(self):
+        super().setUp()
+        media_root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media_root, ignore_errors=True)
+        media_override = override_settings(MEDIA_ROOT=media_root)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+    def post_recording(self, name, content, content_type):
+        self.authenticate(self.professor)
+        return self.client.post(
+            self.url,
+            {
+                "title": "Lecture",
+                "recording": SimpleUploadedFile(
+                    name,
+                    content,
+                    content_type=content_type,
+                ),
+            },
+            format="multipart",
+        )
+
+    def test_accepts_generic_content_type(self):
+        # curl and some browsers send application/octet-stream for audio.
+        # The extension and the file signature decide, not this header.
+        response = self.post_recording(
+            "lecture.mp3",
+            b"ID3" + b"a" * 97,
+            "application/octet-stream",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_accepts_other_wav_content_type(self):
+        response = self.post_recording(
+            "lecture.wav",
+            b"RIFF" + b"\x00" * 4 + b"WAVE" + b"\x00" * 20,
+            "audio/vnd.wave",
+        )
+
+        self.assertEqual(response.status_code, 201)

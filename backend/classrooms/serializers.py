@@ -67,20 +67,6 @@ class LectureUploadSerializer(serializers.Serializer):
                 "Only MP3, MP4, M4A, and WAV files are allowed."
             )
 
-        allowed_types = {
-            ".mp3": {"audio/mpeg", "audio/mp3"},
-            ".mp4": {"video/mp4", "audio/mp4"},
-            ".m4a": {"audio/mp4", "audio/x-m4a"},
-            ".wav": {"audio/wav", "audio/x-wav", "audio/wave"},
-        }
-
-        content_type = getattr(file, "content_type", "")
-
-        if content_type not in allowed_types[extension]:
-            raise serializers.ValidationError(
-                "Invalid recording content type."
-            )
-
         max_size = 100 * 1024 * 1024
 
         if file.size > max_size:
