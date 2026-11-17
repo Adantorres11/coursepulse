@@ -98,6 +98,34 @@ class RunTranscriptionTests(TranscriptionTestMixin, TestCase):
         self.assertEqual(TranscriptChunk.objects.count(), 0)
         self.assertEqual(self.whisper.call_count, 1)
 
+    def test_heartbeat_follows_silence_scan_before_normalizing(self):
+        lecture = self.make_lecture("tone60.wav")
+        calls = []
+
+        def record(name, real):
+            def wrapper(*args, **kwargs):
+                calls.append(name)
+                return real(*args, **kwargs)
+
+            return wrapper
+
+        with mock.patch(
+            "quizzes.transcription.media.find_silences",
+            side_effect=record("find_silences", media.find_silences),
+        ), mock.patch(
+            "quizzes.transcription.heartbeat",
+            side_effect=lambda *args, **kwargs: calls.append("heartbeat"),
+        ), mock.patch(
+            "quizzes.transcription.media.normalize_audio",
+            side_effect=record("normalize_audio", media.normalize_audio),
+        ):
+            self.run_job(lecture)
+        scan = calls.index("find_silences")
+        normalize = calls.index("normalize_audio")
+        self.assertTrue(
+            any(name == "heartbeat" for name in calls[scan + 1 : normalize]), calls
+        )
+
     def test_long_recording_is_chunked_and_joined_in_order(self):
         self.texts = [
             "one two three four five alpha beta gamma",

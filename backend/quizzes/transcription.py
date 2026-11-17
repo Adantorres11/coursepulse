@@ -167,6 +167,7 @@ def _transcribe(lecture_id: int, token: str, log: logging.LoggerAdapter) -> bool
         raise PermanentError(TOO_EXPENSIVE)
     log.info("minutes=%.1f est_usd=%.3f", minutes, estimated)
 
+    heartbeat(lecture_id, token, "Preparing audio")  # the silence scan can take minutes
     with tempfile.TemporaryDirectory(prefix=f"lecture-{lecture_id}-") as tmp:
         audio = Path(tmp) / "audio.mp3"
         media.normalize_audio(path, info.audio_index, start, end, audio)
