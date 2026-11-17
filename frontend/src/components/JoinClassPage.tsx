@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { API_BASE_URL, getClassesRoute, isProfessor } from "../lib/apiClient";
+import { API_BASE_URL, getClassesRoute, getStoredToken, isProfessor } from "../lib/apiClient";
+import { ProfessorNav } from "./ProfessorNav";
+import { StudentNav } from "./StudentNav";
 
 interface Classroom {
   id: number;
@@ -33,7 +35,7 @@ useEffect(() => {
     return;
   }
 
-  const token = sessionStorage.getItem("coursepulse_token");
+  const token = getStoredToken();
 
   if (!token) {
     setLookupError("Please log in before joining a class.");
@@ -87,7 +89,7 @@ useEffect(() => {
 const handleJoin = async () => {
   if (!foundClass || isLookingUp || isJoining || joinSuccess) return;
 
-  const token = sessionStorage.getItem("coursepulse_token");
+  const token = getStoredToken();
 
   if (!token) {
     setJoinError("Please log in before joining a class.");
@@ -123,22 +125,15 @@ const handleJoin = async () => {
 };
 
   return (
-    <div className="min-h-screen bg-[#141625] text-white px-4 py-6">
-      <header className="max-w-5xl mx-auto">
-        <Link to={getClassesRoute()} className="inline-flex items-center gap-2 font-bold">
-          <img
-            src="/assets/coursePulseLogo.png"
-            alt=""
-            className="w-8 h-8 rounded-full"
-          />
-          CoursePulse
-        </Link>
-      </header>
+    <div className="min-h-screen bg-[#141625] text-white flex flex-col justify-between">
+      <div>
+        {isProfessor() ? <ProfessorNav /> : <StudentNav />}
 
-      <section className="max-w-md mx-auto mt-12 sm:mt-16">
-        <Link to={getClassesRoute()} className="text-sm text-sky-300 hover:underline">
-          &larr; {isProfessor() ? "Created classes" : "All classes"}
-        </Link>
+        <div className="px-4 py-6">
+          <section className="max-w-md mx-auto mt-6 sm:mt-10">
+            <Link to={getClassesRoute()} className="text-sm text-sky-300 hover:underline">
+              &larr; {isProfessor() ? "Back to Dashboard" : "Back to Dashboard"}
+            </Link>
 
         <h1 className="mt-8 text-center text-3xl font-bold">
           Join a class
@@ -241,13 +236,15 @@ const handleJoin = async () => {
               <p className="text-sm text-emerald-400">
                 You successfully joined this class.{" "}
                 <Link to={getClassesRoute()} className="underline">
-                  {isProfessor() ? "Created classes" : "All classes"}
+                  {isProfessor() ? "Back to Dashboard" : "Back to Dashboard"}
                 </Link>
               </p>
             )}
           </div>
         </div>
       </section>
+      </div>
+      </div>
     </div>
   );
 }

@@ -38,6 +38,10 @@ export default function QuizGame({
     Array(questions.length).fill(null)
   );
 
+  // user streak
+  const [streak, setStreak] = useState<number>(0);
+  const [maxStreak, setMaxStreak] = useState<number>(0);
+
   // server grading result per question; null until answered in this session
   const [results, setResults] = useState<(AnswerResult | null)[]>(
     Array(questions.length).fill(null)
@@ -145,6 +149,19 @@ export default function QuizGame({
       updated[index] = answer;
       return updated;
     });
+
+    if (answer.is_correct) {
+      const nextStreak = streak + 1;
+      setStreak(nextStreak);
+      if (maxStreak < nextStreak) {
+        setMaxStreak(nextStreak);
+      }
+    }
+    else if(streak != 0)
+    {
+      setStreak(-1);
+    }
+
     setScore(answer.total_points);
   }
 
@@ -153,6 +170,11 @@ export default function QuizGame({
       return;
     }
     submitAnswer(failedRequest.body, failedRequest.answerIndex, failedRequest.index);
+  }
+
+  // display only; the server decides the points
+  function getStreakBonus(currentStreak: number) {
+    return currentStreak >= 3 ? 50 : 0;
   }
 
   // display only; the server decides the points
@@ -182,6 +204,9 @@ export default function QuizGame({
   function nextQuestion() {
     setTimeLeft(QUESTION_TIME_LIMIT_SECONDS);
     setQuestionIndex(nextOpenIndex(questionIndex));
+    if(streak === -1){
+      setStreak(0);
+    }
   }
 
 // returns number of questions user got correct.
@@ -194,6 +219,11 @@ export default function QuizGame({
 
   useEffect(() => {
     if (questionIndex >= questions.length || currentResult || submitting || failedRequest){
+      return;
+    }
+
+    // hold the question clock until the server has started the question
+    if (questionIndex >= 0 && !questionStarted) {
       return;
     }
 
@@ -215,7 +245,7 @@ export default function QuizGame({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, questionIndex, currentResult, submitting, failedRequest, questions.length]);
+  }, [timeLeft, questionIndex, currentResult, submitting, failedRequest, questions.length, questionStarted]);
 
   // timer ring config
   const radius = 44;
@@ -235,6 +265,8 @@ export default function QuizGame({
     setFailedRequest(null);
     setStartedIndex(null);
     setStartError(null);
+    setStreak(0);
+    setMaxStreak(0);
   }
 
   // QUIZ is empty
@@ -342,16 +374,31 @@ export default function QuizGame({
         <div className="flex items-center justify-between w-full px-2 pt-3 pb-2">
           <div className="flex flex-row inline-flex items-center gap-1">
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
-              {questions[questionIndex]?.difficulty
+              {questions[questionIndex]?.difficulty 
                 ? questions[questionIndex].difficulty.charAt(0).toUpperCase() + questions[questionIndex].difficulty.slice(1)
                 : "Loading..."}
             </div>
             <span className="text-slate-400 text-sm font-medium">{getDifficultyPoints(questions[questionIndex].difficulty)} pts</span>
           </div>
+          <div className="flex inline-flex">
+            {streak > 1 &&
+              <div className="bg-yellow-900 text-sm text-yellow-300 px-2.5 py-1 rounded-lg transition-colors shadow-sm">
+              🔥 {streak} in a row
+              </div>
+            }
+            {streak == -1 &&
+              <div className="bg-slate-800 text-sm text-slate-400 px-2.5 py-1 rounded-lg transition-colors shadow-sm">
+                Streak ended
+              </div>
+            }
+          </div>
         </div>
 
         {/* question */}
         <h2 className="text-white text-xl font-bold tracking-tight">{questions[questionIndex].prompt}</h2>
+        {!questionStarted && !startError && !currentResult &&
+          <p className="text-slate-400 text-sm">Loading question...</p>
+        }
 
         {/* choices buttons */}
         <div className="flex flex-col items-stretch gap-2.5 mx-0 my-5 w-full mr-auto">
@@ -396,7 +443,7 @@ export default function QuizGame({
         {currentResult &&
           <div className="flex items-center justify-between w-full">
             <div>
-              {currentResult.is_correct && <span className="text-emerald-400 font-bold">✓ Correct! +{currentResult.points_awarded} points</span>}
+              {currentResult.is_correct && <span className="text-emerald-400 font-bold">✓ Correct! +{currentResult.points_awarded} points{getStreakBonus(streak) > 0 && ` (+${getStreakBonus(streak)} streak bonus)`}</span>}
               {!currentResult.is_correct && <span className="text-red-400 font-bold">✕ Not quite. +{currentResult.points_awarded} points</span>}
             </div>
             <button className="bg-blue-300 text-black font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm" onClick={() => nextQuestion()}>
@@ -418,6 +465,11 @@ export default function QuizGame({
         <span className="text-9xl font-bold text-blue-300">{score}</span>
         {results.every((result) => result !== null) &&
           <span className="text-m text-slate-200 p-1">{getNumberQuestionsCorrect()} of {questions.length} correct</span>
+        }
+        {maxStreak > 1 &&
+          <div className="flex items-center justify-between px-1 py-1 rounded-lg transition-colors text-sm text-yellow-300 bg-yellow-900">
+            🔥 Max Streak: {maxStreak}
+          </div>
         }
       </div>
 
