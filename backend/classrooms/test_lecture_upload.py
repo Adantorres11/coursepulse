@@ -241,7 +241,10 @@ class LectureUploadTests(TestCase):
         self.authenticate(self.professor)
 
         with self.assertLogs("quizzes.pipeline", level="WARNING"):
-            with self.captureOnCommitCallbacks(execute=True):
+            with patch(
+                "classrooms.views.transaction.on_commit",
+                side_effect=lambda fn: fn(),
+            ):
                 response = self.client.post(
                     self.url,
                     {"title": "Intro", "recording": self.recording()},
@@ -257,6 +260,7 @@ class LectureUploadTests(TestCase):
             lecture.error_message,
             "Couldn't start processing, try again.",
         )
+        self.assertEqual(response.data["status"], "failed")
 
     @patch("classrooms.views.start_lecture_processing")
     @patch("django.db.models.fields.files.FieldFile.save")
