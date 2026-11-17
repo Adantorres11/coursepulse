@@ -620,3 +620,43 @@ Errors:
 - 401: Missing or invalid authentication.
 - 403: User is not a professor or does not own the classroom.
 - 404: Unknown classroom ID.
+
+
+## GET /api/professor/classes/{id}/lectures/
+
+Returns all lectures belonging to a professor's class, including unpublished lectures.
+
+Authentication: Required (professor and class owner).
+
+Success: 200 OK
+
+Example response:
+
+```json
+[
+  {
+    "id": 2,
+    "title": "Introduction to AI",
+    "status": "published",
+    "published_at": "2026-11-16T18:00:00Z"
+  },
+  {
+    "id": 1,
+    "title": "Machine Learning Basics",
+    "status": "pending",
+    "published_at": null
+  }
+]
+```
+
+Rules:
+- Only the professor who owns the classroom can access its lectures.
+- Includes published and unpublished lectures.
+- Returns an empty array when the class has no lectures.
+- On the current base branch, unpublished lectures are labeled "pending".
+- After SCRUM-72 is merged, the endpoint can also return "processing", "ready", and "failed" using the lecture's actual status.
+
+Errors:
+- 401: Authentication required.
+- 403: User is not the classroom owner.
+- 404: Unknown classroom ID.
