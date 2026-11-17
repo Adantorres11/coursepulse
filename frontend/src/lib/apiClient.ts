@@ -5,12 +5,14 @@ import type {
   AuthResponse,
   ClassStats,
   ClassSummary,
+  ClassRosterStudent,
   CreateClassResponse,
   HealthResponse,
   LeaderboardEntry,
   Lecture,
   LoginPayload,
   ProfessorClass,
+  ProfessorLecture,
   Quiz,
   QuestionStart,
   RegisterPayload,
@@ -402,6 +404,22 @@ export async function getProfessorClasses(): Promise<ApiResult<ProfessorClass[]>
   return request<ProfessorClass[]>("/professor/classes/", {
     headers: authHeaders(),
   });
+}
+
+export async function getClassRoster(
+  classId: number | string
+): Promise<ApiResult<ClassRosterStudent[]>> {
+  return request<ClassRosterStudent[]>(
+    `/classes/${encodeURIComponent(String(classId))}/roster/`
+  );
+}
+
+export async function getProfessorClassLectures(
+  classId: number | string
+): Promise<ApiResult<ProfessorLecture[]>> {
+  return request<ProfessorLecture[]>(
+    `/professor/classes/${encodeURIComponent(String(classId))}/lectures/`
+  );
 }
 
 /**

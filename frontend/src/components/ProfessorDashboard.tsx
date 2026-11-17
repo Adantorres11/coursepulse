@@ -67,7 +67,7 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
     if (onSelectClass) {
       onSelectClass(classId);
     } else {
-      navigate(`/class/${classId}`);
+      navigate(`/professor/class/${classId}`);
     }
   };
 
