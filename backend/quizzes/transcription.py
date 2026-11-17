@@ -10,6 +10,7 @@ from pathlib import Path
 
 import kombu.exceptions
 import redis
+from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -18,13 +19,22 @@ from . import media
 from .job_errors import (
     FILE_MISSING,
     HANDOFF_FAILED,
+    TIMEOUT,
     TOO_EXPENSIVE,
     TOO_LONG,
     TOO_SHORT,
     UNEXPECTED,
     PermanentError,
+    TransientError,
 )
-from .jobs import claim_transcription, fail, heartbeat, lecture_lock, refresh_db_connection
+from .jobs import (
+    LostOwnership,
+    claim_transcription,
+    fail,
+    heartbeat,
+    lecture_lock,
+    refresh_db_connection,
+)
 from .models import Lecture, TranscriptChunk
 from .transcript_text import (
     check_transcript,
@@ -94,7 +104,12 @@ def _reuse_transcript(lecture_id: int, token: str) -> bool:
 def run_transcription(
     lecture_id: int, token: str, attempt: int, log: logging.LoggerAdapter
 ) -> bool:
-    """Transcribe one lecture. Return True when the hand-off was scheduled."""
+    """Transcribe one lecture. Return True when the hand-off was scheduled.
+
+    Return False after any permanent failure (saved as `failed`), lost ownership,
+    a deleted lecture, a timeout, or an unexpected error. Raise only TransientError,
+    after the finished parts are saved, so the task can retry.
+    """
     if not claim_transcription(lecture_id, token):
         log.info("already owned by another job, exiting")
         return False
@@ -102,141 +117,163 @@ def run_transcription(
         if not got:
             log.info("lock held by another job, exiting")
             return False
+        try:
+            return _transcribe(lecture_id, token, log)
+        except PermanentError as exc:
+            log.warning("failed %s: %s", type(exc).__name__, exc.message)
+            fail(lecture_id, token, exc.message)
+        except LostOwnership:
+            log.info("no longer owns this lecture, exiting")
+        except Lecture.DoesNotExist:
+            log.info("lecture was deleted, exiting")
+        except SoftTimeLimitExceeded:
+            log.warning("soft time limit reached")
+            fail(lecture_id, token, TIMEOUT)
+        except TransientError:
+            raise
+        except Exception:
+            log.exception("unexpected error")
+            fail(lecture_id, token, UNEXPECTED)
+    return False
 
-        lecture = Lecture.objects.select_related("classroom").get(pk=lecture_id)
-        if not lecture.recording:
-            raise PermanentError(FILE_MISSING)
-        source = lecture.recording.name
 
-        if lecture.transcript and lecture.transcript_source == source:
-            log.info("reusing the saved transcript")
-            return _reuse_transcript(lecture_id, token)
+def _transcribe(lecture_id: int, token: str, log: logging.LoggerAdapter) -> bool:
+    lecture = Lecture.objects.select_related("classroom").get(pk=lecture_id)
+    if not lecture.recording:
+        raise PermanentError(FILE_MISSING)
+    source = lecture.recording.name
 
-        path = Path(lecture.recording.path)
-        info = media.probe(path)
-        _check_length(info.duration)
+    if lecture.transcript and lecture.transcript_source == source:
+        log.info("reusing the saved transcript")
+        return _reuse_transcript(lecture_id, token)
 
-        heartbeat(lecture_id, token, "Preparing audio")
-        silences, duration = media.find_silences(path, info.audio_index)
-        _check_length(duration)
-        start, end = media.speech_bounds(duration, silences)
-        speech_seconds = (end - start) - sum(_overlap(s, start, end) for s in silences)
+    path = Path(lecture.recording.path)
+    info = media.probe(path)
+    _check_length(info.duration)
 
-        minutes = (end - start) / 60
-        estimated = minutes * PRICE_PER_MINUTE
-        if estimated > settings.TRANSCRIPTION_MAX_COST_USD:
-            log.warning(
-                "over cost limit minutes=%.1f est_usd=%.3f limit_usd=%.2f",
-                minutes, estimated, settings.TRANSCRIPTION_MAX_COST_USD,
-            )
-            raise PermanentError(TOO_EXPENSIVE)
-        log.info("minutes=%.1f est_usd=%.3f", minutes, estimated)
+    heartbeat(lecture_id, token, "Preparing audio")
+    silences, duration = media.find_silences(path, info.audio_index)
+    _check_length(duration)
+    start, end = media.speech_bounds(duration, silences)
+    speech_seconds = (end - start) - sum(_overlap(s, start, end) for s in silences)
 
-        with tempfile.TemporaryDirectory(prefix=f"lecture-{lecture_id}-") as tmp:
-            audio = Path(tmp) / "audio.mp3"
-            media.normalize_audio(path, info.audio_index, start, end, audio)
-            shifted = [
-                (max(s, start) - start, min(e, end) - start)
-                for s, e in silences
-                if _overlap((s, e), start, end) > 0
-            ]
-
-            length = end - start
-            if length <= CHUNK_SECONDS:
-                plan = [media.Chunk(0, 0.0, length)]
-            else:
-                plan = media.plan_chunks(length, shifted, chunk_seconds=CHUNK_SECONDS)
-
-            rows = list(lecture.transcript_chunks.all())
-            by_index = {chunk.index: chunk for chunk in plan}
-            if any(
-                row.index not in by_index or not _matches(row, by_index[row.index], source)
-                for row in rows
-            ):
-                log.info("discarding %d saved parts that do not match this plan", len(rows))
-                lecture.transcript_chunks.all().delete()
-                rows = []
-            saved = {row.index: row for row in rows}
-
-            for chunk in plan:
-                if chunk.index in saved:
-                    continue
-                heartbeat(lecture_id, token, f"Transcribing part {chunk.index + 1} of {len(plan)}")
-                if len(plan) == 1:
-                    part = audio
-                else:
-                    part = Path(tmp) / f"part-{chunk.index}.mp3"
-                    media.cut_chunk(audio, chunk, part)
-                size = part.stat().st_size
-                if size > SAFE_BYTES:
-                    log.error("part %d too large bytes=%d", chunk.index, size)
-                    raise PermanentError(UNEXPECTED)
-                previous = saved.get(chunk.index - 1)
-                prompt = whisper_prompt(
-                    lecture.classroom.name, lecture.title, previous.text if previous else ""
-                )
-                result = transcribe_chunk(part, prompt)
-                refresh_db_connection()
-                saved[chunk.index] = TranscriptChunk.objects.create(
-                    lecture_id=lecture_id,
-                    index=chunk.index,
-                    start_seconds=chunk.start,
-                    end_seconds=chunk.end,
-                    source_name=source,
-                    text=result.text,
-                    raw=result.raw,
-                )
-
-        rows = [saved[chunk.index] for chunk in plan]
-        text = rows[0].text
-        for row in rows[1:]:
-            text = join_chunk_texts(text, row.text)
-        clean, removed = collapse_repeats(text)
-        check_transcript(clean, speech_seconds, removed)
-        segments = merge_segments(
-            [(row.start_seconds + start, row.raw.get("segments") or []) for row in rows]
+    minutes = (end - start) / 60
+    estimated = minutes * PRICE_PER_MINUTE
+    if estimated > settings.TRANSCRIPTION_MAX_COST_USD:
+        log.warning(
+            "over cost limit minutes=%.1f est_usd=%.3f limit_usd=%.2f",
+            minutes, estimated, settings.TRANSCRIPTION_MAX_COST_USD,
         )
-        languages = Counter(row.raw.get("language", "") for row in rows)
-        language = languages.most_common(1)[0][0]
+        raise PermanentError(TOO_EXPENSIVE)
+    log.info("minutes=%.1f est_usd=%.3f", minutes, estimated)
 
-        refresh_db_connection()
-        with transaction.atomic():
-            lecture = (
-                Lecture.objects.select_for_update()
-                .filter(pk=lecture_id, job_token=token)
-                .first()
-            )
-            if lecture is None:
-                return False
-            if lecture.recording.name != source:
-                log.info("recording changed during transcription, discarding")
-                return False
-            lecture.transcript = clean
-            lecture.raw_transcript = {
-                "model": MODEL,
-                "chunks": [
-                    {
-                        "index": row.index,
-                        "start": row.start_seconds + start,
-                        "end": row.end_seconds + start,
-                        "language": row.raw.get("language", ""),
-                        "text": row.text,
-                        "raw": row.raw,
-                    }
-                    for row in rows
-                ],
-                "segments": segments,
-            }
-            lecture.transcript_language = language
-            lecture.transcript_source = source
-            lecture.audio_seconds = duration
-            lecture.progress_message = READY_MESSAGE
-            lecture.last_progress_at = timezone.now()
-            lecture.job_token = ""
-            lecture.error_message = ""
-            lecture.save()
+    with tempfile.TemporaryDirectory(prefix=f"lecture-{lecture_id}-") as tmp:
+        audio = Path(tmp) / "audio.mp3"
+        media.normalize_audio(path, info.audio_index, start, end, audio)
+        shifted = [
+            (max(s, start) - start, min(e, end) - start)
+            for s, e in silences
+            if _overlap((s, e), start, end) > 0
+        ]
+
+        length = end - start
+        if length <= CHUNK_SECONDS:
+            plan = [media.Chunk(0, 0.0, length)]
+        else:
+            plan = media.plan_chunks(length, shifted, chunk_seconds=CHUNK_SECONDS)
+
+        refresh_db_connection()  # ffmpeg can run for minutes before this query
+        rows = list(lecture.transcript_chunks.all())
+        by_index = {chunk.index: chunk for chunk in plan}
+        if any(
+            row.index not in by_index or not _matches(row, by_index[row.index], source)
+            for row in rows
+        ):
+            log.info("discarding %d saved parts that do not match this plan", len(rows))
             lecture.transcript_chunks.all().delete()
-            transaction.on_commit(lambda: hand_off(lecture_id))
+            rows = []
+        saved = {row.index: row for row in rows}
+
+        for chunk in plan:
+            if chunk.index in saved:
+                continue
+            heartbeat(lecture_id, token, f"Transcribing part {chunk.index + 1} of {len(plan)}")
+            if len(plan) == 1:
+                part = audio
+            else:
+                part = Path(tmp) / f"part-{chunk.index}.mp3"
+                media.cut_chunk(audio, chunk, part)
+            size = part.stat().st_size
+            if size > SAFE_BYTES:
+                log.error("part %d too large bytes=%d", chunk.index, size)
+                raise PermanentError(UNEXPECTED)
+            previous = saved.get(chunk.index - 1)
+            prompt = whisper_prompt(
+                lecture.classroom.name, lecture.title, previous.text if previous else ""
+            )
+            result = transcribe_chunk(part, prompt)
+            # Refreshes the connection and stops if the lecture is gone or was failed.
+            heartbeat(lecture_id, token, f"Transcribing part {chunk.index + 1} of {len(plan)}")
+            saved[chunk.index] = TranscriptChunk.objects.create(
+                lecture_id=lecture_id,
+                index=chunk.index,
+                start_seconds=chunk.start,
+                end_seconds=chunk.end,
+                source_name=source,
+                text=result.text,
+                raw=result.raw,
+            )
+
+    rows = [saved[chunk.index] for chunk in plan]
+    text = rows[0].text
+    for row in rows[1:]:
+        text = join_chunk_texts(text, row.text)
+    clean, removed = collapse_repeats(text)
+    check_transcript(clean, speech_seconds, removed)
+    segments = merge_segments(
+        [(row.start_seconds + start, row.raw.get("segments") or []) for row in rows]
+    )
+    languages = Counter(row.raw.get("language", "") for row in rows)
+    language = languages.most_common(1)[0][0]
+
+    refresh_db_connection()
+    with transaction.atomic():
+        lecture = (
+            Lecture.objects.select_for_update()
+            .filter(pk=lecture_id, job_token=token)
+            .first()
+        )
+        if lecture is None:
+            return False
+        if lecture.recording.name != source:
+            log.info("recording changed during transcription, discarding")
+            return False
+        lecture.transcript = clean
+        lecture.raw_transcript = {
+            "model": MODEL,
+            "chunks": [
+                {
+                    "index": row.index,
+                    "start": row.start_seconds + start,
+                    "end": row.end_seconds + start,
+                    "language": row.raw.get("language", ""),
+                    "text": row.text,
+                    "raw": row.raw,
+                }
+                for row in rows
+            ],
+            "segments": segments,
+        }
+        lecture.transcript_language = language
+        lecture.transcript_source = source
+        lecture.audio_seconds = duration
+        lecture.progress_message = READY_MESSAGE
+        lecture.last_progress_at = timezone.now()
+        lecture.job_token = ""
+        lecture.error_message = ""
+        lecture.save()
+        lecture.transcript_chunks.all().delete()
+        transaction.on_commit(lambda: hand_off(lecture_id))
 
     log.info(
         "transcript saved words=%d language=%s chunks=%d",

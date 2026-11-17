@@ -8,7 +8,6 @@ from django.test import TestCase, override_settings
 
 from classrooms.models import Classroom
 from quizzes import job_errors, media
-from quizzes.job_errors import PermanentError
 from quizzes.jobs import claim_transcription, job_logger
 from quizzes.media_testing import make_fixture, requires_ffmpeg
 from quizzes.models import Lecture, TranscriptChunk
@@ -198,10 +197,10 @@ class RunTranscriptionTests(TestCase):
     def test_part_over_safe_bytes_is_refused(self):
         lecture = self.make_lecture("tone30.wav")
         with mock.patch("quizzes.transcription.SAFE_BYTES", 1_000), \
-                self.assertLogs("quizzes.jobs", level="INFO") as logs, \
-                self.assertRaises(PermanentError) as ctx:
-            run_transcription(lecture.id, TOKEN, 1, job_logger(lecture.id, TOKEN, 1))
-        self.assertEqual(ctx.exception.message, job_errors.UNEXPECTED)
+                self.assertLogs("quizzes.jobs", level="INFO") as logs:
+            self.assertFalse(self.run_job(lecture))
+        self.assertEqual(lecture.status, "failed")
+        self.assertEqual(lecture.error_message, job_errors.UNEXPECTED)
         self.whisper.assert_not_called()
         self.assertTrue(any("bytes=" in line for line in logs.output), logs.output)
 
