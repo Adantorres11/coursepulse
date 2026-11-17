@@ -11,6 +11,8 @@ db.sqlite3
 .pytest_cache/
 .coverage
 htmlcov/
+backend/media/
+celerybeat-schedule*
 
 # Node
 node_modules/
