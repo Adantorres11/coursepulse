@@ -163,3 +163,16 @@ class PlanChunksTests(SimpleTestCase):
         self.assertEqual(
             media.plan_chunks(3000, silences), media.plan_chunks(3000, silences)
         )
+
+    def test_plan_chunks_never_reuses_an_earlier_silence(self):
+        chunks = media.plan_chunks(50, [(8, 12)], chunk_seconds=20)
+        self.assertEqual(chunks[0].end, 10.0)
+        self.assertEqual(chunks[-1].end, 50)
+        ends = [c.end for c in chunks]
+        self.assertEqual(ends, sorted(set(ends)))
+
+    def test_plan_chunks_short_chunks_without_silences(self):
+        self.assertEqual(
+            media.plan_chunks(50, [], chunk_seconds=20),
+            [Chunk(0, 0, 20), Chunk(1, 18, 50)],
+        )

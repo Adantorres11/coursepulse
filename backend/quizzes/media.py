@@ -198,7 +198,11 @@ def plan_chunks(
         target = cuts[-1] + chunk_seconds
         if target >= duration:
             break
-        near = [m for m in midpoints if abs(m - target) <= search]
+        # Only later silences count, so every cut moves forward.
+        near = [
+            m for m in midpoints
+            if m > cuts[-1] + overlap and abs(m - target) <= search
+        ]
         cuts.append(min(near, key=lambda m: (abs(m - target), m)) if near else target)
 
     spans = []
