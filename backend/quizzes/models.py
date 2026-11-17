@@ -22,7 +22,7 @@ class Lecture(models.Model):
         choices=[
             ("pending", "Pending"),
             ("processing", "Processing"),
-            ("completed", "Completed"),
+            ("ready", "Ready"),
             ("failed", "Failed"),
         ],
         default="pending",

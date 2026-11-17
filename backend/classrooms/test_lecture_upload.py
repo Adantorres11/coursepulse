@@ -375,3 +375,15 @@ class LectureUploadSavesFileTests(LectureUploadTestBase):
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(Lecture.objects.count(), 0)
+
+
+class LectureStatusChoicesTests(TestCase):
+    def test_status_values_match_the_api_contract(self):
+        # SCRUM-72 and the professor class page use pending, processing,
+        # ready, and failed. "completed" is not one of them.
+        choices = [value for value, _ in Lecture._meta.get_field("status").choices]
+
+        self.assertEqual(
+            choices,
+            ["pending", "processing", "ready", "failed"],
+        )
