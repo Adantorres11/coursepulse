@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   request,
   getStoredToken,
@@ -9,7 +9,7 @@ import {
 } from "../lib/apiClient";
 import { LeaderboardModal } from "./LeaderboardModal";
 import { ClassRankCard } from "./ClassRankCard";
-import { useAuth } from "../context/AuthContext";
+import { StudentNav } from "./StudentNav";
 
 interface ClassroomResponse {
   id: number;
@@ -40,7 +40,6 @@ interface StudentHubProps {
 
 export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
   const navigate = useNavigate();
-  const { logout, user } = useAuth();
   const [leaderboardClassId, setLeaderboardClassId] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -158,56 +157,8 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
 
   return (
     <div className="min-h-screen bg-[#0B1220] text-white flex flex-col justify-between selection:bg-sky-500/30">
-      {/* Top Bar matching Mockups (CoursePulse Logo on left, Log out on right) */}
-      <header className="px-4 sm:px-10 py-5 w-full max-w-5xl mx-auto flex items-center justify-between">
-        <Link to="/" className="inline-flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity">
-          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center overflow-hidden shadow-sm">
-            <img
-              src="/assets/coursePulseLogo.png"
-              alt="CoursePulse"
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                const fallback = e.currentTarget.parentElement?.querySelector(".hub-fallback-icon");
-                if (fallback) fallback.classList.remove("hidden");
-              }}
-            />
-            <svg
-              className="hub-fallback-icon hidden w-5 h-5 text-white"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M2 12a10 10 0 0 1 18-6" />
-              <path d="M5 14a6 6 0 0 1 10-3" />
-              <path d="M8 16a2 2 0 0 1 2-1" />
-            </svg>
-          </div>
-          <span className="text-xl font-bold tracking-tight text-white">CoursePulse</span>
-        </Link>
-
-        {/* Log out button matching mockups - clears session and redirects to /login */}
-        <div className="flex items-center gap-3">
-          {user?.email && (
-            <span className="hidden sm:inline text-xs text-slate-400">
-              {user.email}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              logout();
-              navigate("/login");
-            }}
-            className="text-sm font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
-          >
-            Log out
-          </button>
-        </div>
-      </header>
+      {/* Top Bar with Brand, Student Badge, and Dashboard navigation */}
+      <StudentNav onJoinClass={() => navigate("/join")} />
 
       {/* Main Container */}
       <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
