@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   createClass,
   getProfessorClasses,
+  isProfessor,
   type ProfessorClass,
 } from "../lib/apiClient";
 import { ProfessorNav } from "./ProfessorNav";
@@ -55,8 +56,12 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
   };
 
   useEffect(() => {
+    if (!isProfessor()) {
+      navigate("/hub", { replace: true });
+      return;
+    }
     void fetchClasses();
-  }, []);
+  }, [navigate]);
 
   const handleClassClick = (classId: number) => {
     if (onSelectClass) {

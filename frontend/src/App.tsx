@@ -92,7 +92,7 @@ function AppContent() {
           <Route
             path="/hub"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="student">
                 <StudentHub />
               </ProtectedRoute>
             }
@@ -100,7 +100,7 @@ function AppContent() {
           <Route
             path="/join"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="student">
                 <JoinClassPage />
               </ProtectedRoute>
             }
@@ -120,7 +120,7 @@ function AppContent() {
           <Route
             path="/professor"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="professor">
                 <ProfessorDashboard />
               </ProtectedRoute>
             }
@@ -128,16 +128,23 @@ function AppContent() {
           <Route
             path="/professor/classes"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="professor">
                 <ProfessorDashboard />
               </ProtectedRoute>
             }
           />
-          <Route path="/professor/dashboard" element={<Navigate to="/professor" replace />} />
+          <Route
+            path="/professor/dashboard"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <Navigate to="/professor" replace />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/professor/class/:classId"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="professor">
                 <ClassHub />
               </ProtectedRoute>
             }
@@ -145,7 +152,7 @@ function AppContent() {
           <Route
             path="/quiz/:lectureId"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="student">
                 <QuizPage />
               </ProtectedRoute>
             }
