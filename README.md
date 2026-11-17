@@ -98,7 +98,7 @@ The log shows three lines for each run of the sample task. The first says `Task 
 
 The worker does not reload code. After you change a task, run `docker compose restart worker`.
 
-`.env.example` lists the five `CELERY_*` variables and what each one does.
+`.env.example` lists the six `CELERY_*` variables and what each one does.
 
 ### Lecture pipeline
 
@@ -111,6 +111,8 @@ How it runs:
 3. The worker splits audio longer than 10 minutes into 10-minute parts.
 4. The worker sends each part to Whisper, joins the parts, and saves the transcript.
 5. The worker then queues `generate_questions(lecture_id)`.
+
+The worker refuses recordings shorter than 10 seconds.
 
 The upload view queues the job with this line:
 
