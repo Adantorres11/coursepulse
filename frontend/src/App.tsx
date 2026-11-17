@@ -9,6 +9,7 @@ import { JoinClassPage } from "./components/JoinClassPage";
 import { ProfessorDashboard } from "./components/ProfessorDashboard";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
+import { ProfessorClassDetail } from "./components/ProfessorClassDetail";
 
 function AppContent() {
   const location = useLocation();
@@ -166,7 +167,7 @@ function AppContent() {
             path="/professor/class/:classId"
             element={
               <ProtectedRoute allowedRole="professor">
-                <ClassHub />
+                <ProfessorClassDetail />
               </ProtectedRoute>
             }
           />

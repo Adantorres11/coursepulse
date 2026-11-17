@@ -350,3 +350,38 @@ class LectureUnpublishView(APIView):
             "id": lecture.id,
             "published_at": lecture.published_at,
         })
+
+class ProfessorClassLecturesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        classroom = get_object_or_404(Classroom, pk=pk)
+
+        profile = getattr(request.user, "profile", None)
+
+        if (
+            profile is None
+            or profile.role != "professor"
+            or classroom.professor_id != request.user.id
+        ):
+            raise PermissionDenied(
+                "Only the class owner can view these lectures."
+            )
+
+        lectures = Lecture.objects.filter(
+            classroom=classroom
+        ).order_by("-id")
+
+        return Response([
+            {
+                "id": lecture.id,
+                "title": lecture.title,
+                "status": (
+                    "published"
+                    if lecture.published_at is not None
+                    else getattr(lecture, "status", "pending")
+                ),
+                "published_at": lecture.published_at,
+            }
+            for lecture in lectures
+        ])
