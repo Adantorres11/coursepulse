@@ -104,3 +104,28 @@ class LectureStatusBackfillTests(TestCase):
         uploaded.refresh_from_db()
         self.assertEqual(old.status, "ready")
         self.assertEqual(uploaded.status, "pending")
+
+
+class PendingWithoutRecordingBackfillTests(TestCase):
+    def test_only_pending_lectures_without_recordings_become_ready(self):
+        classroom = Classroom.objects.create(name="Any Class")
+        old = Lecture.objects.create(classroom=classroom, title="Old")
+        uploaded = Lecture.objects.create(
+            classroom=classroom,
+            title="Uploaded",
+            recording="lecture_recordings/talk.mp3",
+        )
+        failed = Lecture.objects.create(
+            classroom=classroom, title="Failed", status="failed"
+        )
+        migration = import_module(
+            "quizzes.migrations.0012_mark_pending_lectures_without_recordings_ready"
+        )
+
+        migration.mark_pending_lectures_without_recordings_ready(Lecture)
+
+        for lecture in (old, uploaded, failed):
+            lecture.refresh_from_db()
+        self.assertEqual(old.status, "ready")
+        self.assertEqual(uploaded.status, "pending")
+        self.assertEqual(failed.status, "failed")
