@@ -1,6 +1,6 @@
 from unittest import mock
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from kombu.exceptions import OperationalError
 
 from classrooms.models import Classroom
@@ -19,9 +19,12 @@ class TaskTests(TestCase):
         return Lecture.objects.create(classroom=self.classroom, title="Week 3", **fields)
 
     def run_transcribe(self, lecture, run):
+        # Retries run inline here. When eager errors propagate (the default
+        # outside Docker), Celery raises Retry out of apply(), so switch that off
+        # and the tests behave the same on SQLite and on Postgres.
         with mock.patch("quizzes.tasks.run_transcription", run), mock.patch(
             "random.uniform", return_value=0
-        ):
+        ), override_settings(CELERY_TASK_EAGER_PROPAGATES=False):
             tasks.transcribe_lecture.apply(args=[lecture.id], task_id="t1")
         lecture.refresh_from_db()
 
