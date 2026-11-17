@@ -12,13 +12,12 @@ from quizzes.job_errors import PermanentError, TransientError
 from quizzes.jobs import job_logger
 from quizzes.media_testing import make_fixture, requires_ffmpeg
 from quizzes.models import Lecture, TranscriptChunk
-from quizzes.test_transcription import SILENCE, SINE, TOKEN, _tone, fake_lock, real_probe
 from quizzes.transcription import run_transcription
-from quizzes.whisper_client import WhisperResult
+from quizzes.transcription_testing import SILENCE, SINE, TOKEN, TranscriptionTestMixin, tone
 
 
 @requires_ffmpeg
-class RunTranscriptionErrorTests(TestCase):
+class RunTranscriptionErrorTests(TranscriptionTestMixin, TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -30,7 +29,7 @@ class RunTranscriptionErrorTests(TestCase):
         folder = cls.media_root / "lecture_recordings"
         folder.mkdir()
         for seconds in (5, 30, 60, 65, 180):
-            make_fixture(folder, f"tone{seconds}.wav", *SINE, _tone(seconds), "-ac", "1")
+            make_fixture(folder, f"tone{seconds}.wav", *SINE, tone(seconds), "-ac", "1")
         make_fixture(folder, "silence60.wav", *SINE, f"{SILENCE}:d=60")
         make_fixture(
             folder, "muted.mp4",
@@ -43,55 +42,11 @@ class RunTranscriptionErrorTests(TestCase):
     def setUpTestData(cls):
         cls.classroom = Classroom.objects.create(name="Any Class")
 
-    def setUp(self):
-        self.prompts = []
-        self.texts = []
-        patches = [
-            mock.patch("quizzes.transcription.lecture_lock", fake_lock),
-            mock.patch(
-                "quizzes.transcription.transcribe_chunk", side_effect=self.fake_transcribe
-            ),
-            mock.patch("quizzes.transcription.hand_off"),
-        ]
-        started = [p.start() for p in patches]
-        for p in patches:
-            self.addCleanup(p.stop)
-        self.whisper_patch = patches[1]
-        self.whisper, self.hand_off = started[1], started[2]
-
-    def fake_transcribe(self, path, prompt):
-        """Return 150 words per minute of part length, in English."""
-        self.prompts.append(prompt)
-        duration = real_probe(path).duration
-        if self.texts:
-            text = self.texts.pop(0)
-        else:
-            count = max(1, round(duration / 60 * 150))
-            text = " ".join(f"word{len(self.prompts)}x{i}" for i in range(count))
-        words = text.split()
-        half = len(words) // 2
-        segments = [
-            {"start": 0.0, "end": duration / 2, "text": " ".join(words[:half])},
-            {"start": duration / 2, "end": duration, "text": " ".join(words[half:])},
-        ]
-        raw = {"text": text, "language": "english", "duration": duration, "segments": segments}
-        return WhisperResult(text, "english", duration, segments, raw)
-
-    def make_lecture(self, name, **fields):
-        lecture = Lecture.objects.create(
-            classroom=self.classroom, title="Week 3 Graphs", **fields
-        )
-        lecture.recording.name = f"lecture_recordings/{name}"
-        lecture.save()
-        return lecture
-
-    def run_job(self, lecture, token=TOKEN):
-        with self.captureOnCommitCallbacks(execute=True):
-            result = run_transcription(
-                lecture.id, token, 1, job_logger(lecture.id, token, 1)
-            )
-        lecture.refresh_from_db()
-        return result
+    def run_failing(self, lecture, token=TOKEN):
+        """Run the job, expect it to fail and log the WARNING, and return the logs."""
+        with self.assertLogs("quizzes.jobs", level="WARNING") as logs:
+            self.assertFalse(self.run_job(lecture, token))
+        return logs
 
     def assert_failed(self, lecture, message):
         self.assertEqual(lecture.status, "failed")
@@ -101,7 +56,7 @@ class RunTranscriptionErrorTests(TestCase):
 
     def fail_with(self, name, message, **fields):
         lecture = self.make_lecture(name, **fields)
-        self.assertFalse(self.run_job(lecture))
+        self.run_failing(lecture)
         self.assert_failed(lecture, message)
         self.whisper.assert_not_called()
         return lecture
@@ -119,7 +74,7 @@ class RunTranscriptionErrorTests(TestCase):
         lecture = self.make_lecture("tone30.wav")
         lecture.recording.name = "lecture_recordings/deleted.wav"
         lecture.save()
-        self.assertFalse(self.run_job(lecture))
+        self.run_failing(lecture)
         self.assert_failed(lecture, job_errors.FILE_MISSING)
         self.whisper.assert_not_called()
 
@@ -131,7 +86,7 @@ class RunTranscriptionErrorTests(TestCase):
         lecture = self.make_lecture("tone30.wav")
         info = media.MediaInfo(duration=9000, audio_index=0, has_video=False)
         with mock.patch("quizzes.media.probe", return_value=info):
-            self.assertFalse(self.run_job(lecture))
+            self.run_failing(lecture)
         self.assert_failed(
             lecture, "Recording is longer than 2 hours. Upload a shorter one."
         )
@@ -143,20 +98,19 @@ class RunTranscriptionErrorTests(TestCase):
     def test_repeated_hallucination_fails_with_no_speech(self):
         self.texts = ["Thanks for watching. " * 40]
         lecture = self.make_lecture("tone60.wav")
-        self.assertFalse(self.run_job(lecture))
+        self.run_failing(lecture)
         self.assert_failed(lecture, job_errors.NO_SPEECH)
 
     def test_low_word_rate_fails_incomplete(self):
         self.texts = [" ".join(f"w{i}" for i in range(20))]
         lecture = self.make_lecture("tone180.wav")
-        self.assertFalse(self.run_job(lecture))
+        self.run_failing(lecture)
         self.assert_failed(lecture, job_errors.INCOMPLETE)
 
     @override_settings(TRANSCRIPTION_MAX_COST_USD=0.001)
     def test_cost_cap_refuses_and_logs(self):
         lecture = self.make_lecture("tone30.wav")
-        with self.assertLogs("quizzes.jobs", level="INFO") as logs:
-            self.assertFalse(self.run_job(lecture))
+        logs = self.run_failing(lecture)
         self.assert_failed(lecture, job_errors.TOO_EXPENSIVE)
         self.whisper.assert_not_called()
         self.assertTrue(any("est_usd" in line for line in logs.output), logs.output)
@@ -164,7 +118,7 @@ class RunTranscriptionErrorTests(TestCase):
     def test_missing_key_fails_cleanly(self):
         self.whisper_patch.stop()
         lecture = self.make_lecture("tone30.wav")
-        self.assertFalse(self.run_job(lecture))
+        self.run_failing(lecture)
         self.assert_failed(lecture, job_errors.NO_KEY)
 
     def test_credits_run_out_mid_lecture_keeps_finished_chunks(self):
@@ -176,7 +130,7 @@ class RunTranscriptionErrorTests(TestCase):
         self.whisper.side_effect = run_out
         lecture = self.make_lecture("tone65.wav")
         with mock.patch("quizzes.transcription.CHUNK_SECONDS", 20):
-            self.assertFalse(self.run_job(lecture))
+            self.run_failing(lecture)
             self.assert_failed(lecture, job_errors.NO_CREDITS)
             self.assertEqual(TranscriptChunk.objects.filter(lecture=lecture).count(), 2)
 
@@ -255,7 +209,7 @@ class RunTranscriptionErrorTests(TestCase):
         self.whisper.side_effect = SoftTimeLimitExceeded()
         paths = self.record_temp_dirs()
         lecture = self.make_lecture("tone30.wav")
-        self.assertFalse(self.run_job(lecture))
+        self.run_failing(lecture)
         self.assert_failed(lecture, job_errors.TIMEOUT)
         self.assertEqual(len(paths), 1)
         self.assertFalse(Path(paths[0]).exists())
@@ -278,7 +232,7 @@ class RunTranscriptionErrorTests(TestCase):
         self.whisper.side_effect = PermanentError(job_errors.NO_CREDITS)
         paths = self.record_temp_dirs()
         lecture = self.make_lecture("tone30.wav")
-        self.assertFalse(self.run_job(lecture))
+        self.run_failing(lecture)
         self.assert_failed(lecture, job_errors.NO_CREDITS)
         self.assertEqual(len(paths), 1)
         self.assertFalse(Path(paths[0]).exists())
@@ -286,8 +240,7 @@ class RunTranscriptionErrorTests(TestCase):
     def test_unexpected_error_fails_with_generic_message(self):
         self.whisper.side_effect = ValueError("boom detail")
         lecture = self.make_lecture("tone30.wav")
-        with self.assertLogs("quizzes.jobs", level="ERROR") as logs:
-            self.assertFalse(self.run_job(lecture))
+        logs = self.run_failing(lecture)
         self.assert_failed(lecture, job_errors.UNEXPECTED)
         output = "\n".join(logs.output)
         self.assertIn("Traceback", output)

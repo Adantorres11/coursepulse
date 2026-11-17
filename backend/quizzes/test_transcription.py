@@ -1,4 +1,3 @@
-import contextlib
 import shutil
 import tempfile
 from pathlib import Path
@@ -8,23 +7,19 @@ from django.test import TestCase, override_settings
 
 from classrooms.models import Classroom
 from quizzes import job_errors, media
-from quizzes.jobs import claim_transcription, job_logger
+from quizzes.jobs import claim_transcription
 from quizzes.media_testing import make_fixture, requires_ffmpeg
-from quizzes.models import Lecture, TranscriptChunk
-from quizzes.transcription import run_transcription
-from quizzes.whisper_client import WhisperResult
+from quizzes.models import TranscriptChunk
+from quizzes.transcription_testing import (
+    READY,
+    SILENCE,
+    SINE,
+    TOKEN,
+    TranscriptionTestMixin,
+    tone,
+)
 
-SINE = ["-f", "lavfi", "-i"]
-SILENCE = "anullsrc=r=16000:cl=mono"
-READY = "Transcript ready. Starting question generation."
-TOKEN = "task-1"
-real_probe = media.probe
 real_normalize = media.normalize_audio
-
-
-@contextlib.contextmanager
-def fake_lock(lecture_id, token):
-    yield True
 
 
 def _concat(*inputs):
@@ -40,12 +35,8 @@ def _concat(*inputs):
     ]
 
 
-def _tone(seconds):
-    return f"sine=f=300:d={seconds}:sample_rate=16000"
-
-
 @requires_ffmpeg
-class RunTranscriptionTests(TestCase):
+class RunTranscriptionTests(TranscriptionTestMixin, TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -57,70 +48,19 @@ class RunTranscriptionTests(TestCase):
         folder = cls.media_root / "lecture_recordings"
         folder.mkdir()
         for seconds in (30, 50, 60, 65):
-            make_fixture(folder, f"tone{seconds}.wav", *SINE, _tone(seconds), "-ac", "1")
+            make_fixture(folder, f"tone{seconds}.wav", *SINE, tone(seconds), "-ac", "1")
         make_fixture(
             folder, "gap.wav",
-            *_concat(_tone(20), f"{SILENCE}:d=180", _tone(20)),
+            *_concat(tone(20), f"{SILENCE}:d=180", tone(20)),
         )
-        make_fixture(folder, "lead.wav", *_concat(f"{SILENCE}:d=5", _tone(30)))
+        make_fixture(folder, "lead.wav", *_concat(f"{SILENCE}:d=5", tone(30)))
         make_fixture(
-            folder, "quiet.wav", *SINE, f"{_tone(30)},volume=-22dB", "-ac", "1"
+            folder, "quiet.wav", *SINE, f"{tone(30)},volume=-22dB", "-ac", "1"
         )
 
     @classmethod
     def setUpTestData(cls):
         cls.classroom = Classroom.objects.create(name="Any Class")
-
-    def setUp(self):
-        self.prompts = []
-        self.texts = []
-        self.text_word = "word"
-        patches = [
-            mock.patch("quizzes.transcription.lecture_lock", fake_lock),
-            mock.patch(
-                "quizzes.transcription.transcribe_chunk", side_effect=self.fake_transcribe
-            ),
-            mock.patch("quizzes.transcription.hand_off"),
-        ]
-        started = [p.start() for p in patches]
-        for p in patches:
-            self.addCleanup(p.stop)
-        self.whisper, self.hand_off = started[1], started[2]
-
-    def fake_transcribe(self, path, prompt):
-        """Return 150 words per minute of part length, in English."""
-        self.prompts.append(prompt)
-        duration = real_probe(path).duration
-        call = len(self.prompts)
-        if self.texts:
-            text = self.texts.pop(0)
-        else:
-            count = max(1, round(duration / 60 * 150))
-            text = " ".join(f"{self.text_word}{call}x{i}" for i in range(count))
-        words = text.split()
-        half = len(words) // 2
-        segments = [
-            {"start": 0.0, "end": duration / 2, "text": " ".join(words[:half])},
-            {"start": duration / 2, "end": duration, "text": " ".join(words[half:])},
-        ]
-        raw = {"text": text, "language": "english", "duration": duration, "segments": segments}
-        return WhisperResult(text, "english", duration, segments, raw)
-
-    def make_lecture(self, name, **fields):
-        lecture = Lecture.objects.create(
-            classroom=self.classroom, title="Week 3 Graphs", **fields
-        )
-        lecture.recording.name = f"lecture_recordings/{name}"
-        lecture.save()
-        return lecture
-
-    def run_job(self, lecture, token=TOKEN):
-        with self.captureOnCommitCallbacks(execute=True):
-            result = run_transcription(
-                lecture.id, token, 1, job_logger(lecture.id, token, 1)
-            )
-        lecture.refresh_from_db()
-        return result
 
     def plan_for(self, lecture, chunk_seconds):
         silences, duration = media.find_silences(Path(lecture.recording.path), 0)
