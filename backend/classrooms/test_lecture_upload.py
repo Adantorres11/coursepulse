@@ -185,6 +185,8 @@ class LectureUploadTests(LectureUploadTestBase):
             format="multipart",
         )
 
+        self.assertEqual(response.status_code, 404)
+
     def test_invalid_file_signature(self):
         self.authenticate(self.professor)
 
@@ -205,7 +207,6 @@ class LectureUploadTests(LectureUploadTestBase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(Lecture.objects.count(), 0)
-        self.assertEqual(response.status_code, 400)
 
 
 class LectureUploadSavesFileTests(LectureUploadTestBase):
@@ -284,4 +285,93 @@ class LectureUploadSavesFileTests(LectureUploadTestBase):
             response.data["recording"],
             ["File must be 2 MB or smaller."],
         )
+        self.assertEqual(Lecture.objects.count(), 0)
+
+    def test_saves_the_recording_on_the_lecture(self):
+        content = b"ID3" + b"a" * 97
+        response = self.post_recording("lecture.mp3", content, "audio/mpeg")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            response.data,
+            {"id": response.data["id"], "title": "Lecture", "status": "pending"},
+        )
+        lecture = Lecture.objects.get(id=response.data["id"])
+        self.assertTrue(lecture.recording.name.startswith("lecture_recordings/"))
+        with lecture.recording.open("rb") as saved:
+            self.assertEqual(saved.read(), content)
+        self.assertIsNone(lecture.published_at)
+
+    def test_accepts_each_allowed_format(self):
+        samples = {
+            "talk.mp3": b"ID3" + b"\x00" * 20,
+            "talk.MP3": b"\xff\xfb" + b"\x00" * 20,
+            "talk.wav": b"RIFF" + b"\x00" * 4 + b"WAVE" + b"\x00" * 20,
+            "talk.m4a": b"\x00\x00\x00\x20ftypM4A " + b"\x00" * 20,
+            "talk.mp4": b"\x00\x00\x00\x20ftypisom" + b"\x00" * 20,
+        }
+
+        for name, content in samples.items():
+            with self.subTest(name=name):
+                response = self.post_recording(
+                    name,
+                    content,
+                    "application/octet-stream",
+                )
+                self.assertEqual(response.status_code, 201, response.data)
+
+        self.assertEqual(Lecture.objects.count(), len(samples))
+
+    def test_unauthenticated_upload(self):
+        response = self.client.post(
+            self.url,
+            {
+                "title": "Lecture",
+                "recording": self.recording(),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(Lecture.objects.count(), 0)
+
+    def test_missing_title(self):
+        self.authenticate(self.professor)
+
+        response = self.client.post(
+            self.url,
+            {"recording": self.recording()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("title", response.data)
+        self.assertEqual(Lecture.objects.count(), 0)
+
+    def test_missing_recording(self):
+        self.authenticate(self.professor)
+
+        response = self.client.post(
+            self.url,
+            {"title": "Lecture"},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("recording", response.data)
+        self.assertEqual(Lecture.objects.count(), 0)
+
+    def test_other_professor_upload_creates_nothing(self):
+        self.authenticate(self.other_professor)
+
+        response = self.client.post(
+            self.url,
+            {
+                "title": "Lecture",
+                "recording": self.recording(),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 403)
         self.assertEqual(Lecture.objects.count(), 0)
