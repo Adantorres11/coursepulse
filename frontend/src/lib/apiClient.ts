@@ -77,9 +77,18 @@ export function setStoredUser(user: User | null): void {
     if (user) {
       localStorage.setItem(USER_KEY, JSON.stringify(user));
       sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+      if (user.role) {
+        localStorage.setItem("coursepulse_role", user.role);
+        sessionStorage.setItem("coursepulse_role", user.role);
+      } else {
+        localStorage.removeItem("coursepulse_role");
+        sessionStorage.removeItem("coursepulse_role");
+      }
     } else {
       localStorage.removeItem(USER_KEY);
       sessionStorage.removeItem(USER_KEY);
+      localStorage.removeItem("coursepulse_role");
+      sessionStorage.removeItem("coursepulse_role");
     }
   } catch {
     // Ignore storage errors
@@ -89,6 +98,12 @@ export function setStoredUser(user: User | null): void {
 export function clearSession(): void {
   setStoredToken(null);
   setStoredUser(null);
+  try {
+    sessionStorage.removeItem("coursepulse_role");
+    localStorage.removeItem("coursepulse_role");
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 /**
@@ -276,11 +291,10 @@ function authHeaders(): Record<string, string> {
  * Reads the active user's role from session storage.
  */
 export function getUserRole(): string | null {
-  const directRole = sessionStorage.getItem("coursepulse_role");
-  if (directRole) return directRole;
-
   try {
-    const rawUser = sessionStorage.getItem("coursepulse_user");
+    const rawUser =
+      sessionStorage.getItem(USER_KEY) ||
+      localStorage.getItem(USER_KEY);
     if (rawUser) {
       const parsed = JSON.parse(rawUser) as { role?: string };
       if (parsed?.role) return parsed.role;
@@ -288,6 +302,11 @@ export function getUserRole(): string | null {
   } catch {
     // Ignore JSON parse error
   }
+
+  const directRole =
+    sessionStorage.getItem("coursepulse_role") ||
+    localStorage.getItem("coursepulse_role");
+  if (directRole) return directRole;
 
   return null;
 }

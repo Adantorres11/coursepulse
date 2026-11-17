@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { API_BASE_URL, getClassesRoute, isProfessor } from "../lib/apiClient";
+import { API_BASE_URL, getClassesRoute, getStoredToken, isProfessor } from "../lib/apiClient";
 
 interface Classroom {
   id: number;
@@ -33,7 +33,7 @@ useEffect(() => {
     return;
   }
 
-  const token = sessionStorage.getItem("coursepulse_token");
+  const token = getStoredToken();
 
   if (!token) {
     setLookupError("Please log in before joining a class.");
@@ -87,7 +87,7 @@ useEffect(() => {
 const handleJoin = async () => {
   if (!foundClass || isLookingUp || isJoining || joinSuccess) return;
 
-  const token = sessionStorage.getItem("coursepulse_token");
+  const token = getStoredToken();
 
   if (!token) {
     setJoinError("Please log in before joining a class.");
