@@ -197,6 +197,11 @@ export default function QuizGame({
       return;
     }
 
+    // hold the question clock until the server has started the question
+    if (questionIndex >= 0 && !questionStarted) {
+      return;
+    }
+
     // question out of time
     if(questionIndex != -1 && timeLeft <= 0) {
       if (!timeoutSentRef.current) {
@@ -215,7 +220,7 @@ export default function QuizGame({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, questionIndex, currentResult, submitting, failedRequest, questions.length]);
+  }, [timeLeft, questionIndex, currentResult, submitting, failedRequest, questions.length, questionStarted]);
 
   // timer ring config
   const radius = 44;
@@ -352,6 +357,9 @@ export default function QuizGame({
 
         {/* question */}
         <h2 className="text-white text-xl font-bold tracking-tight">{questions[questionIndex].prompt}</h2>
+        {!questionStarted && !startError && !currentResult &&
+          <p className="text-slate-400 text-sm">Loading question...</p>
+        }
 
         {/* choices buttons */}
         <div className="flex flex-col items-stretch gap-2.5 mx-0 my-5 w-full mr-auto">
