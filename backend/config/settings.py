@@ -137,6 +137,13 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = 10
 CELERY_WORKER_MAX_MEMORY_PER_CHILD = 500000  # KB
 CELERY_RESULT_EXPIRES = 86400
 
+CELERY_BEAT_SCHEDULE = {
+    "reap-stuck-lectures": {
+        "task": "quizzes.tasks.reap_stuck_lectures",
+        "schedule": 300.0,
+    },
+}
+
 # OpenAI (Whisper transcription).
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 if sys.argv[1:2] == ["test"]:

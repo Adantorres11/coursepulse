@@ -22,3 +22,8 @@ class CelerySettingsTests(SimpleTestCase):
 
     def test_tests_never_see_a_real_openai_key(self):
         self.assertEqual(settings.OPENAI_API_KEY, "")
+
+    def test_reaper_runs_every_five_minutes(self):
+        entry = settings.CELERY_BEAT_SCHEDULE["reap-stuck-lectures"]
+        self.assertEqual(entry["task"], "quizzes.tasks.reap_stuck_lectures")
+        self.assertEqual(entry["schedule"], 300.0)

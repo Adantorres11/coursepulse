@@ -1,10 +1,22 @@
+import logging
 import random
+from datetime import timedelta
 
 from celery import shared_task
+from django.utils import timezone
+from kombu.exceptions import OperationalError
+from redis.exceptions import RedisError
 
-from .job_errors import TransientError
-from .jobs import LostOwnership, claim_questions, fail, heartbeat, job_logger
-from .transcription import run_transcription
+from .job_errors import INTERRUPTED, TransientError
+from .jobs import LostOwnership, claim_questions, fail, heartbeat, job_logger, release_stale_lock
+from .models import Lecture
+from .pipeline import enqueue_lecture_processing
+from .transcription import hand_off, run_transcription
+
+logger = logging.getLogger(__name__)
+
+STUCK_JOB_MINUTES = 15
+STUCK_PENDING_MINUTES = 10
 
 
 @shared_task(bind=True, ignore_result=True, max_retries=3)
@@ -38,3 +50,55 @@ def generate_questions(self, lecture_id):
         "Transcript ready. Question generation is not built yet.",
     )
     log.info("generate_questions is a placeholder until SCRUM-71")
+
+
+@shared_task(ignore_result=True)
+def reap_stuck_lectures():
+    now = timezone.now()
+    job_cutoff = now - timedelta(minutes=STUCK_JOB_MINUTES)
+    pending_cutoff = now - timedelta(minutes=STUCK_PENDING_MINUTES)
+
+    stuck = list(
+        Lecture.objects.filter(
+            status="processing", transcript="", last_progress_at__lt=job_cutoff
+        )
+        .exclude(job_token="")
+        .values_list("id", "job_token")
+    )
+    for lecture_id, stale in stuck:
+        # Free the dead job's lock first, or a professor retry could not take it.
+        release_stale_lock(lecture_id, stale)
+        # Passing the token means a job that took over meanwhile is not overwritten.
+        fail(lecture_id, stale, INTERRUPTED)
+
+    lost = list(
+        Lecture.objects.filter(
+            status="processing", job_token="", last_progress_at__lt=job_cutoff
+        )
+        .exclude(transcript="")
+        .values_list("id", flat=True)
+    )
+    for lecture_id in lost:
+        Lecture.objects.filter(pk=lecture_id).update(last_progress_at=timezone.now())
+        hand_off(lecture_id)
+
+    stale_pending = list(
+        Lecture.objects.filter(
+            status="pending", recording__isnull=False, last_progress_at__lt=pending_cutoff
+        )
+        .exclude(recording="")
+        .values_list("id", flat=True)
+    )
+    for lecture_id in stale_pending:
+        Lecture.objects.filter(pk=lecture_id).update(last_progress_at=timezone.now())
+        try:
+            enqueue_lecture_processing(lecture_id)
+        except (OperationalError, RedisError):
+            logger.warning("reaper could not re-queue lecture %s", lecture_id, exc_info=True)
+
+    logger.info(
+        "reaper: failed %s stuck jobs, re-ran %s lost hand-offs, re-queued %s pending lectures",
+        len(stuck),
+        len(lost),
+        len(stale_pending),
+    )

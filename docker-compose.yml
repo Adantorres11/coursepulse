@@ -73,6 +73,18 @@ services:
       redis:
         condition: service_healthy
 
+  beat:
+    build: ./backend
+    command: celery -A config beat -l info -s /tmp/celerybeat-schedule
+    environment: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   frontend:
     build: ./frontend
     environment:
