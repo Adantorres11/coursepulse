@@ -12,6 +12,7 @@ db.sqlite3
 .coverage
 htmlcov/
 backend/media/
+celerybeat-schedule*
 
 # Node
 node_modules/

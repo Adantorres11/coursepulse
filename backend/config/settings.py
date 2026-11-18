@@ -3,7 +3,10 @@
 All environment-specific values come from environment variables (see .env.example).
 """
 import os
+import sys
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -95,7 +98,18 @@ USE_I18N = True
 USE_TZ = True
 
 # Celery (background jobs). Redis carries the jobs and stores the results.
-CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/0")
+# Eager means tasks run inline with no Redis and no worker. That is the default
+# outside Docker (DB_HOST not set), so tests and local runs work alone.
+CELERY_TASK_ALWAYS_EAGER = (
+    os.environ.get("CELERY_TASK_ALWAYS_EAGER", "0" if os.environ.get("DB_HOST") else "1") == "1"
+)
+CELERY_TASK_EAGER_PROPAGATES = CELERY_TASK_ALWAYS_EAGER
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "")
+if not CELERY_BROKER_URL:
+    if CELERY_TASK_ALWAYS_EAGER:
+        CELERY_BROKER_URL = "memory://"
+    else:
+        raise ImproperlyConfigured("CELERY_BROKER_URL is not set. Copy it from .env.example into .env.")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
@@ -105,16 +119,39 @@ CELERY_TIMEZONE = TIME_ZONE
 # so a job is delivered again if the worker dies while running it.
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
-# Seconds. Sized for transcribing a 75-minute lecture.
-CELERY_TASK_TIME_LIMIT = int(os.environ.get("CELERY_TASK_TIME_LIMIT", "1800"))
-CELERY_TASK_SOFT_TIME_LIMIT = int(os.environ.get("CELERY_TASK_SOFT_TIME_LIMIT", "1500"))
-# Eager means tasks run inline with no Redis and no worker. That is the default
-# outside Docker (DB_HOST not set), so tests and local runs work alone.
-CELERY_TASK_ALWAYS_EAGER = (
-    os.environ.get("CELERY_TASK_ALWAYS_EAGER", "0" if os.environ.get("DB_HOST") else "1") == "1"
-)
-CELERY_TASK_EAGER_PROPAGATES = CELERY_TASK_ALWAYS_EAGER
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+# Seconds. Sized for a 4-hour lecture split into parts.
+CELERY_TASK_TIME_LIMIT = int(os.environ.get("CELERY_TASK_TIME_LIMIT", "3000"))
+CELERY_TASK_SOFT_TIME_LIMIT = int(os.environ.get("CELERY_TASK_SOFT_TIME_LIMIT", "2700"))
+# Redis redelivers an unacknowledged job after this many seconds. Keep it above the hard limit.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": 7200, "socket_connect_timeout": 3}
+CELERY_BROKER_CONNECTION_TIMEOUT = 3
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_TASK_PUBLISH_RETRY_POLICY = {
+    "max_retries": 1,
+    "interval_start": 0,
+    "interval_step": 0.5,
+    "interval_max": 1,
+}
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 10
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = 500000  # KB
+CELERY_RESULT_EXPIRES = 86400
+
+CELERY_BEAT_SCHEDULE = {
+    "reap-stuck-lectures": {
+        "task": "quizzes.tasks.reap_stuck_lectures",
+        "schedule": 300.0,
+    },
+}
+
+# OpenAI (Whisper transcription).
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+if sys.argv[1:2] == ["test"]:
+    # Tests must never spend real credits.
+    OPENAI_API_KEY = ""
+TRANSCRIPTION_MAX_COST_USD = float(os.environ.get("TRANSCRIPTION_MAX_COST_USD", "2.00"))
+TRANSCRIPTION_MAX_SECONDS = int(os.environ.get("TRANSCRIPTION_MAX_SECONDS", "14400"))
+LECTURE_UPLOAD_MAX_BYTES = int(os.environ.get("LECTURE_UPLOAD_MAX_BYTES", str(2 * 1024 ** 3)))
 
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -130,7 +167,3 @@ REST_FRAMEWORK = {
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-
-# Largest lecture recording the upload endpoint accepts. A 75-minute lecture
-# recording is often 200+ MB as audio and well over 1 GB as video.
-LECTURE_UPLOAD_MAX_BYTES = int(os.environ.get("LECTURE_UPLOAD_MAX_BYTES", str(2 * 1024 ** 3)))

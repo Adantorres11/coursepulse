@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -10,15 +11,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from quizzes.models import QuizCompletion, Lecture
+from quizzes.pipeline import start_lecture_processing
 
 from .models import Classroom, Enrollment
 from .serializers import (
+    LectureUploadSerializer,
     ClassCreateSerializer,
     ProfessorClassSerializer,
     ClassCodeSerializer,
     ClassroomSerializer,
     ClassRosterSerializer,
-    LectureUploadSerializer,
 )
 from .stats import (
     build_class_stats,
@@ -236,6 +238,7 @@ class ClassStatsView(APIView):
 
         return Response(build_class_stats(classroom, request.user))
 
+
 class LectureUploadView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -262,7 +265,14 @@ class LectureUploadView(APIView):
             title=serializer.validated_data["title"],
             recording=serializer.validated_data["recording"],
             status="pending",
+            last_progress_at=timezone.now(),
         )
+
+        transaction.on_commit(
+            lambda: start_lecture_processing(lecture.id)
+        )
+
+        lecture.refresh_from_db(fields=["status"])
 
         return Response(
             {
@@ -272,6 +282,7 @@ class LectureUploadView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
 
 class ProfessorClassListView(ListAPIView):
     permission_classes = [IsAuthenticated]
@@ -335,6 +346,7 @@ class ClassRosterView(APIView):
         )
 
         return Response(serializer.data)
+
 
 class ClassResultsView(APIView):
     permission_classes = [IsAuthenticated]

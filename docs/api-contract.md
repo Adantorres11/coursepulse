@@ -632,9 +632,11 @@ Content-Type: multipart/form-data
 Request fields:
 - title: Required string (max 255 characters)
 - recording: Required audio/video file
-- Allowed extensions: .mp3, .mp4, .m4a, .wav (any letter case)
-- The file must start with the matching audio/video signature. The browser-sent content type is not checked, since browsers and curl send different values for the same file.
-- Maximum file size: `LECTURE_UPLOAD_MAX_BYTES`, 2 GB by default, so a full 75-minute lecture fits
+- Allowed extensions (case does not matter): .mp3, .m4a, .wav, .aac, .ogg, .flac, .mp4, .mov, .mkv, .webm, .avi
+- Maximum file size: 2 GB by default. The server setting LECTURE_UPLOAD_MAX_BYTES sets the limit.
+- If the file is too large, the error text is "File must be {N} MB or smaller." N is the limit in MB.
+- The server checks the file signature (the first bytes of the file) at upload. It does not check the content type.
+- The background worker reads the real audio and video streams with ffprobe (a tool that reports what a media file contains).
 
 Success: 201 Created
 
@@ -655,7 +657,9 @@ Errors:
 Transcription:
 - New lectures are saved with status "pending" and are not visible to students (published_at is null).
 - Status values are "pending", "processing", "ready", and "failed".
-- Queueing the transcription job after upload lands with SCRUM-70 (Whisper transcription task). Until then an uploaded lecture stays "pending".
+- After the upload is saved, processing starts in the background.
+- If processing cannot start, the response is still 201 and status is "failed".
+- The status endpoint then gives the error_message "Couldn't start processing, try again."
 
 ## GET /api/professor/classes/{id}/lectures/
 
@@ -708,6 +712,7 @@ Success: 200 OK
 {
   "id": 1,
   "status": "processing",
+  "progress_message": "Transcribing part 3 of 7",
   "error_message": ""
 }
 ```
@@ -725,13 +730,38 @@ For a failed lecture:
 {
   "id": 1,
   "status": "failed",
-  "error_message": "Transcription failed."
+  "progress_message": "",
+  "error_message": "Something went wrong. Try again."
 }
 ```
 
 Rules:
 - Only the professor who owns the lecture's classroom can access its status.
 - The error message is empty unless the lecture status is failed.
+- The progress message is empty unless the lecture status is processing.
+- Every error message is one of the strings in the next list.
+
+Possible error messages:
+- "This file is empty. Try re-uploading it."
+- "We couldn't read this file. Try re-uploading it."
+- "This video has no audio."
+- "Recording too short to make a quiz."
+- "Recording is longer than {hours} hours. Upload a shorter one." ({hours} is the server limit, 4 by default.)
+- "No speech was detected."
+- "The transcript looks incomplete. Try again."
+- "Server isn't set up for transcription."
+- "The transcription key was rejected. Ask the site admin to check it."
+- "Transcription credits ran out."
+- "This recording is over the transcription cost limit."
+- "Transcription service is busy. Try again later."
+- "Processing took too long."
+- "Processing was interrupted, retry."
+- "Recording file not found."
+- "We couldn't open the recording file."
+- "The server ran out of space. Try again later."
+- "Couldn't start processing, try again."
+- "Couldn't start question generation, retry."
+- "Something went wrong. Try again."
 
 Errors:
 - 401: Missing or invalid authentication.
@@ -762,6 +792,9 @@ Rules:
 - The previous error message is cleared.
 - The lecture is submitted to the Celery processing pipeline.
 - If the pipeline is unavailable, the failed status and previous error message are restored.
+- A retry keeps the uploaded file.
+- If a transcript for the same recording is already saved, the retry skips transcription and goes straight to question generation.
+- A retry continues from the transcript parts that were already finished.
 
 Errors:
 - 400: Lecture is not failed or is already being retried.
@@ -771,4 +804,4 @@ Errors:
 - 503: Processing pipeline is unavailable.
 
 Dependency:
-- Actual processing requires the transcription and question generation tasks from SCRUM-70 and SCRUM-71.
+- Transcription is built in SCRUM-70. Question generation is built in SCRUM-71.

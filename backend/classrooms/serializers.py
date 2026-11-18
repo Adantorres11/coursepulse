@@ -58,14 +58,16 @@ class LectureUploadSerializer(serializers.Serializer):
 
     def validate_recording(self, file):
         allowed_extensions = {
-            ".mp3", ".mp4", ".m4a", ".wav"
+            ".mp3", ".mp4", ".m4a", ".wav", ".mov", ".mkv",
+            ".webm", ".avi", ".ogg", ".flac", ".aac",
         }
 
         extension = Path(file.name).suffix.lower()
 
         if extension not in allowed_extensions:
             raise serializers.ValidationError(
-                "Only MP3, MP4, M4A, and WAV files are allowed."
+                "Only MP3, MP4, M4A, WAV, MOV, MKV, WEBM, AVI, "
+                "OGG, FLAC, and AAC files are allowed."
             )
 
         max_size = settings.LECTURE_UPLOAD_MAX_BYTES
@@ -90,14 +92,45 @@ class LectureUploadSerializer(serializers.Serializer):
                 )
             )
 
+        elif extension == ".aac":
+            valid_signature = (
+                header.startswith(b"ID3")
+                or (
+                    len(header) >= 2
+                    and header[0] == 0xFF
+                    and header[1] & 0xF6 == 0xF0
+                )
+            )
+
         elif extension == ".wav":
             valid_signature = (
                 header.startswith(b"RIFF")
                 and header[8:12] == b"WAVE"
             )
 
-        elif extension in {".mp4", ".m4a"}:
-            valid_signature = header[4:8] == b"ftyp"
+        elif extension == ".avi":
+            valid_signature = (
+                header.startswith(b"RIFF")
+                and header[8:12] == b"AVI "
+            )
+
+        elif extension == ".ogg":
+            valid_signature = header.startswith(b"OggS")
+
+        elif extension == ".flac":
+            valid_signature = (
+                header.startswith(b"fLaC")
+                or header.startswith(b"ID3")
+            )
+
+        elif extension in {".mkv", ".webm"}:
+            valid_signature = header.startswith(b"\x1aE\xdf\xa3")
+
+        elif extension in {".mp4", ".m4a", ".mov"}:
+            valid_signature = header[4:8] in {
+                b"ftyp", b"moov", b"mdat",
+                b"wide", b"free", b"skip",
+            }
 
         if not valid_signature:
             raise serializers.ValidationError(

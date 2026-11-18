@@ -423,42 +423,11 @@ export function ClassHub() {
         )}
 
         {/* ======================================================== */}
-        {/* STATE 3: EMPTY STATE (Matching Mockup 2)                 */}
-        {/* ======================================================== */}
-        {stats && stats.lectures.length === 0 && (
-          <div className="border-2 border-dashed border-slate-700/80 rounded-3xl p-10 sm:p-16 text-center max-w-3xl mx-auto flex flex-col items-center justify-center bg-[#10192E]/30">
-            {/* Document Icon Badge */}
-            <div className="w-14 h-14 rounded-2xl bg-[#142342] flex items-center justify-center mb-5 text-[#38BDF8] shadow-md">
-              <svg
-                className="w-7 h-7"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-                <polyline points="10 9 9 9 8 9" />
-              </svg>
-            </div>
-
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
-              No quizzes yet
-            </h2>
-            <p className="text-slate-400 text-sm max-w-md mx-auto leading-relaxed">
-              When your professor publishes a lecture quiz, it will show up here.
-            </p>
-          </div>
-        )}
 
         {/* ======================================================== */}
         {/* STATE 4: POPULATED STATE (Matching Mockup 4)             */}
         {/* ======================================================== */}
-        {stats && stats.lectures.length > 0 && (
+        {stats && (
           <div className="space-y-8">
             {/* 1. Stat Cards (Acceptance Criterion 1) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
@@ -548,7 +517,37 @@ export function ClassHub() {
                 </div>
               </div>
             </div>
+        {/* STATE 3: EMPTY STATE (Matching Mockup 2)                 */}
+        {/* ======================================================== */}
+        {stats.lectures.length === 0 && (
+          <div className="border-2 border-dashed border-slate-700/80 rounded-3xl p-10 sm:p-16 text-center max-w-3xl mx-auto flex flex-col items-center justify-center bg-[#10192E]/30">
+            {/* Document Icon Badge */}
+            <div className="w-14 h-14 rounded-2xl bg-[#142342] flex items-center justify-center mb-5 text-[#38BDF8] shadow-md">
+              <svg
+                className="w-7 h-7"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+            </div>
 
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
+              No quizzes yet
+            </h2>
+            <p className="text-slate-400 text-sm max-w-md mx-auto leading-relaxed">
+              When your professor publishes a lecture quiz, it will show up here.
+            </p>
+          </div>
+        )}
             {/* 2. Up Next Section (Acceptance Criterion 2) */}
             {stats.up_next && (
               <div>
