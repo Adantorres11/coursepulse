@@ -60,7 +60,7 @@ def reap_stuck_lectures():
 
     stuck = list(
         Lecture.objects.filter(
-            status="processing", transcript="", last_progress_at__lt=job_cutoff
+            status="processing", last_progress_at__lt=job_cutoff
         )
         .exclude(job_token="")
         .values_list("id", "job_token")
@@ -68,6 +68,7 @@ def reap_stuck_lectures():
     for lecture_id, stale in stuck:
         # Free the dead job's lock first, or a professor retry could not take it.
         release_stale_lock(lecture_id, stale)
+        release_stale_lock(lecture_id, stale, stage="questions")
         # The token protects a job that took over. The cutoff protects a job that
         # reported progress since the read above.
         fail(lecture_id, stale, INTERRUPTED, stale_before=job_cutoff)
