@@ -18,9 +18,12 @@ from .job_errors import (
     BAD_OUTPUT,
     NO_CONCEPTS,
     NOTICE_KEPT,
+    NOTICE_SHORT,
     QUESTIONS_BUSY,
+    QUESTIONS_TOO_EXPENSIVE,
     QUIZ_LOCKED,
     TIMEOUT,
+    TOO_FEW_QUESTIONS,
     UNEXPECTED,
     PermanentError,
     TransientError,
@@ -34,10 +37,11 @@ from .jobs import (
     refresh_db_connection,
 )
 from .models import Attempt, Lecture, Question
-from .question_client import ask, cost_of
+from .question_client import ask, cost_of, estimate_cost
 from .question_prompts import (
     CONCEPT_INSTRUCTIONS,
     CONCEPT_SCHEMA,
+    GOTCHA_INSTRUCTIONS,
     QUESTION_INSTRUCTIONS,
     QUESTION_SCHEMA,
 )
@@ -65,6 +69,7 @@ STAGE1_EFFORT = "low"
 STAGE2_EFFORT = "medium"
 STAGE1_MAX_OUTPUT = 6000
 STAGE2_MAX_OUTPUT = 12000
+GOTCHA_MAX_OUTPUT = 12000
 DIFFICULTY_TARGET = "about 30% easy, 50% medium, 20% hard, at least one of each"
 
 
@@ -172,28 +177,43 @@ def _as_draft(question: Question) -> Draft:
 
 def _call(run: _Run, *, schema_name: str, schema: dict, instructions: str,
           user_input: str, effort: str, max_output_tokens: int) -> dict:
-    """Make one model call and count its cost. Every model call goes through here."""
-    # Cost cap (spec 8.5): check the estimate against QUESTION_MAX_COST_USD here.
-    reply = ask(
-        schema_name=schema_name,
-        schema=schema,
-        instructions=instructions,
-        user_input=user_input,
-        effort=effort,
-        max_output_tokens=max_output_tokens,
-        cache_key=f"lecture-{run.lecture_id}",
-    )
-    run.calls += 1
-    run.input_tokens += reply.usage.input_tokens
-    run.cached_tokens += reply.usage.cached_tokens
-    run.output_tokens += reply.usage.output_tokens
-    run.cost += cost_of(reply.usage, settings.QUESTION_MODEL)
-    items = (reply.data or {}).get(schema_name)
-    if reply.problem or not isinstance(items, list):
-        # Re-ask (spec 8.5 step 9): send the same call once more before failing.
-        run.log.warning("unusable reply schema=%s problem=%s", schema_name, reply.problem or "shape")
-        raise PermanentError(BAD_OUTPUT)
-    return reply.data
+    """Make one model call, with one re-ask on an unusable reply. Every model call goes here.
+
+    Before each request, stop when the spend so far plus its estimate is over the cap.
+    """
+    model = settings.QUESTION_MODEL
+    for tries in (1, 2):
+        estimate = estimate_cost(len(instructions) + len(user_input), max_output_tokens, model)
+        if run.cost + estimate > settings.QUESTION_MAX_COST_USD:
+            run.log.warning(
+                "over cost limit spent_usd=%.4f est_usd=%.4f limit_usd=%.2f",
+                run.cost, estimate, settings.QUESTION_MAX_COST_USD,
+            )
+            raise PermanentError(QUESTIONS_TOO_EXPENSIVE)
+        if tries == 2:
+            run.reasks += 1
+        reply = ask(
+            schema_name=schema_name,
+            schema=schema,
+            instructions=instructions,
+            user_input=user_input,
+            effort=effort,
+            max_output_tokens=max_output_tokens,
+            cache_key=f"lecture-{run.lecture_id}",
+        )
+        run.calls += 1
+        run.input_tokens += reply.usage.input_tokens
+        run.cached_tokens += reply.usage.cached_tokens
+        run.output_tokens += reply.usage.output_tokens
+        run.cost += cost_of(reply.usage, model)
+        items = (reply.data or {}).get(schema_name)
+        if not reply.problem and isinstance(items, list):
+            return reply.data
+        run.log.warning(
+            "unusable reply schema=%s problem=%s try=%d",
+            schema_name, reply.problem or "shape", tries,
+        )
+    raise PermanentError(BAD_OUTPUT)
 
 
 def _concept_list(concepts: list[Concept]) -> str:
@@ -204,20 +224,33 @@ def _concept_list(concepts: list[Concept]) -> str:
     return json.dumps(rows, indent=1, ensure_ascii=False)
 
 
+def _question_lines(drafts: list[Draft]) -> list[str]:
+    return [
+        f"- [{d.concept_id or 'none'}] {d.prompt} Answer: {d.choices[d.correct_index]}"
+        for d in drafts
+    ]
+
+
 def _question_input(
-    concept_text: str, marked: list[str], section: Section, count: int, existing: list[Draft]
+    concept_text: str,
+    kept: list[Draft],
+    marked: list[str],
+    section: Section,
+    count: int,
+    accepted_here: list[Draft],
 ) -> str:
     # The concept list and kept questions are the same in every call, so they go first
     # for prompt caching.
     parts = ["FULL CONCEPT LIST", concept_text]
-    if existing:
-        parts += ["", "QUESTIONS THAT ALREADY EXIST (do not repeat them)"]
+    if kept:
+        parts += ["", "QUESTIONS THAT ALREADY EXIST (do not repeat them)", *_question_lines(kept)]
+    parts += ["", f"Concepts from this section: {', '.join(marked)}"]
+    if accepted_here:
         parts += [
-            f"- {d.prompt} Answer: {d.choices[d.correct_index]}" for d in existing
+            "Questions already written for this section (do not repeat them)",
+            *_question_lines(accepted_here),
         ]
     parts += [
-        "",
-        f"Concepts from this section: {', '.join(marked)}",
         f"Questions to write: {count}",
         f"Difficulty target: {DIFFICULTY_TARGET}",
         "",
@@ -225,6 +258,21 @@ def _question_input(
         section.text,
     ]
     return "\n".join(parts)
+
+
+def _gotcha_input(concept_text: str, accepted: list[Draft], count: int, transcript: str) -> str:
+    return "\n".join([
+        "FULL CONCEPT LIST",
+        concept_text,
+        "",
+        "ACCEPTED QUESTIONS",
+        *_question_lines(accepted),
+        "",
+        f"Questions to write: {count}",
+        "",
+        "TRANSCRIPT",
+        transcript,
+    ])
 
 
 def _generate(run: _Run) -> bool:
@@ -238,7 +286,7 @@ def _generate(run: _Run) -> bool:
     needed = target - len(kept)
     if needed <= 0:
         log.info("kept=%d target=%d, no new questions needed", len(kept), target)
-        return _save(run, [], [], [], skipped=True)
+        return _save(run, [], [], [], target)
 
     sections = split_sections(lecture.transcript, lecture.raw_transcript)
     run.sections = len(sections)
@@ -278,40 +326,63 @@ def _generate(run: _Run) -> bool:
     accepted = QuestionSet(kept_drafts)
     concept_text = _concept_list(concepts)
     asked = [s for s in sections if quotas[s.index] > 0]
-    replies: list[tuple[int, list]] = []
-    for i, section in enumerate(asked, start=1):
-        heartbeat(lecture_id, token, f"Writing questions (part {i} of {len(asked)})")
+
+    def write_questions(section: Section, count: int, accepted_here: list[Draft]) -> None:
         data = _call(
             run,
             schema_name="questions",
             schema=QUESTION_SCHEMA,
             instructions=QUESTION_INSTRUCTIONS,
             user_input=_question_input(
-                concept_text, marked[section.index], section, quotas[section.index] + 1,
-                kept_drafts,
+                concept_text, kept_drafts, marked[section.index], section, count, accepted_here
             ),
             effort=STAGE2_EFFORT,
             max_output_tokens=STAGE2_MAX_OUTPUT,
         )
-        replies.append((section.index, data["questions"]))
+        for raw in data["questions"]:
+            _accept(run, accepted, raw, concept_ids, section.index)
 
-    heartbeat(lecture_id, token, "Checking questions")
-    for section_index, raws in replies:
-        for raw in raws:
+    for i, section in enumerate(asked, start=1):
+        heartbeat(lecture_id, token, f"Writing questions (part {i} of {len(asked)})")
+        write_questions(section, quotas[section.index] + 1, [])
+
+    # Replacement round: one more call, and only one, per section short of its quota.
+    for section in asked:
+        here = [d for d in accepted.new if d.section_index == section.index]
+        gap = quotas[section.index] - len(here)
+        if gap > 0:
+            heartbeat(lecture_id, token, "Writing more questions")
+            write_questions(section, gap, here)
+
+    # Gotcha pass: one call when kept plus new is still under the minimum.
+    total = len(kept_drafts) + len(accepted.new)
+    if total < settings.QUESTION_MIN_COUNT:
+        heartbeat(lecture_id, token, "Writing more questions")
+        data = _call(
+            run,
+            schema_name="questions",
+            schema=QUESTION_SCHEMA,
+            instructions=GOTCHA_INSTRUCTIONS,
+            user_input=_gotcha_input(
+                concept_text, kept_drafts + accepted.new, target - total, lecture.transcript
+            ),
+            effort=STAGE2_EFFORT,
+            max_output_tokens=GOTCHA_MAX_OUTPUT,
+        )
+        first_section = {c.id: c.section_index for c in concepts}
+        for raw in data["questions"]:
+            concept_id = raw.get("concept_id") if isinstance(raw, dict) else None
+            section_index = first_section.get(concept_id, -1) if isinstance(concept_id, str) else -1
             _accept(run, accepted, raw, concept_ids, section_index)
 
-    # Replacement round (spec 8.5 step 10): one more call per section short of its quota.
-    # Gotcha pass (spec 8.5 step 11): one call when kept plus new is under the minimum.
-
+    heartbeat(lecture_id, token, "Checking questions")
     drafts = trim(accepted.new, needed)
     drafts = balance_positions(drafts, seed=lecture_id)
     drafts = order_drafts(drafts, concepts)
     for warning in mix_warnings(drafts):
         log.warning("question mix warning=%s", warning)
 
-    # Floor (spec 8.5 step 14): fail under QUESTION_FLOOR_COUNT, notice under the minimum.
-
-    return _save(run, drafts, concepts, sections, skipped=False)
+    return _save(run, drafts, concepts, sections, target)
 
 
 def _accept(run: _Run, accepted: QuestionSet, raw, concept_ids: set[str], section_index: int):
@@ -330,8 +401,6 @@ def _accept(run: _Run, accepted: QuestionSet, raw, concept_ids: set[str], sectio
             "soft phrases section=%d concept=%s flags=%s",
             section_index, draft.concept_id, ",".join(flags),
         )
-    if draft.gotcha:
-        run.gotchas += 1
 
 
 def _generation(draft: Draft, concepts: dict[str, Concept], sections: dict[int, Section]) -> dict:
@@ -355,13 +424,28 @@ def _generation(draft: Draft, concepts: dict[str, Concept], sections: dict[int, 
     }
 
 
+def _notice(log: logging.LoggerAdapter, kept: int, new: int, target: int) -> str:
+    """Fail under the floor. Otherwise return the notice for a short or fully kept set."""
+    total = kept + new
+    if total < settings.QUESTION_FLOOR_COUNT:
+        log.warning("too few questions total=%d floor=%d", total, settings.QUESTION_FLOOR_COUNT)
+        raise PermanentError(TOO_FEW_QUESTIONS.format(count=total))
+    if new == 0 and kept >= target:
+        return NOTICE_KEPT.format(count=kept)
+    if total < settings.QUESTION_MIN_COUNT:
+        log.warning("short question set total=%d target=%d", total, target)
+        return NOTICE_SHORT.format(count=total, target=target)
+    return ""
+
+
 def _save(
     run: _Run,
     drafts: list[Draft],
     concepts: list[Concept],
     sections: list[Section],
-    skipped: bool,
+    target: int,
 ) -> bool:
+    """Save in one transaction. The floor and the notice use the kept count at save time."""
     lecture_id, token, log = run.lecture_id, run.token, run.log
     heartbeat(lecture_id, token, "Saving questions")
     by_concept = {c.id: c for c in concepts}
@@ -380,6 +464,7 @@ def _save(
         # The professor may have edited questions during the run.
         questions = list(lecture.questions.select_for_update())
         kept = [q for q in questions if _is_kept(q)]
+        notice = _notice(log, len(kept), len(drafts), target)
         Question.objects.filter(pk__in=[q.pk for q in questions if not _is_kept(q)]).delete()
         for position, question in enumerate(kept):
             if question.position != position:
@@ -395,11 +480,12 @@ def _save(
                 generation=_generation(draft, by_concept, by_section),
             )
         run.kept = len(kept)
+        run.gotchas = sum(draft.gotcha for draft in drafts)
         lecture.status = "ready"
         lecture.job_token = ""
         lecture.progress_message = ""
         lecture.error_message = ""
-        lecture.notice = NOTICE_KEPT.format(count=len(kept)) if skipped else ""
+        lecture.notice = notice
         lecture.last_progress_at = timezone.now()
         lecture.save(
             update_fields=[

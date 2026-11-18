@@ -1,15 +1,32 @@
+import contextlib
 import re
 from unittest import mock
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from quizzes.job_errors import QUIZ_LOCKED
+from celery.exceptions import SoftTimeLimitExceeded
+
+from quizzes.job_errors import (
+    BAD_OUTPUT,
+    NO_CONCEPTS,
+    QUESTIONS_BAD_KEY,
+    QUESTIONS_BUSY,
+    QUESTIONS_TOO_EXPENSIVE,
+    QUIZ_LOCKED,
+    TIMEOUT,
+    UNEXPECTED,
+    PermanentError,
+    TransientError,
+)
 from quizzes.jobs import heartbeat as real_heartbeat
 from quizzes.models import Attempt, Lecture, Question
+from quizzes.question_prompts import GOTCHA_INSTRUCTIONS, QUESTION_INSTRUCTIONS
 from quizzes.question_rules import original_of
 from quizzes.question_testing import (
+    TOKEN,
     FakeModel,
+    bad,
     QuestionJobMixin,
     concept_payload,
     make_question,
@@ -40,6 +57,37 @@ def default_model():
         concepts=[ok(concept_payload("Alpha")), ok(concept_payload("Beta"))],
         questions=[questions_reply("c1", range(4)), questions_reply("c2", range(4, 8))],
     )
+
+
+def logistics(concept_id, n):
+    """A question the checks drop as speaker_or_logistics."""
+    return make_question(concept_id, n, prompt=f"Which homework rule {n} is true?")
+
+
+def mixed_reply(concept_id, good, dropped):
+    return ok(question_payload(
+        *[make_question(concept_id, n) for n in good],
+        *[logistics(concept_id, n) for n in dropped],
+    ))
+
+
+def gotcha_reply(concept_id, numbers):
+    return ok(question_payload(*[make_question(concept_id, n, gotcha=True) for n in numbers]))
+
+
+def two_concepts():
+    return [ok(concept_payload("Alpha")), ok(concept_payload("Beta"))]
+
+
+def raising(exc):
+    def call(**kwargs):
+        raise exc
+    return call
+
+
+@contextlib.contextmanager
+def busy_lock(lecture_id, token, **kwargs):
+    yield False
 
 
 def asked_count(call):
@@ -360,3 +408,284 @@ class RunQuestionGenerationTests(QuestionJobMixin, TestCase):
         summary = [line for line in logs.output if "cost_usd=" in line]
         self.assertEqual(len(summary), 1)
         self.assertIn("effort=low/medium", summary[0])
+
+
+@override_settings(
+    QUESTION_WORDS_PER_QUESTION=100,
+    QUESTION_MIN_COUNT=4,
+    QUESTION_MAX_COUNT=8,
+    QUESTION_FLOOR_COUNT=2,
+    QUESTION_MAX_COST_USD=0.25,
+    QUESTION_MODEL="gpt-6-luna",
+)
+class RecoveryAndErrorTests(QuestionJobMixin, TestCase):
+    def section_calls(self, section):
+        word = f"s{section}w0 "
+        return [
+            call for call in self.model.calls
+            if call["instructions"] == QUESTION_INSTRUCTIONS and word in call["user_input"]
+        ]
+
+    def gotcha_calls(self):
+        return [c for c in self.model.calls if c["instructions"] == GOTCHA_INSTRUCTIONS]
+
+    def assert_failed(self, lecture, message):
+        self.assertEqual(lecture.status, "failed")
+        self.assertEqual(lecture.error_message, message)
+        self.assertEqual(lecture.job_token, "")
+        self.assertEqual(lecture.questions.count(), 0)
+
+    def test_bad_reply_is_reasked_once(self):
+        self.model = FakeModel(
+            two_concepts(),
+            [bad("bad_json"), questions_reply("c1", range(4)), questions_reply("c2", range(4, 8))],
+        )
+        lecture = self.make_lecture()
+
+        self.assertTrue(self.run_job(lecture))
+
+        self.assertEqual(lecture.status, "ready")
+        self.assertEqual(len(self.section_calls(0)), 2)
+        self.assertEqual(self.section_calls(0)[0], self.section_calls(0)[1])
+
+    def test_two_bad_replies_fail(self):
+        self.model = FakeModel(two_concepts(), [bad("refusal"), bad("incomplete")])
+        lecture = self.make_lecture()
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, BAD_OUTPUT)
+
+    def test_bad_concept_reply_is_reasked_once(self):
+        self.model = FakeModel(
+            [bad("bad_json"), *two_concepts()],
+            [questions_reply("c1", range(4)), questions_reply("c2", range(4, 8))],
+        )
+        lecture = self.make_lecture()
+
+        self.assertTrue(self.run_job(lecture))
+
+        concept_calls = [c for c in self.model.calls if c["schema_name"] == "concepts"]
+        self.assertEqual(len(concept_calls), 3)
+        self.assertEqual(concept_calls[0], concept_calls[1])
+
+    def test_two_bad_concept_replies_fail(self):
+        self.model = FakeModel([bad("refusal"), bad("incomplete")], [])
+        lecture = self.make_lecture()
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, BAD_OUTPUT)
+
+    def test_no_concepts_fails(self):
+        self.model = FakeModel([ok({"concepts": []}), ok({"concepts": []})], [])
+        lecture = self.make_lecture()
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, NO_CONCEPTS)
+        self.assertFalse(any(c["schema_name"] == "questions" for c in self.model.calls))
+
+    def test_short_section_gets_one_replacement_round(self):
+        self.model = FakeModel(
+            two_concepts(),
+            [
+                mixed_reply("c1", [0], [1, 2, 3]),
+                questions_reply("c2", range(4, 8)),
+                questions_reply("c1", [8, 9]),
+            ],
+        )
+        lecture = self.make_lecture()
+
+        self.assertTrue(self.run_job(lecture))
+
+        calls = self.section_calls(0)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(asked_count(calls[1]), 2)
+        self.assertIn(make_question("c1", 0)["prompt"], calls[1]["user_input"])
+        self.assertEqual(len(self.section_calls(1)), 1)
+        self.assertEqual(lecture.status, "ready")
+        self.assertEqual(lecture.questions.count(), 6)
+
+    def test_no_second_replacement_round(self):
+        self.model = FakeModel(
+            two_concepts(),
+            [
+                mixed_reply("c1", [0], [1, 2, 3]),
+                questions_reply("c2", range(4, 8)),
+                mixed_reply("c1", [], [8, 9]),
+            ],
+        )
+        lecture = self.make_lecture()
+
+        self.assertTrue(self.run_job(lecture))
+
+        self.assertEqual(len(self.section_calls(0)), 2)
+        self.assertEqual(self.gotcha_calls(), [])
+        self.assertEqual(lecture.questions.count(), 5)
+        self.assertEqual(lecture.notice, "")
+
+    def short_after_replacement(self, gotchas):
+        """Three usable questions after the replacement round, then the given gotcha reply."""
+        return FakeModel(
+            two_concepts(),
+            [
+                mixed_reply("c1", [0], [1, 2, 3]),
+                mixed_reply("c2", [4, 5], [6, 7]),
+                mixed_reply("c1", [], [8, 9]),
+                mixed_reply("c2", [], [10]),
+                gotchas,
+            ],
+        )
+
+    def test_gotcha_pass_fills_gap(self):
+        self.model = self.short_after_replacement(gotcha_reply("c1", [11, 12, 13]))
+        lecture = self.make_lecture()
+
+        with self.assertLogs("quizzes", "INFO") as logs:
+            self.assertTrue(self.run_job(lecture))
+
+        self.assertEqual(len(self.gotcha_calls()), 1)
+        self.assertEqual(self.gotcha_calls()[0]["effort"], "medium")
+        self.assertEqual(lecture.status, "ready")
+        self.assertEqual(lecture.notice, "")
+        questions = list(lecture.questions.all())
+        self.assertEqual(len(questions), 6)
+        self.assertEqual(sum(q.generation["gotcha"] is True for q in questions), 3)
+        self.assertTrue(any("gotchas=3" in line for line in logs.output))
+
+    def test_gotcha_pass_asks_for_gap_to_target(self):
+        self.model = self.short_after_replacement(gotcha_reply("c1", [11, 12, 13]))
+        lecture = self.make_lecture()
+
+        self.run_job(lecture)
+
+        call = self.gotcha_calls()[0]
+        self.assertEqual(asked_count(call), 3)
+        self.assertIn(make_question("c2", 4)["prompt"], call["user_input"])
+        self.assertIn(lecture.transcript, call["user_input"])
+
+    def test_short_set_saves_with_notice(self):
+        self.model = self.short_after_replacement(ok(question_payload()))
+        lecture = self.make_lecture()
+
+        with self.assertLogs("quizzes", "WARNING") as logs:
+            self.assertTrue(self.run_job(lecture))
+
+        self.assertEqual(lecture.status, "ready")
+        self.assertEqual(
+            lecture.notice, "Generated 3 questions (target 6). Add more in review if needed."
+        )
+        self.assertEqual(lecture.questions.count(), 3)
+        self.assertTrue(any(line.startswith("WARNING") for line in logs.output))
+
+    def test_under_floor_fails(self):
+        self.model = FakeModel(
+            two_concepts(),
+            [
+                mixed_reply("c1", [0], [1, 2, 3]),
+                mixed_reply("c2", [], [4, 5, 6, 7]),
+                mixed_reply("c1", [], [8, 9]),
+                mixed_reply("c2", [], [10, 11, 12]),
+                ok(question_payload()),
+            ],
+        )
+        lecture = self.make_lecture()
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, "Only 1 usable questions were made. Try again.")
+
+    def test_kept_drop_during_skip_uses_short_notice(self):
+        lecture = self.make_lecture()
+        for n in range(6):
+            Question.objects.create(
+                lecture=lecture, position=n, prompt=f"Hand question {n}?",
+                choices=[f"r{n}", f"w{n}a", f"w{n}b", f"w{n}c"], correct_index=0,
+                difficulty="easy",
+            )
+        self.model = FakeModel([], [])
+
+        def delete_some(lecture_id, token, message):
+            if message == "Saving questions":
+                Question.objects.filter(pk__in=list(
+                    lecture.questions.values_list("pk", flat=True)[:3]
+                )).delete()
+            real_heartbeat(lecture_id, token, message)
+
+        with mock.patch("quizzes.question_generation.heartbeat", side_effect=delete_some):
+            self.assertTrue(self.run_job(lecture))
+
+        self.assertEqual(self.model.calls, [])
+        self.assertEqual(
+            lecture.notice, "Generated 3 questions (target 6). Add more in review if needed."
+        )
+
+    @override_settings(QUESTION_MAX_COST_USD=0.0001)
+    def test_cost_cap_stops_before_call(self):
+        self.model = FakeModel(two_concepts(), [])
+        lecture = self.make_lecture()
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, QUESTIONS_TOO_EXPENSIVE)
+        self.assertEqual(self.model.calls, [])
+
+    @override_settings(QUESTION_MAX_COST_USD=0.01)
+    def test_cost_cap_counts_real_usage(self):
+        self.model = FakeModel(
+            [ok(concept_payload("Alpha"), output=30_000), ok(concept_payload("Beta"))], []
+        )
+        lecture = self.make_lecture()
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, QUESTIONS_TOO_EXPENSIVE)
+        self.assertEqual(len(self.model.calls), 1)
+
+    def test_permanent_client_error_fails(self):
+        self.model = raising(PermanentError(QUESTIONS_BAD_KEY))
+        lecture = self.make_lecture()
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, QUESTIONS_BAD_KEY)
+
+    def test_transient_error_raises(self):
+        self.model = raising(TransientError(QUESTIONS_BUSY))
+        lecture = self.make_lecture()
+
+        with self.assertRaises(TransientError):
+            self.run_job(lecture)
+
+        lecture.refresh_from_db()
+        self.assertEqual(lecture.status, "processing")
+        self.assertEqual(lecture.job_token, TOKEN)
+
+    def test_soft_time_limit_fails(self):
+        self.model = raising(SoftTimeLimitExceeded())
+        lecture = self.make_lecture()
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, TIMEOUT)
+
+    def test_unexpected_error_fails(self):
+        self.model = raising(ValueError("boom"))
+        lecture = self.make_lecture()
+
+        with self.assertLogs("quizzes", "ERROR") as logs:
+            self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, UNEXPECTED)
+        self.assertTrue(any(line.startswith("ERROR") for line in logs.output))
+
+    def test_lock_busy_is_transient(self):
+        self.model = FakeModel(two_concepts(), [])
+        lecture = self.make_lecture()
+
+        with mock.patch("quizzes.question_generation.lecture_lock", busy_lock):
+            with self.assertRaises(TransientError):
+                self.run_job(lecture)
+
+        self.assertEqual(self.model.calls, [])
