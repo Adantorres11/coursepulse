@@ -6,7 +6,17 @@ from .question_prompts import (
     QUESTION_INSTRUCTIONS,
     QUESTION_SCHEMA,
 )
-from .question_rules import Section, merge_concepts, split_sections, target_count
+from .question_rules import (
+    Draft,
+    QuestionSet,
+    Section,
+    check_draft,
+    merge_concepts,
+    section_quotas,
+    soft_flags,
+    split_sections,
+    target_count,
+)
 
 
 def _object_nodes(node):
@@ -162,3 +172,163 @@ class MergeConceptsTests(SimpleTestCase):
         self.assertEqual(orders, sorted(orders))
         self.assertEqual(len(set(orders)), len(orders))
         self.assertEqual([c.id for c in concepts], ["c1", "c2", "c3", "c4", "c5"])
+
+
+def raw_q(**over):
+    question = {
+        "prompt": "Why does a mutex prevent a race condition?",
+        "choices": ["It copies data", "It allows one thread at a time", "It adds threads", "It speeds up reads"],
+        "correct_index": 1,
+        "difficulty": "medium",
+        "reason": "A mutex gives exclusive access.",
+        "concept_id": "c1",
+        "pattern": "mechanism",
+        "gotcha": False,
+        "distractor_types": [None, None, None, None],
+    }
+    question.update(over)
+    return question
+
+
+def accepted(**over):
+    draft, reason = check_draft(raw_q(**over), {"c1", "c2"}, 2)
+    assert draft is not None, reason
+    return draft
+
+
+class CheckDraftTests(SimpleTestCase):
+    def reason(self, **over):
+        return check_draft(raw_q(**over), {"c1", "c2"}, 2)[1]
+
+    def test_valid_draft_passes(self):
+        draft, reason = check_draft(raw_q(), {"c1"}, 2)
+        self.assertEqual(reason, "")
+        self.assertEqual(draft.section_index, 2)
+        self.assertEqual(draft.concept_id, "c1")
+
+    def test_each_reason(self):
+        self.assertEqual(self.reason(choices=["a", "b", "c"]), "shape")
+        self.assertEqual(self.reason(choices=["a", "  ", "c", "d"]), "blank_choice")
+        self.assertEqual(self.reason(correct_index=4), "bad_index")
+        self.assertEqual(self.reason(difficulty="expert"), "bad_difficulty")
+        self.assertEqual(self.reason(prompt="x" * 501), "too_long")
+        self.assertEqual(self.reason(choices=["a", "b", "c", "d" * 201]), "too_long")
+        self.assertEqual(self.reason(choices=["a", "b", "c", "None of the above"]), "all_none_above")
+        self.assertEqual(self.reason(concept_id="c99"), "unknown_concept")
+
+    def test_drops_duplicate_choices_after_normalizing(self):
+        self.assertEqual(self.reason(choices=["Mutex", " mutex ", "b", "c"]), "duplicate_choices")
+
+    def test_drops_speaker_and_logistics(self):
+        for prompt in (
+            "What did the professor say about X?",
+            "According to the instructor, why does a mutex help?",
+            "What did the speaker mention about locks?",
+            "When is the homework due?",
+            "How is grading weighted?",
+        ):
+            self.assertEqual(self.reason(prompt=prompt), "speaker_or_logistics", prompt)
+
+    def test_keeps_soft_phrases(self):
+        for prompt in (
+            "Which statement about this lecture's sorting example is correct?",
+            "As said earlier, a mutex gives what guarantee?",
+        ):
+            draft, reason = check_draft(raw_q(prompt=prompt), {"c1"}, 0)
+            self.assertEqual(reason, "", prompt)
+            self.assertTrue(soft_flags(draft), prompt)
+        self.assertEqual(soft_flags(accepted()), [])
+
+    def test_word_boundaries(self):
+        self.assertEqual(self.reason(prompt="What does the gradient measure?"), "")
+        self.assertEqual(self.reason(prompt="Which data is undue to cache?"), "")
+
+    def test_drops_choice_references(self):
+        for text in (
+            "A and B", "Both A and B", "Either A or C", "Neither B nor D",
+            "Both of the above", "BOTH OF THE ABOVE", "Options 1 and 3", "Choice C",
+        ):
+            choices = ["w", "x", "y", text]
+            self.assertEqual(self.reason(choices=choices), "choice_reference", text)
+
+    def test_keeps_lowercase_letter_text(self):
+        for text in ("Answer a query from the cache", "Pick option a from the menu", "a and b are swapped"):
+            self.assertEqual(self.reason(choices=["w", "x", "y", text]), "", text)
+
+    def test_check_order_prefers_shape_first(self):
+        self.assertEqual(self.reason(choices=["a"], correct_index=9), "shape")
+
+
+class QuestionSetTests(SimpleTestCase):
+    def test_near_duplicate(self):
+        questions = QuestionSet([])
+        self.assertEqual(questions.add(accepted()), "")
+        near = accepted(prompt="Why does a mutex prevent a race condition today?", difficulty="hard")
+        self.assertEqual(questions.add(near), "near_duplicate")
+        self.assertEqual(len(questions.new), 1)
+
+    def test_grid_same_difficulty_full(self):
+        questions = QuestionSet([])
+        questions.add(accepted())
+        other = accepted(
+            prompt="Which statement describes semaphores?",
+            choices=["p", "q", "r", "s"],
+        )
+        self.assertEqual(questions.add(other), "grid_full")
+
+    def test_grid_allows_other_difficulty(self):
+        questions = QuestionSet([])
+        questions.add(accepted())
+        other = accepted(prompt="Which statement describes semaphores?", choices=["p", "q", "r", "s"], difficulty="hard")
+        self.assertEqual(questions.add(other), "")
+
+    def test_grid_exempts_gotcha(self):
+        questions = QuestionSet([])
+        questions.add(accepted())
+        other = accepted(prompt="Which statement describes semaphores?", choices=["p", "q", "r", "s"], gotcha=True)
+        self.assertEqual(questions.add(other), "")
+
+    def test_kept_questions_block_duplicates(self):
+        kept = accepted()
+        questions = QuestionSet([kept])
+        near = accepted(prompt="Why does a mutex prevent a race condition today?", difficulty="hard")
+        self.assertEqual(questions.add(near), "near_duplicate")
+        self.assertEqual(questions.new, [])
+
+    def test_kept_questions_fill_grid_cells(self):
+        questions = QuestionSet([accepted()])
+        other = accepted(prompt="Which statement describes semaphores?", choices=["p", "q", "r", "s"])
+        self.assertEqual(questions.add(other), "grid_full")
+
+    def test_kept_without_concept_checks_duplicates_only(self):
+        kept = Draft(
+            prompt="Why does a mutex prevent a race condition?",
+            choices=["It copies data", "It allows one thread at a time", "It adds threads", "It speeds up reads"],
+            correct_index=1, difficulty="medium", reason="", concept_id="", pattern="",
+            gotcha=False, distractor_types=[None] * 4, section_index=-1,
+        )
+        questions = QuestionSet([kept])
+        self.assertEqual(questions.add(accepted()), "near_duplicate")
+        other = accepted(prompt="Which statement describes semaphores?", choices=["p", "q", "r", "s"])
+        self.assertEqual(questions.add(other), "")
+
+
+class SectionQuotaTests(SimpleTestCase):
+    def sections(self, *sizes):
+        return [Section(i, None, None, " ".join(["w"] * n)) for i, n in enumerate(sizes)]
+
+    def test_quotas_follow_word_share(self):
+        quotas = section_quotas(10, self.sections(1300, 1300, 650), {0, 1, 2})
+        self.assertEqual(quotas, {0: 4, 1: 4, 2: 2})
+
+    def test_quotas_skip_sections_without_concepts(self):
+        quotas = section_quotas(10, self.sections(1300, 1300, 650), {0, 2})
+        self.assertEqual(quotas[1], 0)
+        self.assertEqual(sum(quotas.values()), 10)
+
+    def test_quotas_use_largest_remainder(self):
+        quotas = section_quotas(5, self.sections(100, 100, 100), {0, 1, 2})
+        self.assertEqual(quotas, {0: 2, 1: 2, 2: 1})
+
+    def test_quotas_empty_when_no_concepts(self):
+        self.assertEqual(section_quotas(5, self.sections(100, 100), set()), {0: 0, 1: 0})

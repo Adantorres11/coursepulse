@@ -2,14 +2,36 @@
 
 import difflib
 import re
+import string
 from dataclasses import dataclass
 
 from django.conf import settings
 
 SECTION_WORDS = 1300
 CONCEPT_MATCH_RATIO = 0.85
+NEAR_DUPLICATE_RATIO = 0.8
+MAX_PROMPT_CHARS = 500
+MAX_CHOICE_CHARS = 200
+DIFFICULTIES = ("easy", "medium", "hard")
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+_HARD_DROP = re.compile(
+    r"\b(professor|instructor|lecturer|speaker)s?\b"
+    r"|\bwhat did\b.*\b(say|said|mention|mentioned)\b"
+    r"|\b(homework|due date|midterm|final exam|attendance|syllabus|office hours|extra credit|grading)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_SOFT_PHRASES = re.compile(
+    r"\b(said|mentioned|the lecture|this lecture|in class|this class)\b", re.IGNORECASE
+)
+_NONE_ABOVE = {"none of the above", "all of the above", "none of these", "all of these"}
+_CHOICE_REFERENCE = (
+    re.compile(r"\b(both|all|none|neither) of the above\b", re.IGNORECASE),
+    re.compile(r"\b(?i:options?|choices?|answers?)\s+(?:[A-D]|[1-4])\b"),
+    re.compile(r"\b(?i:both|either|neither)\s+[A-D]\s+(?i:and|or|nor)\s+[A-D]\b"),
+    re.compile(r"^\s*[A-D]\s*(?:(?i:and|or)|&|,)\s*[A-D]\s*$"),
+)
 
 
 @dataclass(frozen=True)
@@ -96,3 +118,163 @@ def merge_concepts(per_section: list[tuple[int, list[dict]]]) -> list[Concept]:
             merged.append(Concept(f"c{order + 1}", name, section_index, order, data))
             keys.append(key)
     return merged
+
+
+@dataclass
+class Draft:
+    prompt: str
+    choices: list[str]
+    correct_index: int
+    difficulty: str
+    reason: str
+    concept_id: str
+    pattern: str
+    gotcha: bool
+    distractor_types: list[str | None]
+    section_index: int
+
+
+def _normalize(text: str) -> str:
+    return " ".join(text.lower().split()).strip(string.punctuation + " ")
+
+
+def _has_shape(raw: dict) -> bool:
+    if not isinstance(raw, dict):
+        return False
+    texts = ("prompt", "difficulty", "reason", "concept_id", "pattern")
+    if not all(isinstance(raw.get(key), str) for key in texts):
+        return False
+    choices = raw.get("choices")
+    types = raw.get("distractor_types")
+    return (
+        isinstance(choices, list)
+        and len(choices) == 4
+        and all(isinstance(choice, str) for choice in choices)
+        and isinstance(raw.get("correct_index"), int)
+        and not isinstance(raw["correct_index"], bool)
+        and isinstance(raw.get("gotcha"), bool)
+        and isinstance(types, list)
+        and len(types) == 4
+        and all(item is None or isinstance(item, str) for item in types)
+    )
+
+
+def _failure(raw: dict, concept_ids: set[str]) -> str:
+    if not _has_shape(raw):
+        return "shape"
+    prompt, choices = raw["prompt"], raw["choices"]
+    normalized = [_normalize(choice) for choice in choices]
+    if not _normalize(prompt) or not all(normalized):
+        return "blank_choice"
+    if len(set(normalized)) < 4:
+        return "duplicate_choices"
+    if not 0 <= raw["correct_index"] <= 3:
+        return "bad_index"
+    if raw["difficulty"] not in DIFFICULTIES:
+        return "bad_difficulty"
+    if len(prompt) > MAX_PROMPT_CHARS or any(len(choice) > MAX_CHOICE_CHARS for choice in choices):
+        return "too_long"
+    if any(text in _NONE_ABOVE for text in normalized):
+        return "all_none_above"
+    if any(rule.search(choice) for rule in _CHOICE_REFERENCE for choice in choices):
+        return "choice_reference"
+    if raw["concept_id"] not in concept_ids:
+        return "unknown_concept"
+    if _HARD_DROP.search(" \n ".join([prompt, *choices])):
+        return "speaker_or_logistics"
+    return ""
+
+
+def check_draft(raw: dict, concept_ids: set[str], section_index: int) -> tuple[Draft | None, str]:
+    """Return (draft, "") for a usable question, or (None, reason) for the first failed rule."""
+    reason = _failure(raw, concept_ids)
+    if reason:
+        return None, reason
+    return (
+        Draft(
+            prompt=raw["prompt"],
+            choices=list(raw["choices"]),
+            correct_index=raw["correct_index"],
+            difficulty=raw["difficulty"],
+            reason=raw["reason"],
+            concept_id=raw["concept_id"],
+            pattern=raw["pattern"],
+            gotcha=raw["gotcha"],
+            distractor_types=list(raw["distractor_types"]),
+            section_index=section_index,
+        ),
+        "",
+    )
+
+
+def soft_flags(draft: Draft) -> list[str]:
+    """Softer phrases the prompt forbids but code keeps. For the debug log only."""
+    text = " ".join([draft.prompt, *draft.choices])
+    return sorted({match.group(0).lower() for match in _SOFT_PHRASES.finditer(text)})
+
+
+class QuestionSet:
+    """Accepted questions plus kept ones, so new questions do not repeat or crowd a grid cell."""
+
+    def __init__(self, kept: list[Draft]):
+        self._all: list[Draft] = list(kept)
+        self._cells: set[tuple[str, str, str]] = {
+            self._cell(draft) for draft in kept if draft.concept_id and not draft.gotcha
+        }
+        self._new: list[Draft] = []
+
+    @staticmethod
+    def _cell(draft: Draft) -> tuple[str, str, str]:
+        return (draft.concept_id, draft.pattern, draft.difficulty)
+
+    @staticmethod
+    def _answer(draft: Draft) -> str:
+        return _normalize(draft.choices[draft.correct_index])
+
+    def _is_near_duplicate(self, draft: Draft) -> bool:
+        answer, prompt = self._answer(draft), _normalize(draft.prompt)
+        for other in self._all:
+            if draft.concept_id and other.concept_id and draft.concept_id != other.concept_id:
+                continue
+            if self._answer(other) != answer:
+                continue
+            ratio = difflib.SequenceMatcher(None, prompt, _normalize(other.prompt)).ratio()
+            if ratio >= NEAR_DUPLICATE_RATIO:
+                return True
+        return False
+
+    def add(self, draft: Draft) -> str:
+        if self._is_near_duplicate(draft):
+            return "near_duplicate"
+        occupies = bool(draft.concept_id) and not draft.gotcha
+        if occupies and self._cell(draft) in self._cells:
+            return "grid_full"
+        if occupies:
+            self._cells.add(self._cell(draft))
+        self._all.append(draft)
+        self._new.append(draft)
+        return ""
+
+    @property
+    def new(self) -> list[Draft]:
+        return list(self._new)
+
+
+def section_quotas(needed: int, sections: list[Section], with_concepts: set[int]) -> dict[int, int]:
+    """Split needed questions across sections by word share, using the largest remainder method."""
+    quotas = {section.index: 0 for section in sections}
+    eligible = [s for s in sections if s.index in with_concepts]
+    total_words = sum(s.words for s in eligible)
+    if not eligible or needed <= 0:
+        return quotas
+    if total_words == 0:
+        shares = {s.index: needed / len(eligible) for s in eligible}
+    else:
+        shares = {s.index: needed * s.words / total_words for s in eligible}
+    for index, share in shares.items():
+        quotas[index] = int(share)
+    left = needed - sum(quotas.values())
+    by_remainder = sorted(shares, key=lambda i: (-(shares[i] - int(shares[i])), i))
+    for index in by_remainder[:left]:
+        quotas[index] += 1
+    return quotas
