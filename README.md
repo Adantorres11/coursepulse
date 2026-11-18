@@ -111,6 +111,7 @@ How it runs:
 3. The worker splits audio longer than 10 minutes into 10-minute parts.
 4. The worker sends each part to Whisper, joins the parts, and saves the transcript.
 5. The worker then queues `generate_questions(lecture_id)`.
+6. The question task works in two stages. Stage 1 reads each section of the transcript and lists the course concepts in it. Stage 2 writes questions for each section, and it sees the whole concept list. The code then checks every question and drops the bad ones. It may ask the model again once, run one round of replacement questions, and run one pass for gotcha questions (questions that test a common mistake). The task saves 20 to 40 draft questions in one transaction. Then the status becomes `ready`. A draft stays hidden: `published_at` stays null until the professor publishes the lecture. If only 10 to 19 questions survive, the task saves them and sets a `notice` that tells the professor. If fewer than 10 survive, the lecture fails.
 
 The worker refuses recordings shorter than 10 seconds.
 
@@ -140,13 +141,15 @@ The services now include `worker` (runs the tasks) and `beat` (runs the stuck le
 
 Whisper costs $0.006 per audio minute. A 75-minute lecture costs about $0.45. A 2-hour lecture costs about $0.72. Silence at the start and end is not sent. `TRANSCRIPTION_MAX_COST_USD` (default $2.00) refuses longer recordings. The worker log shows the minutes and the estimated cost for each lecture.
 
+Question generation uses `QUESTION_MODEL` (default gpt-6-luna). Lecture 4 (about 9,000 words, about 30 questions) costs about 2 to 3 cents, and about 5 cents when replies must be re-asked. `QUESTION_MAX_COST_USD` (default $0.25) stops a lecture that would cost more. The worker log shows tokens and cost per lecture.
+
 #### Progress and errors
 
 `GET /api/lectures/{id}/status/` returns `status`, `progress_message`, and `error_message`.
 
 #### Retry
 
-To retry a failed lecture, call `POST /api/lectures/{id}/retry/`. The retry keeps the file and reuses finished parts. If the transcript is already saved, it skips Whisper.
+To retry a failed lecture, call `POST /api/lectures/{id}/retry/`. The retry keeps the file and reuses finished parts. If the transcript is already saved, it skips Whisper. Questions the professor wrote or edited by hand are kept on a retry.
 
 #### Logs
 
@@ -165,6 +168,13 @@ Set these in `.env`. `.env.example` has the defaults.
 | `CELERY_WORKER_CONCURRENCY` | `2` | How many jobs one worker runs at the same time. |
 | `CELERY_TASK_TIME_LIMIT` | `3000` | Hard limit in seconds. The worker stops a task that runs longer. |
 | `CELERY_TASK_SOFT_TIME_LIMIT` | `2700` | Soft limit in seconds. The task gets an error it can catch to clean up. |
+| `QUESTION_MODEL` | `gpt-6-luna` | The model that writes the questions. |
+| `QUESTION_MAX_COST_USD` | `0.25` | The app stops a lecture that would cost more than this many US dollars. |
+| `QUESTION_WORDS_PER_QUESTION` | `300` | The app aims for one question for every this many transcript words. |
+| `QUESTION_MIN_COUNT` | `20` | The lowest target number of questions for a lecture. |
+| `QUESTION_MAX_COUNT` | `40` | The highest target number of questions for a lecture. |
+| `QUESTION_FLOOR_COUNT` | `10` | A lecture with fewer usable questions than this fails. |
+| `QUESTION_TIMEOUT_SECONDS` | `180` | How long one model call may run before the app gives up. |
 
 ## Without Docker
 

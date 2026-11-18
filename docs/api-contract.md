@@ -721,8 +721,8 @@ Success: 200 OK
 Possible statuses:
 
 - pending: Lecture is waiting to be processed.
-- processing: Lecture is being transcribed or questions are being generated.
-- ready: Processing is complete and questions are ready for review.
+- processing: The lecture is being transcribed or questions are being generated.
+- ready: The server generated the questions and saved them as unpublished drafts for the professor to review. Students see nothing until the professor publishes the lecture.
 - failed: Processing failed.
 
 For a failed lecture:
@@ -764,6 +764,15 @@ Possible error messages:
 - "The server ran out of space. Try again later."
 - "Couldn't start processing, try again."
 - "Couldn't start question generation, retry."
+- "Server isn't set up for question generation."
+- "The question generation key was rejected. Ask the site admin to check it."
+- "Question generation credits ran out."
+- "This lecture is over the question generation cost limit."
+- "Question generation service is busy. Try again later."
+- "Couldn't read the generated questions. Try again."
+- "No course content was found in this transcript."
+- "Only {count} usable questions were made. Try again." ({count} is below the floor, 10 by default.)
+- "This quiz is published or has student activity, so its questions were not changed."
 - "Something went wrong. Try again."
 
 Every notice is one of the strings in the next list.
@@ -805,6 +814,7 @@ Rules:
 - A retry keeps the uploaded file.
 - If a transcript for the same recording is already saved, the retry skips transcription and goes straight to question generation.
 - A retry continues from the transcript parts that were already finished.
+- A retry after failed question generation reuses the saved transcript and keeps questions the professor wrote or edited.
 
 Errors:
 - 400: Lecture is not failed or is already being retried.
