@@ -1,9 +1,11 @@
 import re
+from unittest import mock
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from quizzes.job_errors import QUIZ_LOCKED
+from quizzes.jobs import heartbeat as real_heartbeat
 from quizzes.models import Attempt, Lecture, Question
 from quizzes.question_rules import original_of
 from quizzes.question_testing import (
@@ -291,6 +293,56 @@ class RunQuestionGenerationTests(QuestionJobMixin, TestCase):
         self.assertEqual(lecture.questions.count(), 0)
         self.assertEqual(lecture.status, "processing")
         self.assertEqual(lecture.job_token, "other")
+
+    def test_lost_ownership_while_saving_saves_nothing(self):
+        lecture = self.make_lecture()
+        old = self.add_question(lecture, 1, position=0)
+
+        def take_over(lecture_id, token, message):
+            if message == "Saving questions":
+                Lecture.objects.filter(pk=lecture_id).update(job_token="other")
+            real_heartbeat(lecture_id, token, message)
+
+        with mock.patch("quizzes.question_generation.heartbeat", side_effect=take_over):
+            self.assertFalse(self.run_job(lecture))
+
+        self.assertEqual(list(lecture.questions.values_list("id", flat=True)), [old.id])
+        self.assertEqual(lecture.status, "processing")
+        self.assertEqual(lecture.job_token, "other")
+
+    def test_publish_during_run_changes_nothing(self):
+        lecture = self.make_lecture()
+        old = self.add_question(lecture, 1, position=3)
+        before = list(lecture.questions.values_list("id", "prompt", "position", "generation"))
+        model = self.model
+
+        def publish_after_last_reply(**kwargs):
+            reply = model(**kwargs)
+            if kwargs["schema_name"] == "questions" and not model.questions:
+                Lecture.objects.filter(pk=lecture.id).update(published_at=timezone.now())
+            return reply
+
+        self.model = publish_after_last_reply
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assertEqual(lecture.status, "failed")
+        self.assertEqual(lecture.error_message, QUIZ_LOCKED)
+        self.assertEqual(
+            list(lecture.questions.values_list("id", "prompt", "position", "generation")), before
+        )
+        self.assertTrue(Question.objects.filter(pk=old.pk).exists())
+
+    def test_kept_questions_come_before_section_text(self):
+        lecture = self.make_lecture()
+        self.add_question(lecture, 1, position=0, generated=False)
+
+        self.run_job(lecture)
+
+        for call in self.stage("questions"):
+            text = call["user_input"]
+            self.assertLess(text.index("Existing question 1?"), text.index("Questions to write:"))
+            self.assertLess(text.index("FULL CONCEPT LIST"), text.index("Existing question 1?"))
 
     def test_logs_have_no_question_text(self):
         lecture = self.make_lecture()

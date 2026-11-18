@@ -13,6 +13,7 @@ from .question_rules import (
     Section,
     balance_positions,
     check_draft,
+    concept_ids_for,
     is_untouched,
     merge_concepts,
     mix_warnings,
@@ -179,6 +180,18 @@ class MergeConceptsTests(SimpleTestCase):
         self.assertEqual(orders, sorted(orders))
         self.assertEqual(len(set(orders)), len(orders))
         self.assertEqual([c.id for c in concepts], ["c1", "c2", "c3", "c4", "c5"])
+
+    def test_concept_ids_for_maps_names_to_merged_ids(self):
+        concepts = merge_concepts(
+            [
+                (0, [_concept("Race condition"), _concept("Thread")]),
+                (1, [_concept("race conditions"), _concept("Mutex")]),
+            ]
+        )
+        self.assertEqual(
+            concept_ids_for(["race conditions", "Mutex", "Mutex", "", "Scheduler"], concepts),
+            ["c1", "c3"],
+        )
 
 
 def raw_q(**over):

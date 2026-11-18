@@ -3,7 +3,6 @@
 No database transaction stays open while OpenAI runs.
 """
 
-import difflib
 import json
 import logging
 import time
@@ -43,14 +42,13 @@ from .question_prompts import (
     QUESTION_SCHEMA,
 )
 from .question_rules import (
-    CONCEPT_MATCH_RATIO,
     Concept,
     Draft,
     QuestionSet,
     Section,
-    _concept_key,
     balance_positions,
     check_draft,
+    concept_ids_for,
     is_untouched,
     merge_concepts,
     mix_warnings,
@@ -198,22 +196,6 @@ def _call(run: _Run, *, schema_name: str, schema: dict, instructions: str,
     return reply.data
 
 
-def _concept_ids_in(names: list[str], concepts: list[Concept]) -> list[str]:
-    """Map one section's concept names to the merged ids, as merge_concepts matched them."""
-    ids = []
-    for name in names:
-        key = _concept_key(name)
-        if not key:
-            continue
-        for concept in concepts:
-            ratio = difflib.SequenceMatcher(None, key, _concept_key(concept.name)).ratio()
-            if ratio >= CONCEPT_MATCH_RATIO:
-                if concept.id not in ids:
-                    ids.append(concept.id)
-                break
-    return ids
-
-
 def _concept_list(concepts: list[Concept]) -> str:
     rows = [
         {"id": c.id, "name": c.name, **{k: v for k, v in c.data.items() if k != "name"}}
@@ -225,21 +207,23 @@ def _concept_list(concepts: list[Concept]) -> str:
 def _question_input(
     concept_text: str, marked: list[str], section: Section, count: int, existing: list[Draft]
 ) -> str:
-    # The concept list is the same in every call, so it goes first for prompt caching.
-    parts = [
-        "FULL CONCEPT LIST",
-        concept_text,
-        "",
-        f"Concepts from this section: {', '.join(marked)}",
-        f"Questions to write: {count}",
-        f"Difficulty target: {DIFFICULTY_TARGET}",
-    ]
+    # The concept list and kept questions are the same in every call, so they go first
+    # for prompt caching.
+    parts = ["FULL CONCEPT LIST", concept_text]
     if existing:
         parts += ["", "QUESTIONS THAT ALREADY EXIST (do not repeat them)"]
         parts += [
             f"- {d.prompt} Answer: {d.choices[d.correct_index]}" for d in existing
         ]
-    parts += ["", "SECTION TRANSCRIPT", section.text]
+    parts += [
+        "",
+        f"Concepts from this section: {', '.join(marked)}",
+        f"Questions to write: {count}",
+        f"Difficulty target: {DIFFICULTY_TARGET}",
+        "",
+        "SECTION TRANSCRIPT",
+        section.text,
+    ]
     return "\n".join(parts)
 
 
@@ -281,7 +265,7 @@ def _generate(run: _Run) -> bool:
         raise PermanentError(NO_CONCEPTS)
     concept_ids = {c.id for c in concepts}
     marked = {
-        index: _concept_ids_in([c["name"] for c in found], concepts)
+        index: concept_ids_for([c["name"] for c in found], concepts)
         for index, found in names_by_section
     }
     with_concepts = {index for index, ids in marked.items() if ids}
@@ -394,7 +378,7 @@ def _save(
             return False
         _check_guard(lecture)
         # The professor may have edited questions during the run.
-        questions = list(lecture.questions.all())
+        questions = list(lecture.questions.select_for_update())
         kept = [q for q in questions if _is_kept(q)]
         Question.objects.filter(pk__in=[q.pk for q in questions if not _is_kept(q)]).delete()
         for position, question in enumerate(kept):

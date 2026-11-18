@@ -121,6 +121,21 @@ def merge_concepts(per_section: list[tuple[int, list[dict]]]) -> list[Concept]:
     return merged
 
 
+def concept_ids_for(names: list[str], concepts: list[Concept]) -> list[str]:
+    """Map one section's concept names to merged ids, with the matching merge_concepts uses."""
+    ids: list[str] = []
+    for name in names:
+        key = _concept_key(name)
+        if not key:
+            continue
+        for concept in concepts:
+            ratio = difflib.SequenceMatcher(None, key, _concept_key(concept.name)).ratio()
+            if ratio >= CONCEPT_MATCH_RATIO:
+                if concept.id not in ids:
+                    ids.append(concept.id)
+                break
+    return ids
+
 @dataclass
 class Draft:
     prompt: str
