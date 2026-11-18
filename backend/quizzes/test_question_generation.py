@@ -9,6 +9,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from quizzes.job_errors import (
     BAD_OUTPUT,
+    INTERRUPTED,
     NO_CONCEPTS,
     QUESTIONS_BAD_KEY,
     QUESTIONS_BUSY,
@@ -20,6 +21,7 @@ from quizzes.job_errors import (
     TransientError,
 )
 from quizzes.jobs import heartbeat as real_heartbeat
+from quizzes.jobs import job_logger
 from quizzes.models import Attempt, Lecture, Question
 from quizzes.question_client import Reply, Usage
 from quizzes.question_prompts import GOTCHA_INSTRUCTIONS, QUESTION_INSTRUCTIONS
@@ -717,6 +719,28 @@ class RecoveryAndErrorTests(QuestionJobMixin, TestCase):
 
         self.assert_failed(lecture, UNEXPECTED)
         self.assertTrue(any(line.startswith("ERROR") for line in logs.output))
+
+    def test_redelivered_message_fails_without_a_call(self):
+        self.model = default_model()
+        lecture = self.make_lecture(job_token=TOKEN)
+
+        with self.assertLogs("quizzes", "WARNING") as logs:
+            self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, INTERRUPTED)
+        self.assertEqual(self.model.calls, [])
+        self.assertTrue(any("redelivered message" in line for line in logs.output))
+
+    def test_retry_claims_its_own_token(self):
+        self.model = default_model()
+        lecture = self.make_lecture(job_token=TOKEN)
+
+        from quizzes.question_generation import run_question_generation
+
+        log = job_logger(lecture.id, TOKEN, 1)
+        self.assertTrue(run_question_generation(lecture.id, TOKEN, 1, log))
+        lecture.refresh_from_db()
+        self.assertEqual(lecture.status, "ready")
 
     def test_lock_busy_is_transient(self):
         self.model = FakeModel(two_concepts(), [])

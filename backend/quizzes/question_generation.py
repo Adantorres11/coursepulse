@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from .job_errors import (
     BAD_OUTPUT,
+    INTERRUPTED,
     NO_CONCEPTS,
     NOTICE_KEPT,
     NOTICE_SHORT,
@@ -114,7 +115,15 @@ def run_question_generation(
     a deleted lecture, a timeout, or an unexpected error. Raise only TransientError,
     so the task can retry.
     """
-    if not claim_questions(lecture_id, token):
+    if not claim_questions(lecture_id, token, allow_own=attempt > 0):
+        if attempt == 0 and Lecture.objects.filter(
+            pk=lecture_id, status="processing", job_token=token
+        ).exists():
+            # The broker sent this first message again after a worker crash. Running it
+            # would pay for every call again, so fail it and let the professor retry.
+            log.warning("redelivered message; failing without a paid call")
+            fail(lecture_id, token, INTERRUPTED)
+            return False
         log.info("already owned by another job, exiting")
         return False
     with lecture_lock(lecture_id, token, stage="questions") as got:

@@ -138,3 +138,25 @@ class DuplicateMessageTests(QuestionJobMixin, TestCase):
 
         self.assertEqual(len(self.model.calls), calls)
         self.assertEqual(list(lecture.questions.values_list("id", "prompt")), before)
+
+    def test_celery_retry_reclaims_and_runs(self):
+        script = default_model()
+        calls = []
+
+        def model(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise TransientError(job_errors.QUESTIONS_BUSY)
+            return script(**kwargs)
+
+        self.model = model
+        lecture = self.make_lecture()
+        with mock.patch("random.uniform", return_value=0), override_settings(
+            CELERY_TASK_EAGER_PROPAGATES=False
+        ):
+            tasks.generate_questions.apply(args=[lecture.id], task_id="g1")
+        lecture.refresh_from_db()
+
+        self.assertEqual(lecture.status, "ready")
+        self.assertEqual(lecture.job_token, "")
+        self.assertGreater(len(script.calls), 0)

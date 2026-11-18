@@ -49,11 +49,15 @@ def claim_transcription(lecture_id: int, token: str) -> bool:
     return updated == 1
 
 
-def claim_questions(lecture_id: int, token: str) -> bool:
+def claim_questions(lecture_id: int, token: str, allow_own: bool = False) -> bool:
+    """Claim a lecture with a free token. With allow_own, also re-claim this job's own token.
+
+    Only a Celery retry passes allow_own. A redelivered first message has the same task id,
+    and it must not claim again.
+    """
+    owners = Q(job_token="") | Q(job_token=token) if allow_own else Q(job_token="")
     updated = (
-        Lecture.objects.filter(
-            Q(job_token="") | Q(job_token=token), pk=lecture_id, status="processing"
-        )
+        Lecture.objects.filter(owners, pk=lecture_id, status="processing")
         .exclude(transcript="")
         .update(job_token=token, last_progress_at=timezone.now())
     )
