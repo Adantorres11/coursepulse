@@ -15,6 +15,8 @@ import {
 import { LeaderboardModal } from "./LeaderboardModal";
 import { ProfessorNav } from "./ProfessorNav";
 import { StudentNav } from "./StudentNav";
+import { UploadLecturePage } from "./LectureUpload";
+
 
 type HubState =
   | { status: "loading" }
@@ -403,7 +405,12 @@ export function ClassHub() {
               </div>
             )}
 
-            <div className="pt-4">
+            {/* Upload Lecture Recording Section */}
+            <div className="bg-[#111A30] border border-slate-800/90 rounded-2xl p-5 sm:p-6 shadow-lg">
+              <UploadLecturePage overrideClassId={state.classInfo.id} />
+            </div>
+
+            <div className="pt-2">
               <Link
                 to="/professor"
                 className="inline-flex items-center gap-2 bg-[#111A30] hover:bg-[#162547] border border-slate-700 hover:border-slate-500 text-white font-semibold text-sm px-5 py-3 rounded-xl transition cursor-pointer shadow-md"
