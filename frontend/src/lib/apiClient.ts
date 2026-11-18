@@ -28,6 +28,7 @@ export type {
   AuthResponse,
   ClassStats,
   ClassSummary,
+  CreateClassResponse,
   DifficultyLevel,
   HealthResponse,
   LeaderboardEntry,
@@ -428,7 +429,7 @@ export async function getProfessorClassLectures(
  * Requires a professor account and token authentication.
  */
 export async function createClass(name: string): Promise<ApiResult<CreateClassResponse>> {
-  const token = sessionStorage.getItem("coursepulse_token");
+  const token = getStoredToken();
   return request<CreateClassResponse>("/classes/", {
     method: "POST",
     headers: {
