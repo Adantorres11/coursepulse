@@ -32,6 +32,7 @@ class Lecture(models.Model):
         blank=True,
         default="",
     )
+    notice = models.CharField(max_length=255, blank=True, default="")
     published_at = models.DateTimeField(null=True, blank=True)
 
     transcript = models.TextField(blank=True, default="")
@@ -96,6 +97,7 @@ class Question(models.Model):
         ],
     )
     position = models.PositiveIntegerField(default=0)
+    generation = models.JSONField(null=True, blank=True)
 
     class Meta:
         ordering = ["position", "id"]
