@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { API_BASE_URL, getStoredToken } from "../lib/apiClient";
 
-const MAX_FILE_SIZE_MB = 500;
+const MAX_FILE_SIZE_MB = 2000;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const ALLOWED_EXTENSIONS = [".mp3", ".mp4", ".wav", ".m4a", ".mov", ".webm", ".ogg", ".aac"];
 
