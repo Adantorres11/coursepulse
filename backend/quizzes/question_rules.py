@@ -72,8 +72,23 @@ def _sections_from_chunks(raw: dict | None) -> list[Section]:
     ]
 
 
-def _sections_from_text(transcript: str) -> list[Section]:
+def _sentences(transcript: str) -> list[str]:
+    """Split at sentence ends. Cut a sentence longer than SECTION_WORDS into word runs."""
     sentences = _SENTENCE_SPLIT.split(transcript.strip()) if transcript.strip() else []
+    result = []
+    for sentence in sentences:
+        words = sentence.split()
+        if len(words) <= SECTION_WORDS:
+            result.append(sentence)
+            continue
+        result += [
+            " ".join(words[i : i + SECTION_WORDS]) for i in range(0, len(words), SECTION_WORDS)
+        ]
+    return result
+
+
+def _sections_from_text(transcript: str) -> list[Section]:
+    sentences = _sentences(transcript)
     pieces: list[list[str]] = []
     current: list[str] = []
     current_words = 0
@@ -93,7 +108,7 @@ def _sections_from_text(transcript: str) -> list[Section]:
 
 
 def split_sections(transcript: str, raw: dict | None) -> list[Section]:
-    """Use the saved Whisper chunks, or split the plain text at sentence ends."""
+    """Use the saved Whisper chunks, or split the plain text at sentence ends (or word counts)."""
     return _sections_from_chunks(raw) or _sections_from_text(transcript)
 
 

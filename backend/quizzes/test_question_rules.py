@@ -132,6 +132,14 @@ class SplitSectionsTests(SimpleTestCase):
         joined = " ".join(section.text for section in sections)
         self.assertEqual(joined.split(), transcript.split())
 
+    def test_split_cuts_unpunctuated_text_by_words(self):
+        words = [f"w{i}" for i in range(3000)]
+        sections = split_sections(" ".join(words), None)
+        self.assertGreater(len(sections), 1)
+        self.assertTrue(all(section.words <= 1300 * 1.5 for section in sections))
+        joined = " ".join(section.text for section in sections)
+        self.assertEqual(joined.split(), words)
+
     def test_split_skips_empty_chunk_text(self):
         raw = {
             "chunks": [

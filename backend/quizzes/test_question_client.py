@@ -95,6 +95,26 @@ class AskTests(SimpleTestCase):
         self.assertEqual(reply.problem, "")
         self.assertEqual(reply.usage, Usage(1000, 200, 500))
 
+    def test_missing_usage_counts_as_zero(self):
+        response = make_response()
+        response.usage = None
+        with self.assertLogs("quizzes.question_client", "WARNING"):
+            reply, _ = self.run_ask(Mock(return_value=response))
+        self.assertEqual(reply.usage, Usage(0, 0, 0))
+        self.assertEqual(reply.data, {"a": 1})
+
+    def test_missing_cached_details_count_as_zero(self):
+        response = make_response()
+        response.usage.input_tokens_details = None
+        with self.assertLogs("quizzes.question_client", "WARNING"):
+            reply, _ = self.run_ask(Mock(return_value=response))
+        self.assertEqual(reply.usage, Usage(1000, 0, 500))
+
+    def test_missing_output_text_is_bad_json(self):
+        reply, _ = self.run_ask(Mock(return_value=make_response(text=None)))
+        self.assertIsNone(reply.data)
+        self.assertEqual(reply.problem, "bad_json")
+
     def test_request_shape(self):
         create = Mock(return_value=make_response())
         _, factory = self.run_ask(create)

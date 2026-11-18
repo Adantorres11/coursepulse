@@ -720,6 +720,22 @@ class RecoveryAndErrorTests(QuestionJobMixin, TestCase):
         self.assert_failed(lecture, UNEXPECTED)
         self.assertTrue(any(line.startswith("ERROR") for line in logs.output))
 
+    def test_lost_ownership_before_reask_makes_no_second_call(self):
+        lecture = self.make_lecture()
+        calls = []
+
+        def model(**kwargs):
+            calls.append(kwargs)
+            Lecture.objects.filter(pk=lecture.id).update(job_token="other")
+            return bad("bad_json")
+
+        self.model = model
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(lecture.job_token, "other")
+
     def test_redelivered_message_fails_without_a_call(self):
         self.model = default_model()
         lecture = self.make_lecture(job_token=TOKEN)

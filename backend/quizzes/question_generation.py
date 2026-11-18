@@ -200,6 +200,8 @@ def _call(run: _Run, *, schema_name: str, schema: dict, instructions: str,
             )
             raise PermanentError(QUESTIONS_TOO_EXPENSIVE)
         if tries == 2:
+            # Stop here if another job took over, so a re-ask is never paid for nothing.
+            heartbeat(run.lecture_id, run.token, "Trying that part again")
             run.reasks += 1
         reply = ask(
             schema_name=schema_name,

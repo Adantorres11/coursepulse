@@ -88,10 +88,17 @@ def _map_error(exc):
 
 
 def _usage_of(response):
-    usage = response.usage
+    """Token counts from the reply. Missing counts are zero, with a warning."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        logger.warning("Reply has no usage. Counting 0 tokens.")
+        return Usage(0, 0, 0)
+    details = getattr(usage, "input_tokens_details", None)
+    if details is None:
+        logger.warning("Reply has no cached token count. Counting 0 cached tokens.")
     return Usage(
         input_tokens=usage.input_tokens,
-        cached_tokens=usage.input_tokens_details.cached_tokens,
+        cached_tokens=details.cached_tokens if details is not None else 0,
         output_tokens=usage.output_tokens,
     )
 
@@ -159,7 +166,7 @@ def ask(
         return Reply(None, usage, "refusal")
     try:
         data = json.loads(response.output_text)
-    except ValueError:
+    except (TypeError, ValueError):
         return Reply(None, usage, "bad_json")
     if not isinstance(data, dict):
         return Reply(None, usage, "bad_json")
