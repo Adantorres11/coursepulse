@@ -27,6 +27,11 @@ class Lecture(models.Model):
         ],
         default="pending",
     )
+
+    error_message = models.TextField(
+        blank=True,
+        default="",
+    )
     published_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
