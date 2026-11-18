@@ -9,13 +9,15 @@ from dataclasses import dataclass, replace
 from django.conf import settings
 
 SECTION_WORDS = 1300
-CONCEPT_MATCH_RATIO = 0.85
+CONCEPT_MATCH_RATIO = 0.95
 NEAR_DUPLICATE_RATIO = 0.8
 MAX_PROMPT_CHARS = 500
 MAX_CHOICE_CHARS = 200
 DIFFICULTIES = ("easy", "medium", "hard")
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+_WORD = re.compile(r"[^\W_]+")
+_NUMERALS = {"i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"}
 
 _HARD_DROP = re.compile(
     r"\b(professor|instructor|lecturer|speaker)s?\b"
@@ -100,40 +102,84 @@ def _concept_key(name: str) -> str:
     return key[:-1] if key.endswith("s") else key
 
 
+def _tokens(name: str) -> list[str]:
+    return _WORD.findall(name.lower())
+
+
+def _same_word(a: str, b: str) -> bool:
+    """Equal, or equal once one of them loses a plural "s" or "es"."""
+    return a == b or a in (b + "s", b + "es") or b in (a + "s", a + "es")
+
+
+def _is_marker(token: str) -> bool:
+    """A token that tells neighbor concepts apart: a number, a Roman numeral, or a short word."""
+    return any(ch.isdigit() for ch in token) or token in _NUMERALS or len(token) <= 2
+
+
+def _same_concept(a: str, b: str) -> bool:
+    """True when two concept names mean the same concept.
+
+    Split each name into words at spaces, hyphens, and other non-letters. The names match
+    when they have the same words in the same order, allowing a plural "s" or "es" on any
+    word ("Race condition" and "race conditions", "Mutex" and "mutexes"). Otherwise they match
+    only when their difflib ratio is at least CONCEPT_MATCH_RATIO and no word that is in one
+    name but not the other is a number, a Roman numeral, or 2 letters or fewer. So
+    "Type I error" and "Type II error", "Layer 2" and "Layer 3", "Big-O" and "Big-Omega",
+    and "Pre-order" and "Post-order" stay apart.
+    """
+    ta, tb = _tokens(a), _tokens(b)
+    if not ta or not tb:
+        return False
+    if len(ta) == len(tb) and all(_same_word(x, y) for x, y in zip(ta, tb)):
+        return True
+    if any(_is_marker(token) for token in set(ta) ^ set(tb)):
+        return False
+    return _ratio(a, b) >= CONCEPT_MATCH_RATIO
+
+
+def _ratio(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, _concept_key(a), _concept_key(b)).ratio()
+
+
 def merge_concepts(per_section: list[tuple[int, list[dict]]]) -> list[Concept]:
-    """Give concepts global ids in lecture order and merge repeats across sections."""
+    """Give concepts global ids in lecture order and merge repeats across sections.
+
+    A concept is compared only with concepts from earlier sections, never its own section.
+    See _same_concept for when two names match.
+    """
     merged: list[Concept] = []
-    keys: list[str] = []
     for section_index, concepts in sorted(per_section, key=lambda pair: pair[0]):
         for data in concepts:
             name = data["name"].strip()
-            key = _concept_key(name)
-            if not key:
+            if not _concept_key(name):
                 continue
             if any(
-                difflib.SequenceMatcher(None, key, seen).ratio() >= CONCEPT_MATCH_RATIO
-                for seen in keys
+                seen.section_index < section_index and _same_concept(name, seen.name)
+                for seen in merged
             ):
                 continue
             order = len(merged)
             merged.append(Concept(f"c{order + 1}", name, section_index, order, data))
-            keys.append(key)
     return merged
 
 
 def concept_ids_for(names: list[str], concepts: list[Concept]) -> list[str]:
-    """Map one section's concept names to merged ids, with the matching merge_concepts uses."""
+    """Map one section's concept names to merged ids, with the matching merge_concepts uses.
+
+    An exact name match wins. Otherwise the matching concept with the best ratio wins.
+    """
     ids: list[str] = []
     for name in names:
         key = _concept_key(name)
         if not key:
             continue
-        for concept in concepts:
-            ratio = difflib.SequenceMatcher(None, key, _concept_key(concept.name)).ratio()
-            if ratio >= CONCEPT_MATCH_RATIO:
-                if concept.id not in ids:
-                    ids.append(concept.id)
-                break
+        exact = [c for c in concepts if _concept_key(c.name) == key]
+        close = [c for c in concepts if _same_concept(name, c.name)]
+        if not exact and not close:
+            continue
+        concept = exact[0] if exact else max(close, key=lambda c: _ratio(name, c.name))
+        if concept.id not in ids:
+            ids.append(concept.id)
     return ids
 
 

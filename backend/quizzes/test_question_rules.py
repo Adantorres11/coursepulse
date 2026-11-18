@@ -194,6 +194,37 @@ class MergeConceptsTests(SimpleTestCase):
         )
 
 
+    def test_merge_keeps_neighbor_concepts_apart(self):
+        pairs = [
+            ("Type I error", "Type II error"),
+            ("Pre-order traversal", "Post-order traversal"),
+            ("Big-O notation", "Big-Omega notation"),
+            ("Layer 2", "Layer 3"),
+            ("IPv4 address", "IPv6 address"),
+        ]
+        for first, second in pairs:
+            with self.subTest(first=first, second=second):
+                concepts = merge_concepts([(0, [_concept(first)]), (1, [_concept(second)])])
+                self.assertEqual([c.name for c in concepts], [first, second])
+                self.assertEqual(concept_ids_for([second], concepts), ["c2"])
+
+    def test_merge_joins_plural_forms(self):
+        concepts = merge_concepts(
+            [(0, [_concept("Race condition"), _concept("Mutex")]),
+             (1, [_concept("race conditions"), _concept("mutexes")])]
+        )
+        self.assertEqual([c.name for c in concepts], ["Race condition", "Mutex"])
+        self.assertEqual(concept_ids_for(["mutexes", "race conditions"], concepts), ["c2", "c1"])
+
+    def test_merge_keeps_same_section_names_apart(self):
+        concepts = merge_concepts([(0, [_concept("Mutex"), _concept("Mutexes")])])
+        self.assertEqual([c.name for c in concepts], ["Mutex", "Mutexes"])
+
+    def test_concept_ids_for_prefers_exact_match(self):
+        concepts = merge_concepts([(0, [_concept("Mutex"), _concept("Mutexes")])])
+        self.assertEqual(concept_ids_for(["Mutexes"], concepts), ["c2"])
+
+
 def raw_q(**over):
     question = {
         "prompt": "Why does a mutex prevent a race condition?",
