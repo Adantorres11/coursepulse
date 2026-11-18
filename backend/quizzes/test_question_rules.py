@@ -7,15 +7,22 @@ from .question_prompts import (
     QUESTION_SCHEMA,
 )
 from .question_rules import (
+    Concept,
     Draft,
     QuestionSet,
     Section,
+    balance_positions,
     check_draft,
+    is_untouched,
     merge_concepts,
+    mix_warnings,
+    order_drafts,
+    original_of,
     section_quotas,
     soft_flags,
     split_sections,
     target_count,
+    trim,
 )
 
 
@@ -363,3 +370,113 @@ class SectionQuotaTests(SimpleTestCase):
 
     def test_quotas_empty_when_no_concepts(self):
         self.assertEqual(section_quotas(5, self.sections(100, 100), set()), {0: 0, 1: 0})
+
+
+def make_draft(prompt="Q?", correct_index=0, difficulty="medium", concept_id="c1", section_index=0, choices=None):
+    return Draft(
+        prompt=prompt,
+        choices=choices or ["a1", "b2", "c3", "d4"],
+        correct_index=correct_index,
+        difficulty=difficulty,
+        reason="",
+        concept_id=concept_id,
+        pattern="purpose",
+        gotcha=False,
+        distractor_types=[None, "wrong_mechanism", "opposite_effect", "generic_benefit"],
+        section_index=section_index,
+    )
+
+
+class TrimTests(SimpleTestCase):
+    def test_trim_noop_when_under(self):
+        drafts = [make_draft(f"q{i}") for i in range(5)]
+        self.assertEqual(trim(drafts, 6), drafts)
+
+    def test_trim_removes_from_biggest_section_last_first(self):
+        drafts = [make_draft(f"s0-{i}", section_index=0) for i in range(4)]
+        drafts += [make_draft(f"s1-{i}", section_index=1) for i in range(2)]
+        result = trim(drafts, 5)
+        self.assertEqual(len(result), 5)
+        self.assertNotIn("s0-3", [d.prompt for d in result])
+        self.assertEqual(len(drafts), 6)
+
+    def test_trim_tie_takes_higher_section_first(self):
+        drafts = [make_draft("a", section_index=0), make_draft("b", section_index=1)]
+        self.assertEqual([d.prompt for d in trim(drafts, 1)], ["a"])
+
+
+class BalanceTests(SimpleTestCase):
+    def drafts(self):
+        return [make_draft(f"q{i}", correct_index=0) for i in range(8)]
+
+    def test_balance_spreads_positions(self):
+        before = self.drafts()
+        result = balance_positions(before, seed=7)
+        counts = sorted(d.correct_index for d in result)
+        self.assertEqual(counts, [0, 0, 1, 1, 2, 2, 3, 3])
+        for old, new in zip(before, result):
+            self.assertEqual(new.choices[new.correct_index], old.choices[old.correct_index])
+            self.assertIsNone(new.distractor_types[new.correct_index])
+        self.assertEqual([d.correct_index for d in before], [0] * 8)
+        self.assertEqual(before[0].choices, ["a1", "b2", "c3", "d4"])
+        again = balance_positions(self.drafts(), seed=7)
+        self.assertEqual([d.correct_index for d in again], [d.correct_index for d in result])
+
+    def test_balance_keeps_choice_set(self):
+        for old, new in zip(self.drafts(), balance_positions(self.drafts(), seed=3)):
+            self.assertEqual(sorted(new.choices), sorted(old.choices))
+
+
+class OrderTests(SimpleTestCase):
+    def test_order_by_concept_then_difficulty(self):
+        concepts = [Concept("c1", "One", 0, 0, {}), Concept("c2", "Two", 0, 1, {})]
+        drafts = [
+            make_draft("c2e", difficulty="easy", concept_id="c2"),
+            make_draft("c1h", difficulty="hard", concept_id="c1"),
+            make_draft("c1e", difficulty="easy", concept_id="c1"),
+        ]
+        self.assertEqual([d.prompt for d in order_drafts(drafts, concepts)], ["c1e", "c1h", "c2e"])
+
+    def test_unknown_concept_sorts_last_and_stays_stable(self):
+        concepts = [Concept("c1", "One", 0, 0, {})]
+        drafts = [
+            make_draft("x1", concept_id="zz"),
+            make_draft("k", concept_id="c1"),
+            make_draft("x2", concept_id="zz"),
+        ]
+        self.assertEqual([d.prompt for d in order_drafts(drafts, concepts)], ["k", "x1", "x2"])
+
+
+class MixWarningTests(SimpleTestCase):
+    def test_mix_warnings(self):
+        long_correct = ["long long long", "b", "c", "d"]
+        drafts = [make_draft(f"q{i}", choices=list(long_correct), difficulty="easy") for i in range(3)]
+        drafts.append(make_draft("q3", choices=["a", "bbbb", "c", "d"], difficulty="medium"))
+        warnings = mix_warnings(drafts)
+        self.assertIn("longest_correct", warnings)
+        self.assertIn("missing_hard", warnings)
+        self.assertNotIn("missing_easy", warnings)
+
+    def test_mix_warnings_empty(self):
+        self.assertEqual(mix_warnings([]), [])
+
+
+class UntouchedTests(SimpleTestCase):
+    def values(self):
+        return ("Why?", ["a", "b", "c", "d"], 1, "easy")
+
+    def test_untouched_true_when_same(self):
+        generation = {"original": original_of(*self.values())}
+        self.assertTrue(is_untouched(*self.values(), generation))
+
+    def test_untouched_false_when_any_field_edited(self):
+        generation = {"original": original_of(*self.values())}
+        prompt, choices, correct, difficulty = self.values()
+        self.assertFalse(is_untouched("Why not?", choices, correct, difficulty, generation))
+        self.assertFalse(is_untouched(prompt, ["a", "b", "c", "x"], correct, difficulty, generation))
+        self.assertFalse(is_untouched(prompt, choices, 2, difficulty, generation))
+        self.assertFalse(is_untouched(prompt, choices, correct, "hard", generation))
+
+    def test_untouched_false_without_generation(self):
+        self.assertFalse(is_untouched(*self.values(), None))
+        self.assertFalse(is_untouched(*self.values(), {}))

@@ -1,8 +1,10 @@
 """Pure rules for question generation: counts, sections, and concepts. No database, no network."""
 
 import difflib
+import math
+import random
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from django.conf import settings
 
@@ -275,3 +277,78 @@ def section_quotas(needed: int, sections: list[Section], with_concepts: set[int]
     for index in sorted(remainders, key=lambda i: (-remainders[i], i))[:left]:
         quotas[index] += 1
     return quotas
+
+
+def trim(drafts: list[Draft], needed: int) -> list[Draft]:
+    """Drop extras from the section with the most drafts (higher index on ties), last draft first."""
+    result = list(drafts)
+    while len(result) > max(needed, 0):
+        counts: dict[int, int] = {}
+        for draft in result:
+            counts[draft.section_index] = counts.get(draft.section_index, 0) + 1
+        section = max(counts, key=lambda index: (counts[index], index))
+        last = max(i for i, draft in enumerate(result) if draft.section_index == section)
+        del result[last]
+    return result
+
+
+def balance_positions(drafts: list[Draft], seed: int) -> list[Draft]:
+    """Spread correct answers over positions 0 to 3 by swapping choices. Returns new drafts."""
+    targets = ([0, 1, 2, 3] * math.ceil(len(drafts) / 4))[: len(drafts)]
+    random.Random(seed).shuffle(targets)
+    result = []
+    for draft, target in zip(drafts, targets):
+        choices = list(draft.choices)
+        types = list(draft.distractor_types)
+        current = draft.correct_index
+        choices[current], choices[target] = choices[target], choices[current]
+        types[current], types[target] = types[target], types[current]
+        result.append(replace(draft, choices=choices, distractor_types=types, correct_index=target))
+    return result
+
+
+def order_drafts(drafts: list[Draft], concepts: list[Concept]) -> list[Draft]:
+    """Sort by the concept's first appearance, then easy, medium, hard. Unknown concepts go last."""
+    order = {concept.id: concept.order for concept in concepts}
+    return sorted(
+        drafts,
+        key=lambda d: (order.get(d.concept_id, len(order)), DIFFICULTIES.index(d.difficulty)),
+    )
+
+
+def mix_warnings(drafts: list[Draft]) -> list[str]:
+    if not drafts:
+        return []
+    warnings = []
+    longest = sum(
+        1
+        for d in drafts
+        if all(
+            len(d.choices[d.correct_index]) > len(choice)
+            for i, choice in enumerate(d.choices)
+            if i != d.correct_index
+        )
+    )
+    if longest / len(drafts) > 0.4:
+        warnings.append("longest_correct")
+    present = {d.difficulty for d in drafts}
+    warnings.extend(f"missing_{level}" for level in DIFFICULTIES if level not in present)
+    return warnings
+
+
+def original_of(prompt: str, choices: list[str], correct_index: int, difficulty: str) -> dict:
+    return {
+        "prompt": prompt,
+        "choices": list(choices),
+        "correct_index": correct_index,
+        "difficulty": difficulty,
+    }
+
+
+def is_untouched(
+    prompt: str, choices: list, correct_index: int, difficulty: str, generation: dict | None
+) -> bool:
+    original = (generation or {}).get("original")
+    if not original:
+        return False
+    return original == original_of(prompt, choices, correct_index, difficulty)
