@@ -11,6 +11,27 @@ class Lecture(models.Model):
         related_name="lectures",
     )
     title = models.CharField(max_length=255)
+    recording = models.FileField(
+    upload_to="lecture_recordings/",
+    null=True,
+    blank=True,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ("pending", "Pending"),
+            ("processing", "Processing"),
+            ("ready", "Ready"),
+            ("failed", "Failed"),
+        ],
+        default="pending",
+    )
+
+    error_message = models.TextField(
+        blank=True,
+        default="",
+    )
     published_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

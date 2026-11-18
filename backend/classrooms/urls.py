@@ -1,3 +1,4 @@
+
 from django.urls import path
 
 from .views import (
@@ -6,7 +7,10 @@ from .views import (
     ClassLookupView,
     ClassStatsView,
     StudentClassListView,
+    LectureUploadView,
     ProfessorClassListView,
+    ProfessorClassLecturesView,
+    ClassResultsView,
     ClassRosterView,
 )
 
@@ -37,13 +41,28 @@ urlpatterns = [
         name="class-stats",
     ),
     path(
+        "classes/<int:pk>/lectures/",
+        LectureUploadView.as_view(),
+        name="lecture-upload",
+    ),
+    path(
         "professor/classes/",
         ProfessorClassListView.as_view(),
         name="professor-class-list",
     ),
     path(
-    "classes/<int:pk>/roster/",
-    ClassRosterView.as_view(),
-    name="class-roster",
+        "classes/<int:pk>/roster/",
+        ClassRosterView.as_view(),
+        name="class-roster",
+    ),
+    path(
+        "classes/<int:pk>/results/",
+        ClassResultsView.as_view(),
+        name="class-results",
+    ),
+    path(
+    "professor/classes/<int:pk>/lectures/",
+    ProfessorClassLecturesView.as_view(),
+    name="professor-class-lectures",
     ),
 ]

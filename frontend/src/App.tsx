@@ -1,3 +1,4 @@
+import { ProfessorClassResults } from "./components/ProfessorClassResults";
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { StudentHub } from "./components/StudentHub";
 import { QuizPage } from "./components/QuizPage";
@@ -8,6 +9,7 @@ import { JoinClassPage } from "./components/JoinClassPage";
 import { ProfessorDashboard } from "./components/ProfessorDashboard";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
+import { ProfessorClassDetail } from "./components/ProfessorClassDetail";
 
 function AppContent() {
   const location = useLocation();
@@ -21,7 +23,8 @@ function AppContent() {
     location.pathname === "/signup" ||
     location.pathname === "/hub" ||
     location.pathname === "/join" ||
-    location.pathname.startsWith("/class");
+    location.pathname.startsWith("/class") ||
+    location.pathname.startsWith("/professor");
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -37,10 +40,10 @@ function AppContent() {
                 <span>CoursePulse</span>
               </Link>
               <Link
-                to="/hub"
+                to={user?.role === "professor" ? "/professor" : "/hub"}
                 className="text-sm font-medium text-slate-400 hover:text-white transition-colors"
               >
-                Student Hub
+                {user?.role === "professor" ? "Dashboard" : "Student Hub"}
               </Link>
             </div>
             <div className="flex items-center gap-3">
@@ -91,7 +94,7 @@ function AppContent() {
           <Route
             path="/hub"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="student">
                 <StudentHub />
               </ProtectedRoute>
             }
@@ -99,7 +102,7 @@ function AppContent() {
           <Route
             path="/join"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRole="student">
                 <JoinClassPage />
               </ProtectedRoute>
             }
@@ -113,28 +116,7 @@ function AppContent() {
             }
           />
           <Route
-            path="/class"
-            element={<Navigate to={user?.role === "professor" ? "/professor" : "/hub"} replace />}
-          />
-          <Route
-            path="/professor"
-            element={
-              <ProtectedRoute>
-                <ProfessorDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/professor/classes"
-            element={
-              <ProtectedRoute>
-                <ProfessorDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/professor/dashboard" element={<Navigate to="/professor" replace />} />
-          <Route
-            path="/professor/class/:classId"
+            path="/class/:classId"
             element={
               <ProtectedRoute>
                 <ClassHub />
@@ -142,9 +124,57 @@ function AppContent() {
             }
           />
           <Route
-            path="/quiz/:lectureId"
+            path="/class/:classId/results"
             element={
               <ProtectedRoute>
+                {user?.role === "professor" ? (
+                  <ProfessorClassResults />
+                ) : (
+                  <Navigate to="/hub" replace />
+                )}
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/class"
+            element={<Navigate to={user?.role === "professor" ? "/professor" : "/hub"} replace />}
+          />
+          <Route
+            path="/professor"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <ProfessorDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/professor/classes"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <ProfessorDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/professor/dashboard"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <Navigate to="/professor" replace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/professor/class/:classId"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <ProfessorClassDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/quiz/:lectureId"
+            element={
+              <ProtectedRoute allowedRole="student">
                 <QuizPage />
               </ProtectedRoute>
             }

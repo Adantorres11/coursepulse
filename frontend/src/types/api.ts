@@ -150,3 +150,40 @@ export interface CreateClassResponse {
   access_code: string;
 }
 
+export interface ClassResultStudent {
+  student_id: number;
+  name: string;
+  total_points: number;
+  quizzes_played: number;
+}
+
+export interface ClassResultQuestion {
+  question_id: number;
+  prompt: string;
+  answer_count: number;
+  correct_count: number;
+  accuracy_percent: number | null;
+}
+
+export interface ClassResultLecture {
+  lecture_id: number;
+  title: string;
+  questions: ClassResultQuestion[];
+}
+
+export interface ClassResults {
+  students: ClassResultStudent[];
+  lectures: ClassResultLecture[];
+}
+
+export interface ClassRosterStudent {
+  name: string;
+  joined_at: string;
+}
+
+export interface ProfessorLecture {
+  id: number;
+  title: string;
+  status: "pending" | "processing" | "ready" | "failed" | "published";
+  published_at: string | null;
+}

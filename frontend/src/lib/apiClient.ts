@@ -5,19 +5,21 @@ import type {
   AuthResponse,
   ClassStats,
   ClassSummary,
+  ClassRosterStudent,
   CreateClassResponse,
   HealthResponse,
   LeaderboardEntry,
   Lecture,
   LoginPayload,
   ProfessorClass,
+  ProfessorLecture,
   Quiz,
   QuestionStart,
   RegisterPayload,
   User,
+  ClassResults,
 } from "../types/api";
 import sampleLectures from "../data/lectures.sample.json" with { type: "json" };
-import sampleQuizzes from "../data/quizzes.sample.json" with { type: "json" };
 
 export type {
   AnswerRequest,
@@ -78,9 +80,18 @@ export function setStoredUser(user: User | null): void {
     if (user) {
       localStorage.setItem(USER_KEY, JSON.stringify(user));
       sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+      if (user.role) {
+        localStorage.setItem("coursepulse_role", user.role);
+        sessionStorage.setItem("coursepulse_role", user.role);
+      } else {
+        localStorage.removeItem("coursepulse_role");
+        sessionStorage.removeItem("coursepulse_role");
+      }
     } else {
       localStorage.removeItem(USER_KEY);
       sessionStorage.removeItem(USER_KEY);
+      localStorage.removeItem("coursepulse_role");
+      sessionStorage.removeItem("coursepulse_role");
     }
   } catch {
     // Ignore storage errors
@@ -90,6 +101,12 @@ export function setStoredUser(user: User | null): void {
 export function clearSession(): void {
   setStoredToken(null);
   setStoredUser(null);
+  try {
+    sessionStorage.removeItem("coursepulse_role");
+    localStorage.removeItem("coursepulse_role");
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 /**
@@ -222,57 +239,10 @@ export async function getLectures(): Promise<ApiResult<Lecture[]>> {
 /**
  * Fetch the full quiz for a given lecture id.
  * Matches API contract: GET /api/lectures/{id}/quiz/
- * Falls back to local sample data until the backend endpoint is available.
+ * There is no sample-data fallback; errors and status codes pass through.
  */
 export async function getQuiz(id: string | number): Promise<ApiResult<Quiz>> {
-  const queryId = String(id).trim();
-
-  // Send the token (when logged in) so the server can return the student's progress
-  const token = sessionStorage.getItem("coursepulse_token");
-  const authOptions: RequestInit | undefined = token
-    ? { headers: { Authorization: `Token ${token}` } }
-    : undefined;
-
-  // Primary contract endpoint: GET /api/lectures/{id}/quiz/
-  let result = await request<Quiz>(`/lectures/${encodeURIComponent(queryId)}/quiz/`, authOptions);
-
-  // Secondary fallback for legacy/alternative route /quizzes/{id}/ if contract endpoint 404s
-  if (result.error && !result.error.includes("Could not reach API")) {
-    const altResult = await request<Quiz>(`/quizzes/${encodeURIComponent(queryId)}/`, authOptions);
-    if (!altResult.error) {
-      result = altResult;
-    }
-  }
-
-  // If backend endpoint is unavailable or returned an error, fallback to local sample data
-  if (result.error) {
-    const quizzesRecord = sampleQuizzes as Record<string, Quiz>;
-    const fallback =
-      quizzesRecord[queryId] ??
-      Object.values(quizzesRecord).find(
-        (q) =>
-          String(q.id) === queryId ||
-          String(q.lecture_id) === queryId ||
-          String(q.lectureId) === queryId
-      );
-
-    if (fallback) {
-      return { data: fallback, error: null };
-    }
-
-    const isNetworkError = result.error?.startsWith("Could not reach API");
-    const isStatusError = result.error?.startsWith("Request failed");
-
-    return {
-      data: null,
-      error:
-        result.error && !isNetworkError && !isStatusError
-          ? result.error
-          : `Quiz for lecture "${queryId}" not found in API or sample data.`,
-    };
-  }
-
-  return result;
+  return request<Quiz>(`/lectures/${encodeURIComponent(String(id).trim())}/quiz/`);
 }
 
 /**
@@ -324,11 +294,10 @@ function authHeaders(): Record<string, string> {
  * Reads the active user's role from session storage.
  */
 export function getUserRole(): string | null {
-  const directRole = sessionStorage.getItem("coursepulse_role");
-  if (directRole) return directRole;
-
   try {
-    const rawUser = sessionStorage.getItem("coursepulse_user");
+    const rawUser =
+      sessionStorage.getItem(USER_KEY) ||
+      localStorage.getItem(USER_KEY);
     if (rawUser) {
       const parsed = JSON.parse(rawUser) as { role?: string };
       if (parsed?.role) return parsed.role;
@@ -336,6 +305,11 @@ export function getUserRole(): string | null {
   } catch {
     // Ignore JSON parse error
   }
+
+  const directRole =
+    sessionStorage.getItem("coursepulse_role") ||
+    localStorage.getItem("coursepulse_role");
+  if (directRole) return directRole;
 
   return null;
 }
@@ -354,6 +328,9 @@ export function isProfessor(): boolean {
 export function getClassesRoute(): string {
   return isProfessor() ? "/professor" : "/hub";
 }
+
+
+
 
 
 /**
@@ -427,6 +404,22 @@ export async function getProfessorClasses(): Promise<ApiResult<ProfessorClass[]>
   return request<ProfessorClass[]>("/professor/classes/", {
     headers: authHeaders(),
   });
+}
+
+export async function getClassRoster(
+  classId: number | string
+): Promise<ApiResult<ClassRosterStudent[]>> {
+  return request<ClassRosterStudent[]>(
+    `/classes/${encodeURIComponent(String(classId))}/roster/`
+  );
+}
+
+export async function getProfessorClassLectures(
+  classId: number | string
+): Promise<ApiResult<ProfessorLecture[]>> {
+  return request<ProfessorLecture[]>(
+    `/professor/classes/${encodeURIComponent(String(classId))}/lectures/`
+  );
 }
 
 /**
@@ -517,4 +510,14 @@ export async function getCurrentUser(): Promise<ApiResult<User>> {
  */
 export function logout(): void {
   clearSession();
+}
+
+export async function getClassResults(
+  classId: number | string,
+  signal?: AbortSignal
+): Promise<ApiResult<ClassResults>> {
+  return request<ClassResults>(
+    `/classes/${encodeURIComponent(String(classId))}/results/`,
+    { signal }
+  );
 }

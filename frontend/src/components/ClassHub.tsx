@@ -4,13 +4,17 @@ import {
   getClasses,
   getClassesRoute,
   getClassStats,
+  getLectures,
   getProfessorClasses,
   isProfessor,
   type ClassStats,
   type ClassSummary,
+  type Lecture,
   type ProfessorClass,
 } from "../lib/apiClient";
 import { LeaderboardModal } from "./LeaderboardModal";
+import { ProfessorNav } from "./ProfessorNav";
+import { StudentNav } from "./StudentNav";
 import { UploadLecturePage } from "./LectureUpload";
 
 
@@ -18,7 +22,7 @@ type HubState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; classInfo: ClassSummary; stats: ClassStats }
-  | { status: "professor"; classInfo: ProfessorClass };
+  | { status: "professor"; classInfo: ProfessorClass; lectures: Lecture[] };
 
 export function ClassHub() {
   const { classId } = useParams<{ classId: string }>();
@@ -27,6 +31,7 @@ export function ClassHub() {
   const [state, setState] = useState<HubState>({ status: "loading" });
   const [reloadKey, setReloadKey] = useState(0);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const reload = () => setReloadKey((k) => k + 1);
 
@@ -36,29 +41,40 @@ export function ClassHub() {
     setState({ status: "loading" });
 
     if (isProfessor()) {
-      getProfessorClasses().then((result) => {
-        if (cancelled) return;
-        if (result.error || !result.data) {
-          setState({
-            status: "error",
-            message: result.error || "Unable to load this class.",
-          });
-          return;
-        }
+      Promise.all([getProfessorClasses(), getLectures()]).then(
+        ([profResult, lecturesResult]) => {
+          if (cancelled) return;
+          if (profResult.error || !profResult.data) {
+            setState({
+              status: "error",
+              message: profResult.error || "Unable to load this class.",
+            });
+            return;
+          }
 
-        const profClass = result.data.find(
-          (c) => String(c.id) === String(classId)
-        );
-        if (!profClass) {
-          setState({
-            status: "error",
-            message: "We could not find this class in your dashboard.",
-          });
-          return;
-        }
+          const profClass = profResult.data.find(
+            (c) => String(c.id) === String(classId)
+          );
+          if (!profClass) {
+            setState({
+              status: "error",
+              message: "We could not find this class in your dashboard.",
+            });
+            return;
+          }
 
-        setState({ status: "professor", classInfo: profClass });
-      });
+          const allLectures = lecturesResult.data ?? [];
+          const classLectures = allLectures.filter(
+            (l) => String(l.classroom_id) === String(classId)
+          );
+
+          setState({
+            status: "professor",
+            classInfo: profClass,
+            lectures: classLectures,
+          });
+        }
+      );
 
       return () => {
         cancelled = true;
@@ -103,53 +119,35 @@ export function ClassHub() {
     navigate(`/quiz/${lectureId}`, { state: { from: `/class/${classId}` } });
   };
 
+  const handleCopyCode = (code: string) => {
+    void navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => {
+      setCopiedCode((curr) => (curr === code ? null : curr));
+    }, 2000);
+  };
+
   const backRoute = getClassesRoute();
   const backLabel = isProfessor() ? "Created classes" : "All classes";
+  const currentClassName =
+    state.status === "professor"
+      ? state.classInfo.name
+      : classInfo
+      ? classInfo.name
+      : "Class";
 
   return (
     <div className="min-h-screen bg-[#0B1220] text-white flex flex-col justify-between selection:bg-sky-500/30">
-      {/* Top Bar with Brand Logo */}
-      <header className="px-4 sm:px-10 py-5 w-full max-w-5xl mx-auto flex items-center justify-between">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity"
-        >
-          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center overflow-hidden shadow-sm">
-            <img
-              src="/assets/coursePulseLogo.png"
-              alt="CoursePulse"
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                const fallback = e.currentTarget.parentElement?.querySelector(".class-fallback-icon");
-                if (fallback) fallback.classList.remove("hidden");
-              }}
-            />
-            <svg
-              className="class-fallback-icon hidden w-5 h-5 text-white"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M2 12a10 10 0 0 1 18-6" />
-              <path d="M5 14a6 6 0 0 1 10-3" />
-              <path d="M8 16a2 2 0 0 1 2-1" />
-            </svg>
-          </div>
-          <span className="text-xl font-bold tracking-tight text-white">CoursePulse</span>
-        </Link>
-
-        {/* Back Link to All Classes (Student Hub) or Created Classes (Professor Dashboard) */}
-        <Link
-          to={backRoute}
-          className="text-xs sm:text-sm font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
-        >
-          {backLabel}
-        </Link>
-      </header>
+      {/* Top Bar: Role-specific navigation with brand, role nameplate, dashboard, and current class tabs */}
+      {isProfessor() ? (
+        <ProfessorNav
+          currentClass={classId ? { id: classId, name: currentClassName } : null}
+        />
+      ) : (
+        <StudentNav
+          currentClass={classId ? { id: classId, name: currentClassName } : null}
+        />
+      )}
 
       {/* Main Container */}
       <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -160,18 +158,14 @@ export function ClassHub() {
             className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer group"
           >
             <span className="transition-transform group-hover:-translate-x-1 font-bold">←</span>
-            <span>{backLabel}</span>
+            <span>{isProfessor() ? "Back to Dashboard" : backLabel}</span>
           </Link>
         </div>
 
         {/* Class Header Title & Subtitle */}
         <div className="mb-8">
           <h1 className="text-3xl sm:text-4xl md:text-[42px] font-extrabold tracking-tight text-white mb-1.5">
-            {state.status === "professor"
-              ? state.classInfo.name
-              : classInfo
-              ? classInfo.name
-              : "Class"}
+            {currentClassName}
           </h1>
           <p className="text-slate-400 text-sm sm:text-base">
             {state.status === "loading"
@@ -258,8 +252,18 @@ export function ClassHub() {
         {/* ======================================================== */}
         {state.status === "professor" && (
           <div className="space-y-6">
+
+            <div className="flex justify-end">
+              <Link
+                to={`/class/${classId}/results`}
+                className="inline-flex items-center gap-2 bg-sky-400 hover:bg-sky-500 text-slate-950 font-bold text-sm px-5 py-3 rounded-xl transition"
+              >
+                View Results
+              </Link>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
-              {/* Card 1: Join Code */}
+              {/* Card 1: Join Code with copy button */}
               <div className="bg-[#111A30] border border-slate-800/90 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
@@ -269,8 +273,25 @@ export function ClassHub() {
                     </svg>
                     <span>Join Code</span>
                   </div>
-                  <div className="text-3xl sm:text-4xl font-mono font-extrabold text-[#38BDF8] tracking-tight">
-                    {state.classInfo.access_code}
+                  <div className="flex items-center gap-2">
+                    <div className="text-3xl sm:text-4xl font-mono font-extrabold text-[#38BDF8] tracking-tight">
+                      {state.classInfo.access_code}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyCode(state.classInfo.access_code)}
+                      title="Copy join code"
+                      className="text-xs text-slate-400 hover:text-white p-1.5 rounded-lg bg-[#162547] border border-sky-500/20 hover:border-sky-500/40 transition cursor-pointer"
+                    >
+                      {copiedCode === state.classInfo.access_code ? (
+                        <span className="text-[10px] font-bold text-emerald-400">Copied!</span>
+                      ) : (
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      )}
+                    </button>
                   </div>
                 </div>
                 <p className="text-xs text-slate-400 mt-3">Share with students to enroll</p>
@@ -313,6 +334,78 @@ export function ClassHub() {
               </div>
             </div>
 
+            {/* Empty State vs Populated Lectures for Professor */}
+            {state.lectures.length === 0 ? (
+              <div className="border-2 border-dashed border-slate-700/80 rounded-3xl p-10 sm:p-14 text-center max-w-3xl mx-auto flex flex-col items-center justify-center bg-[#10192E]/30 mt-6">
+                <div className="w-14 h-14 rounded-2xl bg-[#142342] flex items-center justify-center mb-5 text-[#38BDF8] shadow-md">
+                  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">No lectures yet</h2>
+                <p className="text-slate-400 text-sm max-w-md mx-auto mb-6 leading-relaxed">
+                  No lecture quizzes have been created or published for this class yet. When you upload lecture recordings, their quizzes will appear here.
+                </p>
+                <Link
+                  to="/professor"
+                  className="inline-flex items-center gap-2 bg-[#141C33] hover:bg-[#1A2645] border border-slate-700 hover:border-slate-500 text-white font-semibold text-xs sm:text-sm py-2.5 px-5 rounded-xl transition cursor-pointer"
+                >
+                  <span>← Back to Dashboard</span>
+                </Link>
+              </div>
+            ) : (
+              <div className="mt-8 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Class Lectures ({state.lectures.length})
+                  </h3>
+                </div>
+
+                <div className="space-y-3">
+                  {state.lectures.map((lecture) => (
+                    <div
+                      key={lecture.id}
+                      className="bg-[#111A30] hover:bg-[#14203D] border border-slate-800/90 rounded-2xl p-4 sm:p-5 flex items-center justify-between shadow-md transition"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-[#162547] flex items-center justify-center text-[#38BDF8] shrink-0 font-bold">
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-sm sm:text-base font-bold text-white truncate">
+                            {lecture.title}
+                          </h4>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {lecture.question_count} questions
+                            {lecture.published_at && (
+                              <span> · Published {new Date(lecture.published_at).toLocaleDateString()}</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <Link
+                        to={`/quiz/${lecture.id}`}
+                        state={{ from: `/class/${classId}` }}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 bg-[#162547] hover:bg-[#1D305A] border border-sky-500/30 px-3.5 py-1.5 rounded-xl transition cursor-pointer shrink-0 ml-4"
+                      >
+                        <span>Preview quiz</span>
+                        <span>→</span>
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-4">
             {/* Upload Lecture Recording Section */}
             <div className="bg-[#111A30] border border-slate-800/90 rounded-2xl p-5 sm:p-6 shadow-lg">
               <UploadLecturePage overrideClassId={state.classInfo.id} />
@@ -324,7 +417,7 @@ export function ClassHub() {
                 className="inline-flex items-center gap-2 bg-[#111A30] hover:bg-[#162547] border border-slate-700 hover:border-slate-500 text-white font-semibold text-sm px-5 py-3 rounded-xl transition cursor-pointer shadow-md"
               >
                 <span>←</span>
-                <span>Back to created classes</span>
+                <span>Back to Dashboard</span>
               </Link>
             </div>
           </div>

@@ -1,3 +1,8 @@
+from rest_framework import status
+from kombu.exceptions import OperationalError
+from redis.exceptions import RedisError
+from .pipeline import enqueue_lecture_processing
+from django.shortcuts import get_object_or_404
 from django.db.models import Count
 from django.http import Http404
 from django.utils import timezone
@@ -120,3 +125,100 @@ class LectureAnswerView(APIView):
                 status=400,
             )
         return Response(result, status=201)
+
+
+class LectureStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        lecture = get_object_or_404(
+            Lecture.objects.select_related("classroom"),
+            pk=pk,
+        )
+
+        profile = getattr(request.user, "profile", None)
+
+        if (
+            profile is None
+            or profile.role != "professor"
+            or lecture.classroom.professor_id != request.user.id
+        ):
+            raise PermissionDenied(
+                "Only the class owner can access lecture status."
+            )
+
+        return Response({
+            "id": lecture.id,
+            "status": lecture.status,
+            "error_message": (
+                lecture.error_message
+                if lecture.status == "failed"
+                else ""
+            ),
+        })
+
+
+class LectureRetryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        lecture = get_object_or_404(
+            Lecture.objects.select_related("classroom"),
+            pk=pk,
+        )
+
+        profile = getattr(request.user, "profile", None)
+
+        if (
+            profile is None
+            or profile.role != "professor"
+            or lecture.classroom.professor_id != request.user.id
+        ):
+            raise PermissionDenied(
+                "Only the class owner can retry this lecture."
+            )
+
+        if lecture.status != "failed":
+            return Response(
+                {"detail": "Only failed lectures can be retried."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        updated = Lecture.objects.filter(
+            pk=lecture.pk,
+            status="failed",
+        ).update(
+            status="pending",
+            error_message="",
+        )
+
+        if not updated:
+            return Response(
+                {"detail": "Lecture is already being retried."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            enqueue_lecture_processing(lecture.id)
+        except (ImportError, OperationalError, RedisError):
+            Lecture.objects.filter(
+                pk=lecture.pk,
+                status="pending",
+            ).update(
+                status="failed",
+                error_message=lecture.error_message,
+            )
+
+            return Response(
+                {"detail": "Processing is currently unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            {
+                "id": lecture.id,
+                "status": "pending",
+                "error_message": "",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
