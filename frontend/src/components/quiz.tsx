@@ -374,7 +374,7 @@ export default function QuizGame({
         <div className="flex items-center justify-between w-full px-2 pt-3 pb-2">
           <div className="flex flex-row inline-flex items-center gap-1">
             <div className="bg-slate-700 text-sm text-white px-2.5 py-1 rounded-lg transition-colors shadow-sm">
-              {questions[questionIndex]?.difficulty 
+              {questions[questionIndex]?.difficulty
                 ? questions[questionIndex].difficulty.charAt(0).toUpperCase() + questions[questionIndex].difficulty.slice(1)
                 : "Loading..."}
             </div>

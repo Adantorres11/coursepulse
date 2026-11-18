@@ -1,5 +1,6 @@
 from unittest.mock import patch
 from kombu.exceptions import OperationalError
+from redis.exceptions import RedisError
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
@@ -294,6 +295,28 @@ class LectureStatusTests(TestCase):
             self.lecture.error_message,
             "Transcription failed.",
         )
+
+    @patch(
+        "quizzes.views.enqueue_lecture_processing",
+        side_effect=RedisError("OOM command not allowed"),
+    )
+    def test_retry_when_redis_refuses_the_job(self, mock_enqueue):
+        # Redis can refuse the job (the stack runs it with noeviction). That is
+        # a queue outage too, so the lecture must go back to failed.
+        self.authenticate(self.professor)
+
+        self.lecture.status = "failed"
+        self.lecture.error_message = "Transcription failed."
+        self.lecture.save()
+
+        response = self.client.post(self.retry_url)
+
+        self.assertEqual(response.status_code, 503)
+
+        self.lecture.refresh_from_db()
+
+        self.assertEqual(self.lecture.status, "failed")
+        self.assertEqual(self.lecture.error_message, "Transcription failed.")
 
     @patch(
         "quizzes.views.enqueue_lecture_processing",

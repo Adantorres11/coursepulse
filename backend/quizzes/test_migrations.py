@@ -83,3 +83,49 @@ class MigrationBackfillTests(TestCase):
 
     def test_duplicate_cleanup_skips_deferred_checks_elsewhere(self):
         self.assertEqual(self.run_cleanup_on("sqlite"), [])
+
+
+class LectureStatusBackfillTests(TestCase):
+    def test_lectures_without_recordings_become_ready(self):
+        classroom = Classroom.objects.create(name="Any Class")
+        old = Lecture.objects.create(classroom=classroom, title="Old")
+        uploaded = Lecture.objects.create(
+            classroom=classroom,
+            title="Uploaded",
+            recording="lecture_recordings/talk.mp3",
+        )
+        migration = import_module(
+            "quizzes.migrations.0006_lecture_recording_lecture_status"
+        )
+
+        migration.mark_lectures_without_recordings_ready(Lecture)
+
+        old.refresh_from_db()
+        uploaded.refresh_from_db()
+        self.assertEqual(old.status, "ready")
+        self.assertEqual(uploaded.status, "pending")
+
+
+class PendingWithoutRecordingBackfillTests(TestCase):
+    def test_only_pending_lectures_without_recordings_become_ready(self):
+        classroom = Classroom.objects.create(name="Any Class")
+        old = Lecture.objects.create(classroom=classroom, title="Old")
+        uploaded = Lecture.objects.create(
+            classroom=classroom,
+            title="Uploaded",
+            recording="lecture_recordings/talk.mp3",
+        )
+        failed = Lecture.objects.create(
+            classroom=classroom, title="Failed", status="failed"
+        )
+        migration = import_module(
+            "quizzes.migrations.0012_mark_pending_lectures_without_recordings_ready"
+        )
+
+        migration.mark_pending_lectures_without_recordings_ready(Lecture)
+
+        for lecture in (old, uploaded, failed):
+            lecture.refresh_from_db()
+        self.assertEqual(old.status, "ready")
+        self.assertEqual(uploaded.status, "pending")
+        self.assertEqual(failed.status, "failed")

@@ -1,5 +1,6 @@
 from rest_framework import status
 from kombu.exceptions import OperationalError
+from redis.exceptions import RedisError
 from .pipeline import enqueue_lecture_processing
 from django.shortcuts import get_object_or_404
 from django.db.models import Count
@@ -205,7 +206,7 @@ class LectureRetryView(APIView):
 
         try:
             enqueue_lecture_processing(lecture.id)
-        except (ImportError, OperationalError):
+        except (ImportError, OperationalError, RedisError):
             Lecture.objects.filter(
                 pk=lecture.pk,
                 status="pending",

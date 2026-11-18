@@ -175,3 +175,15 @@ export interface ClassResults {
   students: ClassResultStudent[];
   lectures: ClassResultLecture[];
 }
+
+export interface ClassRosterStudent {
+  name: string;
+  joined_at: string;
+}
+
+export interface ProfessorLecture {
+  id: number;
+  title: string;
+  status: "pending" | "processing" | "ready" | "failed" | "published";
+  published_at: string | null;
+}

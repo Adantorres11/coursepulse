@@ -655,11 +655,50 @@ Errors:
 - 401: Missing or invalid authentication
 
 Transcription:
-- New lectures are saved with status "pending".
+- New lectures are saved with status "pending" and are not visible to students (published_at is null).
+- Status values are "pending", "processing", "ready", and "failed".
 - After the upload is saved, processing starts in the background.
 - If processing cannot start, the response is still 201 and status is "failed".
 - The status endpoint then gives the error_message "Couldn't start processing, try again."
 
+## GET /api/professor/classes/{id}/lectures/
+
+Returns all lectures belonging to a professor's class, including unpublished lectures.
+
+Authentication: Required (professor and class owner).
+
+Success: 200 OK
+
+Example response:
+
+```json
+[
+  {
+    "id": 2,
+    "title": "Introduction to AI",
+    "status": "published",
+    "published_at": "2026-11-16T18:00:00Z"
+  },
+  {
+    "id": 1,
+    "title": "Machine Learning Basics",
+    "status": "pending",
+    "published_at": null
+  }
+]
+```
+
+Rules:
+- Only the professor who owns the classroom can access its lectures.
+- Includes published and unpublished lectures.
+- Returns an empty array when the class has no lectures.
+- A published lecture is labeled "published". Otherwise the label is the lecture's processing status: "pending", "processing", "ready", or "failed".
+- Lectures made before uploads existed have no recording and are labeled "ready".
+
+Errors:
+- 401: Authentication required.
+- 403: User is not the classroom owner.
+- 404: Unknown classroom ID.
 
 ## GET /api/lectures/{id}/status/
 
