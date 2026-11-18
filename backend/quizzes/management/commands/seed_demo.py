@@ -84,12 +84,13 @@ class Command(BaseCommand):
         lecture, _ = Lecture.objects.get_or_create(
             classroom=classroom,
             title="Demo Lecture: Scrum and Git",
-            defaults={"published_at": timezone.now()},
+            defaults={"published_at": timezone.now(), "status": "ready"},
         )
 
-        if lecture.published_at is None:
-            lecture.published_at = timezone.now()
-            lecture.save(update_fields=["published_at"])
+        if lecture.published_at is None or lecture.status != "ready":
+            lecture.published_at = lecture.published_at or timezone.now()
+            lecture.status = "ready"
+            lecture.save(update_fields=["published_at", "status"])
 
         for position, question_data in enumerate(DEMO_QUESTIONS, start=1):
             Question.objects.update_or_create(

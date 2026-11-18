@@ -461,4 +461,3 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
 }
 
 export default ProfessorDashboard;
-
