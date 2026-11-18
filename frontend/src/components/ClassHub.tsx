@@ -405,7 +405,6 @@ export function ClassHub() {
               </div>
             )}
 
-            <div className="pt-4">
             {/* Upload Lecture Recording Section */}
             <div className="bg-[#111A30] border border-slate-800/90 rounded-2xl p-5 sm:p-6 shadow-lg">
               <UploadLecturePage overrideClassId={state.classInfo.id} />
