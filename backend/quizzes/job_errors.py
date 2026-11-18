@@ -24,6 +24,23 @@ DISK_FULL = "The server ran out of space. Try again later."
 QUEUE_FAILED = "Couldn't start processing, try again."
 HANDOFF_FAILED = "Couldn't start question generation, retry."
 UNEXPECTED = "Something went wrong. Try again."
+QUESTIONS_NO_KEY = "Server isn't set up for question generation."
+QUESTIONS_BAD_KEY = (
+    "The question generation key was rejected. Ask the site admin to check it."
+)
+QUESTIONS_NO_CREDITS = "Question generation credits ran out."
+QUESTIONS_TOO_EXPENSIVE = "This lecture is over the question generation cost limit."
+QUESTIONS_BUSY = "Question generation service is busy. Try again later."
+BAD_OUTPUT = "Couldn't read the generated questions. Try again."
+NO_CONCEPTS = "No course content was found in this transcript."
+TOO_FEW_QUESTIONS = "Only {count} usable questions were made. Try again."
+QUIZ_LOCKED = (
+    "This quiz is published or has student activity, so its questions were not changed."
+)
+NOTICE_SHORT = (
+    "Generated {count} questions (target {target}). Add more in review if needed."
+)
+NOTICE_KEPT = "Kept your {count} questions. No new questions were needed."
 
 
 class JobError(Exception):
