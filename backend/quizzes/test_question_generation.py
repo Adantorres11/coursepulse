@@ -32,9 +32,11 @@ from quizzes.question_testing import (
     bad,
     QuestionJobMixin,
     concept_payload,
+    default_model,
     make_question,
     ok,
     question_payload,
+    questions_reply,
 )
 from quizzes.testing import make_student
 
@@ -49,17 +51,6 @@ GENERATION_KEYS = {
     "model",
     "original",
 }
-
-
-def questions_reply(concept_id, numbers):
-    return ok(question_payload(*[make_question(concept_id, n) for n in numbers]))
-
-
-def default_model():
-    return FakeModel(
-        concepts=[ok(concept_payload("Alpha")), ok(concept_payload("Beta"))],
-        questions=[questions_reply("c1", range(4)), questions_reply("c2", range(4, 8))],
-    )
 
 
 def logistics(concept_id, n):

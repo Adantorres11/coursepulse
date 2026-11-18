@@ -8,8 +8,7 @@ from classrooms.models import Classroom
 from quizzes import job_errors, pipeline, tasks
 from quizzes.job_errors import TransientError
 from quizzes.models import Lecture
-from quizzes.question_testing import QuestionJobMixin
-from quizzes.test_question_generation import default_model
+from quizzes.question_testing import QuestionJobMixin, default_model
 from quizzes.transcription import hand_off
 
 

@@ -85,6 +85,18 @@ class FakeModel:
         return script.pop(0)
 
 
+def questions_reply(concept_id: str, numbers) -> Reply:
+    return ok(question_payload(*[make_question(concept_id, n) for n in numbers]))
+
+
+def default_model() -> "FakeModel":
+    """Two sections, concepts Alpha (c1) and Beta (c2), and four questions for each."""
+    return FakeModel(
+        concepts=[ok(concept_payload("Alpha")), ok(concept_payload("Beta"))],
+        questions=[questions_reply("c1", range(4)), questions_reply("c2", range(4, 8))],
+    )
+
+
 class QuestionJobMixin:
     """Patches ask with self.model and the lock with a fake that yields True. Creates self.classroom.
 
