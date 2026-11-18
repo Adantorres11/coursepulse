@@ -219,6 +219,26 @@ class CheckDraftTests(SimpleTestCase):
     def test_drops_duplicate_choices_after_normalizing(self):
         self.assertEqual(self.reason(choices=["Mutex", " mutex ", "b", "c"]), "duplicate_choices")
 
+    def test_code_style_choices_stay_distinct(self):
+        for choices in (["C++", "C", "C#", "Java"], ["[]", "{}", "()", "<>"]):
+            self.assertEqual(self.reason(choices=choices), "", choices)
+
+    def test_trailing_sentence_punctuation_is_ignored(self):
+        self.assertEqual(self.reason(choices=["Mutex.", "mutex", "b", "c"]), "duplicate_choices")
+
+    def test_hard_drop_phrase_must_sit_in_one_text(self):
+        choices = ["It said nothing", "It returned 0", "It crashed", "It hung"]
+        self.assertEqual(self.reason(prompt="What did the kernel return?", choices=choices), "")
+        self.assertEqual(
+            self.reason(prompt="What did the professor say about locks?"), "speaker_or_logistics"
+        )
+
+    def test_drops_each_logistics_word(self):
+        for word in ("due date", "midterm", "final exam", "attendance", "syllabus", "office hours", "extra credit"):
+            self.assertEqual(
+                self.reason(prompt=f"What is the {word} for this course?"), "speaker_or_logistics", word
+            )
+
     def test_drops_speaker_and_logistics(self):
         for prompt in (
             "What did the professor say about X?",
@@ -266,6 +286,17 @@ class QuestionSetTests(SimpleTestCase):
         near = accepted(prompt="Why does a mutex prevent a race condition today?", difficulty="hard")
         self.assertEqual(questions.add(near), "near_duplicate")
         self.assertEqual(len(questions.new), 1)
+
+    def test_same_answer_under_other_concept_is_not_duplicate(self):
+        questions = QuestionSet([])
+        questions.add(accepted())
+        self.assertEqual(questions.add(accepted(concept_id="c2")), "")
+
+    def test_gotcha_does_not_occupy_a_cell(self):
+        questions = QuestionSet([])
+        self.assertEqual(questions.add(accepted(gotcha=True)), "")
+        other = accepted(prompt="Which statement describes semaphores?", choices=["p", "q", "r", "s"])
+        self.assertEqual(questions.add(other), "")
 
     def test_grid_same_difficulty_full(self):
         questions = QuestionSet([])

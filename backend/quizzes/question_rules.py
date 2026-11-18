@@ -2,7 +2,6 @@
 
 import difflib
 import re
-import string
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -135,7 +134,7 @@ class Draft:
 
 
 def _normalize(text: str) -> str:
-    return " ".join(text.lower().split()).strip(string.punctuation + " ")
+    return " ".join(text.lower().split()).rstrip(".,;:!? ")
 
 
 def _has_shape(raw: dict) -> bool:
@@ -180,7 +179,7 @@ def _failure(raw: dict, concept_ids: set[str]) -> str:
         return "choice_reference"
     if raw["concept_id"] not in concept_ids:
         return "unknown_concept"
-    if _HARD_DROP.search(" \n ".join([prompt, *choices])):
+    if any(_HARD_DROP.search(text) for text in (prompt, *choices)):
         return "speaker_or_logistics"
     return ""
 
@@ -267,14 +266,12 @@ def section_quotas(needed: int, sections: list[Section], with_concepts: set[int]
     total_words = sum(s.words for s in eligible)
     if not eligible or needed <= 0:
         return quotas
-    if total_words == 0:
-        shares = {s.index: needed / len(eligible) for s in eligible}
-    else:
-        shares = {s.index: needed * s.words / total_words for s in eligible}
-    for index, share in shares.items():
-        quotas[index] = int(share)
+    weights = {s.index: s.words if total_words else 1 for s in eligible}
+    total = sum(weights.values())
+    remainders = {}
+    for index, weight in weights.items():
+        quotas[index], remainders[index] = divmod(needed * weight, total)
     left = needed - sum(quotas.values())
-    by_remainder = sorted(shares, key=lambda i: (-(shares[i] - int(shares[i])), i))
-    for index in by_remainder[:left]:
+    for index in sorted(remainders, key=lambda i: (-remainders[i], i))[:left]:
         quotas[index] += 1
     return quotas
