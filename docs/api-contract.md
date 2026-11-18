@@ -713,7 +713,8 @@ Success: 200 OK
   "id": 1,
   "status": "processing",
   "progress_message": "Transcribing part 3 of 7",
-  "error_message": ""
+  "error_message": "",
+  "notice": ""
 }
 ```
 
@@ -731,7 +732,8 @@ For a failed lecture:
   "id": 1,
   "status": "failed",
   "progress_message": "",
-  "error_message": "Something went wrong. Try again."
+  "error_message": "Something went wrong. Try again.",
+  "notice": ""
 }
 ```
 
@@ -739,6 +741,7 @@ Rules:
 - Only the professor who owns the lecture's classroom can access its status.
 - The error message is empty unless the lecture status is failed.
 - The progress message is empty unless the lecture status is processing.
+- The notice is empty unless the lecture status is ready and the server has something to tell the professor.
 - Every error message is one of the strings in the next list.
 
 Possible error messages:
@@ -762,6 +765,12 @@ Possible error messages:
 - "Couldn't start processing, try again."
 - "Couldn't start question generation, retry."
 - "Something went wrong. Try again."
+
+Every notice is one of the strings in the next list.
+
+Possible notices:
+- "Generated {count} questions (target {target}). Add more in review if needed."
+- "Kept your {count} questions. No new questions were needed."
 
 Errors:
 - 401: Missing or invalid authentication.
@@ -790,6 +799,7 @@ Rules:
 - Only failed lectures can be retried.
 - The lecture status is reset to pending.
 - The previous error message is cleared.
+- A retry clears the notice.
 - The lecture is submitted to the Celery processing pipeline.
 - If the pipeline is unavailable, the failed status and previous error message are restored.
 - A retry keeps the uploaded file.
