@@ -1,10 +1,10 @@
 import { useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { API_BASE_URL, getStoredToken } from "../lib/apiClient";
+import { isAllowedRecording, RECORDING_ACCEPT, uploadErrorMessage } from "../lib/lectureUpload";
 
 const MAX_FILE_SIZE_MB = 2000;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const ALLOWED_EXTENSIONS = [".mp3", ".mp4", ".wav", ".m4a", ".mov", ".webm", ".ogg", ".aac"];
 
 interface UploadLecturePageProps {
   overrideClassId?: string | number;
@@ -25,14 +25,6 @@ export function UploadLecturePage({ overrideClassId }: UploadLecturePageProps) {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  function isAudioOrVideo(selected: File): boolean {
-    if (selected.type.startsWith("audio/") || selected.type.startsWith("video/")) {
-      return true;
-    }
-    const lowerName = selected.name.toLowerCase();
-    return ALLOWED_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
-  }
-
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     setValidationError(null);
     setUploadError(null);
@@ -43,11 +35,11 @@ export function UploadLecturePage({ overrideClassId }: UploadLecturePageProps) {
       return;
     }
 
-    if (!isAudioOrVideo(selected)) {
+    if (!isAllowedRecording(selected.name)) {
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setValidationError(
-        `"${selected.name}" is not a supported file type. Please choose an audio or video recording (MP4, MOV, WebM, MP3, WAV, or M4A).`
+        `"${selected.name}" is not a supported file type. Please choose an audio or video recording (MP3, MP4, M4A, WAV, MOV, MKV, WebM, AVI, OGG, FLAC, or AAC).`
       );
       return;
     }
@@ -82,7 +74,7 @@ export function UploadLecturePage({ overrideClassId }: UploadLecturePageProps) {
 
     const formData = new FormData();
     formData.append("title", title.trim());
-    formData.append("file", file);
+    formData.append("recording", file);
 
     const xhr = new XMLHttpRequest();
     xhr.open(
@@ -108,7 +100,8 @@ export function UploadLecturePage({ overrideClassId }: UploadLecturePageProps) {
           const data = JSON.parse(xhr.responseText);
           const lectureId = data.id ?? data.lecture_id;
           if (lectureId != null) {
-            navigate(`/professor/class/${classId}/lectures/${lectureId}/status`);
+            // TODO(SCRUM-84): go to the lecture processing status page once it exists.
+            navigate(`/professor/class/${classId}`);
           } else {
             setUploadError("Upload completed, but no lecture ID was returned by the server.");
           }
@@ -116,17 +109,7 @@ export function UploadLecturePage({ overrideClassId }: UploadLecturePageProps) {
           setUploadError("Upload completed, but the server response was invalid.");
         }
       } else {
-        let message = `Upload failed (HTTP ${xhr.status}). Please try again.`;
-        try {
-          const errJson = JSON.parse(xhr.responseText);
-          if (typeof errJson.detail === "string") message = errJson.detail;
-          else if (typeof errJson.error === "string") message = errJson.error;
-          else if (Array.isArray(errJson.file) && errJson.file[0]) message = errJson.file[0];
-          else if (Array.isArray(errJson.title) && errJson.title[0]) message = errJson.title[0];
-        } catch {
-          // Keep fallback HTTP message
-        }
-        setUploadError(message);
+        setUploadError(uploadErrorMessage(xhr.status, xhr.responseText));
       }
     };
 
@@ -192,7 +175,7 @@ export function UploadLecturePage({ overrideClassId }: UploadLecturePageProps) {
             <input
               ref={fileInputRef}
               type="file"
-              accept="audio/*,video/*"
+              accept={RECORDING_ACCEPT}
               disabled={uploading}
               onChange={handleFileChange}
               className="hidden"
