@@ -98,24 +98,73 @@ The log shows three lines for each run of the sample task. The first says `Task 
 
 The worker does not reload code. After you change a task, run `docker compose restart worker`.
 
-`.env.example` lists the five `CELERY_*` variables and what each one does.
+`.env.example` lists the six `CELERY_*` variables and what each one does.
 
-### Planned lecture pipeline
+### Lecture pipeline
 
-This pipeline is planned. It is not built yet. These are the decisions for it:
+A lecture goes through two tasks in order: `transcribe_lecture(lecture_id)`, then `generate_questions(lecture_id)` (SCRUM-71). Each task takes only a lecture id and reads and writes the database. You can retry either task alone.
 
-1. Two tasks run in order: `transcribe_lecture(lecture_id)`, then `generate_questions(lecture_id)`.
-2. Each task takes only a lecture id and reads and writes the database. You can retry either task alone.
-3. The upload endpoint links the tasks after it saves the file, with the line below. A chain runs tasks one after another. `.si` stops the first task's return value from going to the second task.
-4. The job logic lives in plain functions. The Celery tasks only call them. The trigger can later move to AWS (S3, Lambda, SQS) without a rewrite.
-5. Whisper and the LLM sit behind small wrapper functions, so tests can replace them with fakes.
-6. `generate_questions` saves all questions in one database transaction. A transaction either saves everything or saves nothing, so a lecture never has a partial question set.
+How it runs:
+
+1. The upload endpoint saves the file. After the save commits, it queues `transcribe_lecture(lecture_id)`.
+2. The worker checks the file with ffprobe and turns it into small mono audio with ffmpeg.
+3. The worker splits audio longer than 10 minutes into 10-minute parts.
+4. The worker sends each part to Whisper, joins the parts, and saves the transcript.
+5. The worker then queues `generate_questions(lecture_id)`.
+
+The worker refuses recordings shorter than 10 seconds.
+
+The upload view queues the job with this line:
 
 ```python
-chain(transcribe_lecture.si(lecture.id), generate_questions.si(lecture.id)).delay()
+transaction.on_commit(lambda: start_lecture_processing(lecture.id))
 ```
 
+`on_commit` runs the function only after the database transaction saves. Without it, the worker could start before the lecture row exists.
+
+The job logic lives in plain functions. The Celery tasks only call them. The trigger can later move to AWS (S3, Lambda, SQS) without a rewrite. Whisper and the LLM sit behind small wrapper functions, so tests can replace them with fakes. `generate_questions` saves all questions in one database transaction. A transaction either saves everything or saves nothing, so a lecture never has a partial question set.
+
 The tickets are SCRUM-69 (upload), SCRUM-70 (transcription), SCRUM-71 (questions), and SCRUM-92 (pipeline tests).
+
+#### Setup
+
+Put your own key in `.env` as `OPENAI_API_KEY=...`. Never commit it. `CELERY_BROKER_URL` is now required in `.env`. If your `.env` is older, copy that line from `.env.example`, or Compose stops with an error. Then run:
+
+```bash
+docker compose up --build
+```
+
+The services now include `worker` (runs the tasks) and `beat` (runs the stuck lecture check every 5 minutes).
+
+#### Cost
+
+Whisper costs $0.006 per audio minute. A 75-minute lecture costs about $0.45. A 2-hour lecture costs about $0.72. Silence at the start and end is not sent. `TRANSCRIPTION_MAX_COST_USD` (default $2.00) refuses longer recordings. The worker log shows the minutes and the estimated cost for each lecture.
+
+#### Progress and errors
+
+`GET /api/lectures/{id}/status/` returns `status`, `progress_message`, and `error_message`.
+
+#### Retry
+
+To retry a failed lecture, call `POST /api/lectures/{id}/retry/`. The retry keeps the file and reuses finished parts. If the transcript is already saved, it skips Whisper.
+
+#### Logs
+
+To watch the worker, run `docker compose logs -f worker`. Each line has `lecture=`, `task=`, and `attempt=`.
+
+#### Settings
+
+Set these in `.env`. `.env.example` has the defaults.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `OPENAI_API_KEY` | empty | Your own OpenAI key. Set it only in `.env`. |
+| `TRANSCRIPTION_MAX_COST_USD` | `2.00` | The app refuses a lecture that costs more than this many US dollars. |
+| `TRANSCRIPTION_MAX_SECONDS` | `14400` | The app refuses audio longer than this many seconds (4 hours). |
+| `LECTURE_UPLOAD_MAX_BYTES` | `2147483648` | Largest upload in bytes (2 GB). |
+| `CELERY_WORKER_CONCURRENCY` | `2` | How many jobs one worker runs at the same time. |
+| `CELERY_TASK_TIME_LIMIT` | `3000` | Hard limit in seconds. The worker stops a task that runs longer. |
+| `CELERY_TASK_SOFT_TIME_LIMIT` | `2700` | Soft limit in seconds. The task gets an error it can catch to clean up. |
 
 ## Without Docker
 

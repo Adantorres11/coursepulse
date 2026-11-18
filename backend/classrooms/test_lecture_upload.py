@@ -2,6 +2,8 @@ import shutil
 import tempfile
 from unittest.mock import patch
 
+from kombu.exceptions import OperationalError
+
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -73,8 +75,9 @@ class LectureUploadTestBase(TestCase):
 
 
 class LectureUploadTests(LectureUploadTestBase):
+    @patch("classrooms.views.start_lecture_processing")
     @patch("django.db.models.fields.files.FieldFile.save")
-    def test_successful_upload(self, mock_save):
+    def test_successful_upload(self, mock_save, mock_start):
         self.authenticate(self.professor)
 
         response = self.client.post(
@@ -133,7 +136,10 @@ class LectureUploadTests(LectureUploadTestBase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
             response.data["recording"],
-            ["Only MP3, MP4, M4A, and WAV files are allowed."],
+            [
+                "Only MP3, MP4, M4A, WAV, MOV, MKV, WEBM, AVI, "
+                "OGG, FLAC, and AAC files are allowed."
+            ],
         )
         self.assertEqual(Lecture.objects.count(), 0)
 
@@ -164,11 +170,13 @@ class LectureUploadTests(LectureUploadTestBase):
         )
         self.assertEqual(Lecture.objects.count(), 0)
 
-    @override_settings(LECTURE_UPLOAD_MAX_BYTES=1000)
+    @override_settings(LECTURE_UPLOAD_MAX_BYTES=2 * 1024 * 1024)
     def test_oversized_file(self):
         self.authenticate(self.professor)
 
-        large_recording = self.recording(size=1001)
+        large_recording = self.recording(
+            size=2 * 1024 * 1024 + 1
+        )
 
         response = self.client.post(
             self.url,
@@ -180,6 +188,10 @@ class LectureUploadTests(LectureUploadTestBase):
         )
 
         self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            "File must be 2 MB or smaller.",
+            str(response.data),
+        )
         self.assertEqual(Lecture.objects.count(), 0)
 
     def test_unknown_class(self):
@@ -222,6 +234,108 @@ class LectureUploadTests(LectureUploadTestBase):
             ["Invalid audio or video file."],
         )
         self.assertEqual(Lecture.objects.count(), 0)
+
+    @patch("classrooms.views.start_lecture_processing")
+    @patch("django.db.models.fields.files.FieldFile.save")
+    def test_upload_queues_processing_after_commit(self, mock_save, mock_start):
+        self.authenticate(self.professor)
+
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            response = self.client.post(
+                self.url,
+                {"title": "Intro", "recording": self.recording()},
+                format="multipart",
+            )
+
+        mock_start.assert_not_called()
+
+        for callback in callbacks:
+            callback()
+
+        mock_start.assert_called_once_with(response.data["id"])
+
+    @patch(
+        "quizzes.pipeline.enqueue_lecture_processing",
+        side_effect=OperationalError("down"),
+    )
+    @patch("django.db.models.fields.files.FieldFile.save")
+    def test_upload_when_queue_is_down_saves_and_fails_cleanly(
+        self, mock_save, mock_enqueue
+    ):
+        self.authenticate(self.professor)
+
+        with self.assertLogs("quizzes.pipeline", level="WARNING"):
+            with patch(
+                "classrooms.views.transaction.on_commit",
+                side_effect=lambda fn: fn(),
+            ):
+                response = self.client.post(
+                    self.url,
+                    {"title": "Intro", "recording": self.recording()},
+                    format="multipart",
+                )
+
+        self.assertEqual(response.status_code, 201)
+
+        lecture = Lecture.objects.get(id=response.data["id"])
+
+        self.assertEqual(lecture.status, "failed")
+        self.assertEqual(
+            lecture.error_message,
+            "Couldn't start processing, try again.",
+        )
+        self.assertEqual(response.data["status"], "failed")
+
+    @patch("classrooms.views.start_lecture_processing")
+    @patch("django.db.models.fields.files.FieldFile.save")
+    def test_accepts_new_formats_with_valid_signatures(self, mock_save, mock_start):
+        self.authenticate(self.professor)
+
+        samples = {
+            "a.MOV": b"\x00\x00\x00\x14ftypqt  ",
+            "a.mkv": b"\x1aE\xdf\xa3" + b"x" * 20,
+            "a.webm": b"\x1aE\xdf\xa3" + b"x" * 20,
+            "a.avi": b"RIFF\x00\x00\x00\x00AVI LIST",
+            "a.ogg": b"OggS" + b"x" * 20,
+            "a.flac": b"fLaC" + b"x" * 20,
+            "a.aac": b"\xff\xf1" + b"x" * 20,
+            "a.M4A": b"\x00\x00\x00\x18ftypM4A ",
+        }
+
+        for name, content in samples.items():
+            with self.subTest(name=name):
+                response = self.client.post(
+                    self.url,
+                    {
+                        "title": name,
+                        "recording": SimpleUploadedFile(
+                            name, content, content_type="audio/mpeg"
+                        ),
+                    },
+                    format="multipart",
+                )
+
+                self.assertEqual(response.status_code, 201)
+
+    @patch("classrooms.views.start_lecture_processing")
+    @patch("django.db.models.fields.files.FieldFile.save")
+    def test_accepts_odd_browser_content_type(self, mock_save, mock_start):
+        self.authenticate(self.professor)
+
+        response = self.client.post(
+            self.url,
+            {
+                "title": "Odd type",
+                "recording": SimpleUploadedFile(
+                    "lecture.webm",
+                    b"\x1aE\xdf\xa3" + b"x" * 20,
+                    content_type="application/octet-stream",
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201)
 
 
 class LectureUploadSavesFileTests(LectureUploadTestBase):

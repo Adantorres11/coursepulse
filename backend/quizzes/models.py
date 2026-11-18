@@ -34,11 +34,48 @@ class Lecture(models.Model):
     )
     published_at = models.DateTimeField(null=True, blank=True)
 
+    transcript = models.TextField(blank=True, default="")
+    raw_transcript = models.JSONField(null=True, blank=True)
+    transcript_language = models.CharField(max_length=32, blank=True, default="")
+    # The recording.name the transcript came from.
+    transcript_source = models.CharField(max_length=255, blank=True, default="")
+    audio_seconds = models.FloatField(null=True, blank=True)
+    progress_message = models.CharField(max_length=255, blank=True, default="")
+    last_progress_at = models.DateTimeField(null=True, blank=True)
+    # Celery task id that owns the current stage; "" when no stage owns it.
+    job_token = models.CharField(max_length=64, blank=True, default="")
+
     class Meta:
         ordering = ["-published_at", "-id"]
 
     def __str__(self):
         return self.title
+
+
+class TranscriptChunk(models.Model):
+    lecture = models.ForeignKey(
+        Lecture,
+        on_delete=models.CASCADE,
+        related_name="transcript_chunks",
+    )
+    index = models.PositiveIntegerField()
+    start_seconds = models.FloatField()
+    end_seconds = models.FloatField()
+    source_name = models.CharField(max_length=255)
+    text = models.TextField(blank=True, default="")
+    raw = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ["index"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["lecture", "index"],
+                name="unique_transcript_chunk_per_lecture",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.lecture_id} chunk {self.index}"
 
 
 class Question(models.Model):

@@ -155,6 +155,11 @@ class LectureStatusView(APIView):
                 if lecture.status == "failed"
                 else ""
             ),
+            "progress_message": (
+                lecture.progress_message
+                if lecture.status == "processing"
+                else ""
+            ),
         })
 
 
@@ -190,6 +195,7 @@ class LectureRetryView(APIView):
         ).update(
             status="pending",
             error_message="",
+            last_progress_at=timezone.now(),
         )
 
         if not updated:

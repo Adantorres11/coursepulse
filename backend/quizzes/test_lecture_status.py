@@ -92,6 +92,31 @@ class LectureStatusTests(TestCase):
         self.assertEqual(response.data["status"], "processing")
         self.assertEqual(response.data["error_message"], "")
 
+    def test_processing_status_includes_progress_message(self):
+        self.authenticate(self.professor)
+
+        self.lecture.status = "processing"
+        self.lecture.progress_message = "Transcribing part 3 of 7"
+        self.lecture.save()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(
+            response.data["progress_message"],
+            "Transcribing part 3 of 7",
+        )
+
+    def test_progress_message_empty_when_not_processing(self):
+        self.authenticate(self.professor)
+
+        self.lecture.status = "failed"
+        self.lecture.progress_message = "Transcribing part 3 of 7"
+        self.lecture.save()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.data["progress_message"], "")
+
     def test_ready_status(self):
         self.authenticate(self.professor)
 
@@ -172,6 +197,19 @@ class LectureStatusTests(TestCase):
         self.assertEqual(self.lecture.error_message, "")
 
         mock_enqueue.assert_called_once_with(self.lecture.id)
+
+    @patch("quizzes.views.enqueue_lecture_processing")
+    def test_retry_sets_last_progress_at(self, mock_enqueue):
+        self.authenticate(self.professor)
+
+        self.lecture.status = "failed"
+        self.lecture.save()
+
+        self.client.post(self.retry_url)
+
+        self.lecture.refresh_from_db()
+
+        self.assertIsNotNone(self.lecture.last_progress_at)
 
     @patch("quizzes.views.enqueue_lecture_processing")
     def test_cannot_retry_non_failed_lecture(self, mock_enqueue):
