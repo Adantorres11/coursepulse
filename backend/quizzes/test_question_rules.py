@@ -14,6 +14,7 @@ from .question_rules import (
     balance_positions,
     check_draft,
     concept_ids_for,
+    difficulty_split,
     is_untouched,
     merge_concepts,
     mix_warnings,
@@ -533,6 +534,31 @@ class MixWarningTests(SimpleTestCase):
 
     def test_mix_warnings_empty(self):
         self.assertEqual(mix_warnings([]), [])
+
+
+class DifficultySplitTests(SimpleTestCase):
+    def test_exact_splits(self):
+        expected = {
+            1: {"easy": 0, "medium": 1, "hard": 0},
+            2: {"easy": 1, "medium": 1, "hard": 0},
+            3: {"easy": 1, "medium": 1, "hard": 1},
+            5: {"easy": 1, "medium": 3, "hard": 1},
+            6: {"easy": 2, "medium": 3, "hard": 1},
+            7: {"easy": 2, "medium": 4, "hard": 1},
+            10: {"easy": 3, "medium": 5, "hard": 2},
+        }
+        for count, split in expected.items():
+            with self.subTest(count=count):
+                self.assertEqual(difficulty_split(count), split)
+
+    def test_split_sums_to_count_with_each_level_from_three(self):
+        for count in range(0, 41):
+            with self.subTest(count=count):
+                split = difficulty_split(count)
+                self.assertEqual(list(split), ["easy", "medium", "hard"])
+                self.assertEqual(sum(split.values()), count)
+                if count >= 3:
+                    self.assertTrue(all(split.values()))
 
 
 class UntouchedTests(SimpleTestCase):

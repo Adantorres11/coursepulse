@@ -387,6 +387,60 @@ class RunQuestionGenerationTests(QuestionJobMixin, TestCase):
             self.assertLess(text.index("Existing question 1?"), text.index("Questions to write:"))
             self.assertLess(text.index("FULL CONCEPT LIST"), text.index("Existing question 1?"))
 
+    def test_question_calls_ask_for_exact_difficulty_counts(self):
+        lecture = self.make_lecture()
+
+        self.run_job(lecture)
+
+        for call in self.stage("questions"):
+            self.assertEqual(asked_count(call), 4)
+            self.assertIn("Write exactly 4 questions: 1 easy, 2 medium, 1 hard.", call["user_input"])
+            self.assertNotIn("30%", call["user_input"])
+
+    def test_later_section_lists_earlier_sections_questions(self):
+        lecture = self.make_lecture()
+
+        self.run_job(lecture)
+
+        first, second = self.stage("questions")
+        heading = "QUESTIONS FROM OTHER SECTIONS"
+        self.assertNotIn(heading, first["user_input"])
+        text = second["user_input"]
+        for n in range(4):
+            question = make_question("c1", n)
+            self.assertIn(f"- {question['prompt']} Answer: {question['choices'][0]}", text)
+        # The per-call part comes after the cached prefix.
+        self.assertLess(text.index("FULL CONCEPT LIST"), text.index(heading))
+        self.assertLess(text.index(heading), text.index("SECTION TRANSCRIPT"))
+        self.assertIn("even under a different concept", text)
+
+    def test_summary_counts_longest_correct_answers(self):
+        def long_first(n):
+            return make_question(
+                "c1", n, choices=[f"A much longer and fuller claim {n}", "No a", "No b", "No c"]
+            )
+
+        self.model = FakeModel(
+            two_concepts(),
+            [
+                ok(question_payload(*[long_first(n) for n in range(4)])),
+                questions_reply("c2", range(4, 8)),
+            ],
+        )
+        lecture = self.make_lecture()
+
+        with self.assertLogs("quizzes", "INFO") as logs:
+            self.assertTrue(self.run_job(lecture))
+
+        summary = [line for line in logs.output if "cost_usd=" in line][0]
+        generated = lecture.questions.count()
+        longest = sum(
+            1 for q in lecture.questions.all()
+            if q.choices[q.correct_index].startswith("A much longer and fuller claim")
+        )
+        self.assertGreater(longest, 0)
+        self.assertIn(f"longest_correct={longest}/{generated}", summary)
+
     def test_logs_have_no_question_text(self):
         lecture = self.make_lecture()
 
@@ -501,6 +555,24 @@ class RecoveryAndErrorTests(QuestionJobMixin, TestCase):
         self.assertEqual(len(self.section_calls(1)), 1)
         self.assertEqual(lecture.status, "ready")
         self.assertEqual(lecture.questions.count(), 6)
+
+    def test_replacement_round_lists_other_sections_questions(self):
+        self.model = FakeModel(
+            two_concepts(),
+            [
+                mixed_reply("c1", [0], [1, 2, 3]),
+                questions_reply("c2", range(4, 8)),
+                questions_reply("c1", [8, 9]),
+            ],
+        )
+        lecture = self.make_lecture()
+
+        self.assertTrue(self.run_job(lecture))
+
+        text = self.section_calls(0)[1]["user_input"]
+        self.assertIn("QUESTIONS FROM OTHER SECTIONS", text)
+        self.assertIn(make_question("c2", 4)["prompt"], text)
+        self.assertIn("Write exactly 2 questions: 1 easy, 1 medium, 0 hard.", text)
 
     def test_no_second_replacement_round(self):
         self.model = FakeModel(

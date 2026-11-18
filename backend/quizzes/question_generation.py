@@ -54,7 +54,9 @@ from .question_rules import (
     balance_positions,
     check_draft,
     concept_ids_for,
+    difficulty_split,
     is_untouched,
+    longest_correct_count,
     merge_concepts,
     mix_warnings,
     order_drafts,
@@ -71,7 +73,6 @@ STAGE2_EFFORT = "medium"
 STAGE1_MAX_OUTPUT = 6000
 STAGE2_MAX_OUTPUT = 12000
 GOTCHA_MAX_OUTPUT = 12000
-DIFFICULTY_TARGET = "about 30% easy, 50% medium, 20% hard, at least one of each"
 
 
 @dataclass
@@ -91,6 +92,7 @@ class _Run:
     cost: float = 0.0
     kept: int = 0
     gotchas: int = 0
+    longest_correct: int = 0
     drops: Counter = field(default_factory=Counter)
 
     def summary(self, generated: int) -> str:
@@ -102,6 +104,7 @@ class _Run:
             f"cached_tokens={self.cached_tokens} output_tokens={self.output_tokens} "
             f"cost_usd={self.cost:.4f} seconds={time.monotonic() - self.started:.1f} "
             f"kept={self.kept} generated={generated} gotchas={self.gotchas} "
+            f"longest_correct={self.longest_correct}/{generated} "
             f"drops={drops or 'none'}"
         )
 
@@ -242,6 +245,14 @@ def _question_lines(drafts: list[Draft]) -> list[str]:
     ]
 
 
+def _difficulty_line(count: int) -> str:
+    split = difficulty_split(count)
+    return (
+        f"Write exactly {count} questions: {split['easy']} easy, "
+        f"{split['medium']} medium, {split['hard']} hard."
+    )
+
+
 def _question_input(
     concept_text: str,
     kept: list[Draft],
@@ -249,12 +260,20 @@ def _question_input(
     section: Section,
     count: int,
     accepted_here: list[Draft],
+    accepted_elsewhere: list[Draft],
 ) -> str:
     # The concept list and kept questions are the same in every call, so they go first
     # for prompt caching.
     parts = ["FULL CONCEPT LIST", concept_text]
     if kept:
         parts += ["", "QUESTIONS THAT ALREADY EXIST (do not repeat them)", *_question_lines(kept)]
+    if accepted_elsewhere:
+        parts += [
+            "",
+            "QUESTIONS FROM OTHER SECTIONS (do not ask the same thing again in other words, "
+            "even under a different concept)",
+            *[f"- {d.prompt} Answer: {d.choices[d.correct_index]}" for d in accepted_elsewhere],
+        ]
     parts += ["", f"Concepts from this section: {', '.join(marked)}"]
     if accepted_here:
         parts += [
@@ -263,7 +282,7 @@ def _question_input(
         ]
     parts += [
         f"Questions to write: {count}",
-        f"Difficulty target: {DIFFICULTY_TARGET}",
+        _difficulty_line(count),
         "",
         "SECTION TRANSCRIPT",
         section.text,
@@ -339,13 +358,21 @@ def _generate(run: _Run) -> bool:
     asked = [s for s in sections if quotas[s.index] > 0]
 
     def write_questions(section: Section, count: int, accepted_here: list[Draft]) -> None:
+        # Sections run in lecture order, so in the first pass "other" means earlier sections.
+        elsewhere = [d for d in accepted.new if d.section_index != section.index]
         data = _call(
             run,
             schema_name="questions",
             schema=QUESTION_SCHEMA,
             instructions=QUESTION_INSTRUCTIONS,
             user_input=_question_input(
-                concept_text, kept_drafts, marked[section.index], section, count, accepted_here
+                concept_text,
+                kept_drafts,
+                marked[section.index],
+                section,
+                count,
+                accepted_here,
+                elsewhere,
             ),
             effort=STAGE2_EFFORT,
             max_output_tokens=STAGE2_MAX_OUTPUT,
@@ -392,6 +419,7 @@ def _generate(run: _Run) -> bool:
     drafts = trim(accepted.new, needed, quotas)
     drafts = balance_positions(drafts, seed=lecture_id)
     drafts = order_drafts(drafts, concepts)
+    run.longest_correct = longest_correct_count(drafts)
     for warning in mix_warnings(drafts):
         log.warning("question mix warning=%s", warning)
 

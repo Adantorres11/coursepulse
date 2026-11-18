@@ -14,6 +14,7 @@ NEAR_DUPLICATE_RATIO = 0.8
 MAX_PROMPT_CHARS = 500
 MAX_CHOICE_CHARS = 200
 DIFFICULTIES = ("easy", "medium", "hard")
+DIFFICULTY_SHARES = {"easy": 3, "medium": 5, "hard": 2}  # tenths: a 30/50/20 mix
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 _WORD = re.compile(r"[^\W_]+")
@@ -396,11 +397,35 @@ def order_drafts(drafts: list[Draft], concepts: list[Concept]) -> list[Draft]:
     )
 
 
-def mix_warnings(drafts: list[Draft]) -> list[str]:
-    if not drafts:
-        return []
-    warnings = []
-    longest = sum(
+def difficulty_split(count: int) -> dict[str, int]:
+    """Split count questions into easy, medium, and hard counts that sum to count.
+
+    1. Give each level its 30/50/20 share of count, rounded down.
+    2. Hand out the questions left over one at a time, largest remainder first. A tie goes
+       to the level with the larger share (medium, then easy, then hard).
+    3. Each level that must have a question but has none takes one from the level with
+       the most questions. From 3 questions every level needs one. With 2, medium needs one.
+    So 1 is 0/1/0, 2 is 1/1/0, 3 is 1/1/1, 5 is 1/3/1, 6 is 2/3/1, 7 is 2/4/1, 10 is 3/5/2.
+    """
+    total = sum(DIFFICULTY_SHARES.values())
+    split, remainders = {}, {}
+    for level, share in DIFFICULTY_SHARES.items():
+        split[level], remainders[level] = divmod(count * share, total)
+    left = count - sum(split.values())
+    by_remainder = sorted(DIFFICULTIES, key=lambda l: (-remainders[l], -DIFFICULTY_SHARES[l]))
+    for level in by_remainder[:left]:
+        split[level] += 1
+    required = DIFFICULTIES if count >= 3 else ("medium",) if count == 2 else ()
+    for level in required:
+        if split[level] == 0:
+            split[max(DIFFICULTIES, key=lambda l: split[l])] -= 1
+            split[level] += 1
+    return split
+
+
+def longest_correct_count(drafts: list[Draft]) -> int:
+    """How many drafts have a correct answer strictly longer than every wrong choice."""
+    return sum(
         1
         for d in drafts
         if all(
@@ -409,6 +434,13 @@ def mix_warnings(drafts: list[Draft]) -> list[str]:
             if i != d.correct_index
         )
     )
+
+
+def mix_warnings(drafts: list[Draft]) -> list[str]:
+    if not drafts:
+        return []
+    warnings = []
+    longest = longest_correct_count(drafts)
     if longest / len(drafts) > 0.4:
         warnings.append("longest_correct")
     present = {d.difficulty for d in drafts}
