@@ -371,6 +371,8 @@ def _generate(run: _Run) -> bool:
         )
         first_section = {c.id: c.section_index for c in concepts}
         for raw in data["questions"]:
+            if isinstance(raw, dict):
+                raw = {**raw, "gotcha": True}  # every draft from this pass is a gotcha
             concept_id = raw.get("concept_id") if isinstance(raw, dict) else None
             section_index = first_section.get(concept_id, -1) if isinstance(concept_id, str) else -1
             _accept(run, accepted, raw, concept_ids, section_index)

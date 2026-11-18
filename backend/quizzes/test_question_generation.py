@@ -21,6 +21,7 @@ from quizzes.job_errors import (
 )
 from quizzes.jobs import heartbeat as real_heartbeat
 from quizzes.models import Attempt, Lecture, Question
+from quizzes.question_client import Reply, Usage
 from quizzes.question_prompts import GOTCHA_INSTRUCTIONS, QUESTION_INSTRUCTIONS
 from quizzes.question_rules import original_of
 from quizzes.question_testing import (
@@ -347,9 +348,10 @@ class RunQuestionGenerationTests(QuestionJobMixin, TestCase):
         old = self.add_question(lecture, 1, position=0)
 
         def take_over(lecture_id, token, message):
-            if message == "Saving questions":
-                Lecture.objects.filter(pk=lecture_id).update(job_token="other")
             real_heartbeat(lecture_id, token, message)
+            if message == "Saving questions":
+                # After the last heartbeat, so only the check inside the save can see it.
+                Lecture.objects.filter(pk=lecture_id).update(job_token="other")
 
         with mock.patch("quizzes.question_generation.heartbeat", side_effect=take_over):
             self.assertFalse(self.run_job(lecture))
@@ -554,6 +556,22 @@ class RecoveryAndErrorTests(QuestionJobMixin, TestCase):
         self.assertEqual(sum(q.generation["gotcha"] is True for q in questions), 3)
         self.assertTrue(any("gotchas=3" in line for line in logs.output))
 
+    def test_gotcha_drafts_are_always_tagged(self):
+        # n=30 has the same concept, pattern, and difficulty as the accepted n=0.
+        untagged = ok(question_payload(
+            *[make_question("c1", n, gotcha=False) for n in (30, 40, 50)]
+        ))
+        self.model = self.short_after_replacement(untagged)
+        lecture = self.make_lecture()
+
+        self.assertTrue(self.run_job(lecture))
+
+        questions = list(lecture.questions.all())
+        self.assertEqual(len(questions), 6)
+        gotchas = [q for q in questions if q.generation["gotcha"] is True]
+        self.assertEqual(len(gotchas), 3)
+        self.assertIn(make_question("c1", 30)["prompt"], [q.prompt for q in gotchas])
+
     def test_gotcha_pass_asks_for_gap_to_target(self):
         self.model = self.short_after_replacement(gotcha_reply("c1", [11, 12, 13]))
         lecture = self.make_lecture()
@@ -591,10 +609,19 @@ class RecoveryAndErrorTests(QuestionJobMixin, TestCase):
             ],
         )
         lecture = self.make_lecture()
+        values = {
+            "prompt": "Old draft?", "choices": ["r", "w1", "w2", "w3"],
+            "correct_index": 0, "difficulty": "easy",
+        }
+        old = Question.objects.create(
+            lecture=lecture, generation={"original": original_of(**values)}, **values
+        )
 
         self.assertFalse(self.run_job(lecture))
 
-        self.assert_failed(lecture, "Only 1 usable questions were made. Try again.")
+        self.assertEqual(lecture.status, "failed")
+        self.assertEqual(lecture.error_message, "Only 1 usable questions were made. Try again.")
+        self.assertEqual(list(lecture.questions.values_list("id", flat=True)), [old.id])
 
     def test_kept_drop_during_skip_uses_short_notice(self):
         lecture = self.make_lecture()
@@ -636,6 +663,17 @@ class RecoveryAndErrorTests(QuestionJobMixin, TestCase):
         self.model = FakeModel(
             [ok(concept_payload("Alpha"), output=30_000), ok(concept_payload("Beta"))], []
         )
+        lecture = self.make_lecture()
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assert_failed(lecture, QUESTIONS_TOO_EXPENSIVE)
+        self.assertEqual(len(self.model.calls), 1)
+
+    @override_settings(QUESTION_MAX_COST_USD=0.01)
+    def test_cost_of_bad_reply_blocks_reask(self):
+        expensive_bad = Reply(None, Usage(1000, 0, 30_000), "bad_json")
+        self.model = FakeModel([expensive_bad, *two_concepts()], [])
         lecture = self.make_lecture()
 
         self.assertFalse(self.run_job(lecture))
