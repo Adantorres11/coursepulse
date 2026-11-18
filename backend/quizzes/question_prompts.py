@@ -120,6 +120,8 @@ Drop everything else:
 
 When a story or example illustrates a course concept, keep the concept and drop the story. Describe the concept in general terms, not as an event in the story.
 
+Skip descriptions of specific example products, sample apps, past student projects, or demos when they are only examples. If an example teaches a general idea of the course, extract that general idea, not the features of the example.
+
 For each concept, fill every field:
 - name: a short name for the concept, as a textbook would name it.
 - summary: one or two sentences that say what it is.
@@ -142,6 +144,7 @@ Content:
 - Questions and choices never mention the professor, instructor, lecturer, or speaker. Never ask "What did the professor say..." or use the words "said", "mentioned", "the lecture", "this lecture", "in class", or "this class".
 - Never ask about logistics, homework, due dates, exams, grading, attendance, the syllabus, announcements, stories, jokes, or small talk.
 - When a concept comes from a story or example, ask about the concept in neutral wording. Do not refer to the story or the people in it.
+- Every question must stand alone. Never write 'described', 'stated', 'mentioned', 'discussed', 'shown', 'the example above', 'in this lecture', 'in class', or similar words that point back to the lecture. Give the needed context inside the question.
 - Every question must be answerable from the transcript alone. Do not depend on outside knowledge. Do not invent facts.
 - Each question tests one concept. Set concept_id to the id of that concept, taken from the given concept list. Never invent an id.
 
@@ -149,7 +152,7 @@ Choices:
 - Give exactly 4 choices. Exactly one choice is correct, and an expert would agree it is the only correct one. Set correct_index to its position, from 0 to 3.
 - Never use "all of the above" or "none of the above".
 - A choice never refers to other choices by letter or position. Do not write "A and B", "both of the above", "options 1 and 3", or "choice C". The choices are shuffled later.
-- Make the choices similar in length, grammar, and detail. Do not make the correct answer the longest choice.
+- Write the correct answer and the wrong choices in the same style and about the same length. In most questions at least one wrong choice must be as long and as specific as the correct answer. Never make the correct answer the only long, detailed, or hedged choice.
 - Keep the prompt under 500 characters and each choice under 200 characters. All 4 choices must be different.
 - Every wrong choice must be plausible to a student who half understands the concept. Build each wrong choice from one of these distractor types:
   - wrong_mechanism: a plausible but wrong explanation of how or why it works.
@@ -175,7 +178,7 @@ Aim for roughly half recall questions (purpose, completion, fill_blank, and simp
 Difficulty. Set difficulty to one of:
 - easy: recall of one fact, definition, or term that the transcript states directly.
 - medium: understanding. Explain, apply, or compare using one concept, or recognize it in a new example.
-- hard: reasoning. Combine two or more facts or concepts, predict a consequence, or reject distractors that are close to correct. Hard questions may connect concepts from different sections.
+- hard: reasoning. Answering means connecting two or more ideas, following a process step by step, or predicting what changes when something is changed. Its wrong choices are close to correct. Hard questions may connect concepts from different sections.
 
 Reason: set reason to one line that says why the correct choice is correct.
 """
@@ -184,11 +187,11 @@ QUESTION_INSTRUCTIONS = (
     """\
 You write multiple-choice quiz questions that help university students practice a lecture's course concepts. A student must understand the concept to answer. A student who only matches keywords from the lecture must not be able to pass.
 
-The input gives you the full concept list for the whole lecture, with ids. The concepts from this section are marked. It also gives you the section transcript, the number of questions to write, and the difficulty target. If the input lists questions that already exist, do not repeat them or ask the same thing in other words.
+The input gives you the full concept list for the whole lecture, with ids. The concepts from this section are marked. It also gives you the section transcript and the exact number of easy, medium, and hard questions to write. If the input lists questions that already exist, do not repeat them or ask the same thing in other words. Do not write a question whose correct answer is the same idea as any listed existing question, even if it is about a different concept or uses different words.
 
 Write the requested number of questions. Base them mainly on the marked concepts of this section. A hard question may also use concepts from the full list. Spread the questions across the marked concepts, and give more questions to the concepts the section explains in more depth. Set gotcha to false on every question.
 
-Aim for a loose 30/50/20 mix: about 30% easy, 50% medium, and 20% hard. Include at least one question of each difficulty. The mix is a target, not a strict rule.
+Follow the exact counts given in the input for easy, medium, and hard questions. The counts come from a 30/50/20 mix: about 30% easy, 50% medium, and 20% hard. Set difficulty honestly. Do not label a recall question as hard to meet a count; write a real hard question instead.
 
 """
     + _QUESTION_RULES

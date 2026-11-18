@@ -3,6 +3,7 @@ from django.test import SimpleTestCase, override_settings
 from .question_prompts import (
     CONCEPT_INSTRUCTIONS,
     CONCEPT_SCHEMA,
+    GOTCHA_INSTRUCTIONS,
     QUESTION_INSTRUCTIONS,
     QUESTION_SCHEMA,
 )
@@ -93,6 +94,25 @@ class InstructionTests(SimpleTestCase):
         self.assertIn("30/50/20", QUESTION_INSTRUCTIONS)
         self.assertIn("logistics", CONCEPT_INSTRUCTIONS)
         self.assertIn("stories", CONCEPT_INSTRUCTIONS)
+
+    def test_both_question_instructions_carry_the_wording_rules(self):
+        for instructions in (QUESTION_INSTRUCTIONS, GOTCHA_INSTRUCTIONS):
+            with self.subTest(instructions=instructions[:30]):
+                self.assertIn("about the same length", instructions)
+                self.assertIn("as long and as specific as the correct answer", instructions)
+                self.assertIn("only long, detailed, or hedged choice", instructions)
+                self.assertIn("must stand alone", instructions)
+                self.assertIn("'described', 'stated'", instructions)
+                self.assertIn("connecting two or more ideas", instructions)
+
+    def test_question_instructions_ask_for_exact_counts_and_no_repeats(self):
+        self.assertIn("exact counts", QUESTION_INSTRUCTIONS)
+        self.assertIn("same idea as any listed existing question", QUESTION_INSTRUCTIONS)
+        self.assertIn("even if it is about a different concept", QUESTION_INSTRUCTIONS)
+
+    def test_concept_instructions_skip_example_products(self):
+        self.assertIn("example products", CONCEPT_INSTRUCTIONS)
+        self.assertIn("extract that general idea", CONCEPT_INSTRUCTIONS)
 
 
 class TargetCountTests(SimpleTestCase):
