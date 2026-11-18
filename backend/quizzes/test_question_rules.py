@@ -403,19 +403,41 @@ def make_draft(prompt="Q?", correct_index=0, difficulty="medium", concept_id="c1
 class TrimTests(SimpleTestCase):
     def test_trim_noop_when_under(self):
         drafts = [make_draft(f"q{i}") for i in range(5)]
-        self.assertEqual(trim(drafts, 6), drafts)
+        self.assertEqual(trim(drafts, 6, {0: 5}), drafts)
 
-    def test_trim_removes_from_biggest_section_last_first(self):
+    def test_trim_removes_from_most_surplus_section_last_first(self):
         drafts = [make_draft(f"s0-{i}", section_index=0) for i in range(4)]
         drafts += [make_draft(f"s1-{i}", section_index=1) for i in range(2)]
-        result = trim(drafts, 5)
+        result = trim(drafts, 5, {0: 3, 1: 2})
         self.assertEqual(len(result), 5)
         self.assertNotIn("s0-3", [d.prompt for d in result])
         self.assertEqual(len(drafts), 6)
 
     def test_trim_tie_takes_higher_section_first(self):
         drafts = [make_draft("a", section_index=0), make_draft("b", section_index=1)]
-        self.assertEqual([d.prompt for d in trim(drafts, 1)], ["a"])
+        self.assertEqual([d.prompt for d in trim(drafts, 1, {0: 0, 1: 0})], ["a"])
+
+    def test_trim_cuts_surplus_not_size(self):
+        drafts = [make_draft(f"s0-{i}", section_index=0) for i in range(9)]
+        drafts += [make_draft(f"s1-{i}", section_index=1) for i in range(5)]
+        drafts += [make_draft(f"s2-{i}", section_index=2) for i in range(5)]
+        result = trim(drafts, 16, {0: 8, 1: 4, 2: 4})
+        counts = [sum(d.section_index == s for d in result) for s in range(3)]
+        self.assertEqual(counts, [8, 4, 4])
+        self.assertNotIn("s0-8", [d.prompt for d in result])
+
+    def test_trim_keeps_biggest_section_at_quota(self):
+        drafts = [make_draft(f"s0-{i}", section_index=0) for i in range(5)]
+        drafts += [make_draft(f"s1-{i}", section_index=1) for i in range(3)]
+        result = trim(drafts, 7, {0: 5, 1: 2})
+        self.assertEqual([d.prompt for d in result if d.section_index == 0], [f"s0-{i}" for i in range(5)])
+        self.assertNotIn("s1-2", [d.prompt for d in result])
+
+    def test_trim_counts_section_without_quota_as_zero(self):
+        drafts = [make_draft(f"s0-{i}", section_index=0) for i in range(3)]
+        drafts.append(make_draft("extra", section_index=4))
+        result = trim(drafts, 3, {0: 3})
+        self.assertEqual([d.prompt for d in result], ["s0-0", "s0-1", "s0-2"])
 
 
 class BalanceTests(SimpleTestCase):

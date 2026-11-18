@@ -378,7 +378,7 @@ def _generate(run: _Run) -> bool:
             _accept(run, accepted, raw, concept_ids, section_index)
 
     heartbeat(lecture_id, token, "Checking questions")
-    drafts = trim(accepted.new, needed)
+    drafts = trim(accepted.new, needed, quotas)
     drafts = balance_positions(drafts, seed=lecture_id)
     drafts = order_drafts(drafts, concepts)
     for warning in mix_warnings(drafts):

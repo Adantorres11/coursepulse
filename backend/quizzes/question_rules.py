@@ -295,14 +295,17 @@ def section_quotas(needed: int, sections: list[Section], with_concepts: set[int]
     return quotas
 
 
-def trim(drafts: list[Draft], needed: int) -> list[Draft]:
-    """Drop extras from the section with the most drafts (higher index on ties), last draft first."""
+def trim(drafts: list[Draft], needed: int, quotas: dict[int, int]) -> list[Draft]:
+    """Drop extras from the section with the most surplus over its quota, last draft first.
+
+    Ties go to the higher section index. A section missing from quotas has a quota of 0.
+    """
     result = list(drafts)
     while len(result) > max(needed, 0):
         counts: dict[int, int] = {}
         for draft in result:
             counts[draft.section_index] = counts.get(draft.section_index, 0) + 1
-        section = max(counts, key=lambda index: (counts[index], index))
+        section = max(counts, key=lambda index: (counts[index] - quotas.get(index, 0), index))
         last = max(i for i, draft in enumerate(result) if draft.section_index == section)
         del result[last]
     return result
