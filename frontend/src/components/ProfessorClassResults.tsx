@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { getClassResults } from "../lib/apiClient";
+import { displayUsername } from "../lib/displayUsername";
 import {
   formatClassAverage,
   formatLectureScore,
@@ -8,7 +9,6 @@ import {
   formatPlayedCount,
   formatStudentAccuracy,
 } from "../lib/lectureSummary";
-import { personLabel } from "../lib/person";
 import type {
   ClassResultLecture,
   ClassResultLectureScore,
@@ -173,7 +173,7 @@ export function ProfessorClassResults() {
                             {ranks[index]}
                           </td>
                           <td className="py-4 pr-4 font-medium">
-                            {personLabel(student)}
+                            {displayUsername(student)}
                           </td>
                           <td className="py-4 pr-4">{student.total_points}</td>
                           <td className="py-4">{student.quizzes_played}</td>
@@ -250,7 +250,7 @@ function LectureResult({
                 const label = formatLectureScore(play);
                 return (
                   <tr key={student.student_id} className="border-b border-slate-800/80">
-                    <td className="py-4 pr-4 font-medium">{personLabel(student)}</td>
+                    <td className="py-4 pr-4 font-medium">{displayUsername(student)}</td>
                     <td className={`py-4 ${play.played ? "text-white" : "text-slate-500"}`}>
                       {label}
                     </td>

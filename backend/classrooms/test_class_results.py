@@ -133,6 +133,7 @@ class ClassResultsTests(APITestCase):
         self.assertEqual(len(students), 2)
 
         self.assertEqual(students[0]["name"], "student")
+        self.assertEqual(students[0]["username"], "student")
         self.assertEqual(students[0]["total_points"], 100)
         self.assertEqual(students[0]["quizzes_played"], 1)
 
@@ -251,6 +252,32 @@ class ClassResultsTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_results_show_username_not_email_or_full_name(self):
+        hidden = User.objects.create_user(
+            username="torres11@gmail.com",
+            email="torres11@gmail.com",
+            password="testpass",
+            first_name="Ada",
+            last_name="Lovelace",
+        )
+        Profile.objects.create(user=hidden, role="student")
+        Enrollment.objects.create(user=hidden, classroom=self.classroom)
+
+        self.client.force_authenticate(user=self.professor)
+        response = self.client.get(self.url)
+
+        shown = next(
+            item for item in response.data["students"]
+            if item["student_id"] == hidden.id
+        )
+        self.assertEqual(shown["name"], "torres11")
+        self.assertEqual(shown["username"], "torres11")
+        body = str(response.data)
+        self.assertNotIn("@", body)
+        self.assertNotIn("Ada", body)
+        self.assertNotIn("Lovelace", body)
+        self.assertNotIn("gmail", body)
 
     def test_unauthenticated_user(self):
         response = self.client.get(self.url)

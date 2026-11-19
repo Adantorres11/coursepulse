@@ -30,7 +30,7 @@ export interface ClassSummary {
   id: number;
   name: string;
   course_code: string;
-  professor: { id: number; name: string } | null;
+  professor: { id: number; name: string; username?: string } | null;
   quiz_count: number;
   new_quiz_count: number;
 }
@@ -98,6 +98,7 @@ export type UserRole = "student" | "professor";
 export interface User {
   id: number;
   email: string;
+  username: string;
   role: UserRole | null;
 }
 
@@ -108,6 +109,7 @@ export interface AuthResponse {
 
 export interface RegisterPayload {
   email: string;
+  username: string;
   password: string;
   role?: UserRole;
 }
@@ -132,6 +134,7 @@ export interface ApiResult<T> {
 export interface LeaderboardEntry {
   rank: number;
   display_name: string;
+  username?: string;
   points: number;
   is_current_user: boolean;
 }

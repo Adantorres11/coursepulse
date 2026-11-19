@@ -24,7 +24,7 @@ const results: ClassResults = {
     {
       student_id: 1,
       name: "Ada Lovelace",
-      username: null,
+      username: "ada",
       total_points: 100,
       quizzes_played: 1,
       lectures: [
@@ -34,7 +34,7 @@ const results: ClassResults = {
     },
     {
       student_id: 2,
-      name: "Grace Hopper",
+      name: "grace@school.edu",
       username: "gben",
       total_points: 0,
       quizzes_played: 0,
@@ -103,8 +103,10 @@ describe("ProfessorClassResults", () => {
     expect(await screen.findByRole("heading", { name: "Software Engineering results" })).toBeTruthy();
     expect(screen.getByText("300 pts · 2 correct")).toBeTruthy();
     expect(screen.getAllByText("Not played").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("gben").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Grace Hopper")).toBeNull();
+    expect(screen.getAllByText("ada").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("gben").length).toBeGreaterThan(1);
+    expect(screen.queryByText("Ada Lovelace")).toBeNull();
+    expect(screen.queryByText("grace@school.edu")).toBeNull();
     expect(screen.getByText("1 of 2 students answered correctly")).toBeTruthy();
     expect(screen.getByText("50%")).toBeTruthy();
     expect(screen.getByText("No students have answered")).toBeTruthy();

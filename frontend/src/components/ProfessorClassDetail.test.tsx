@@ -213,4 +213,38 @@ describe("ProfessorClassDetail", () => {
     const results = screen.getByRole("link", { name: "View results" });
     expect(results.getAttribute("href")).toBe("/professor/class/1/results");
   });
+
+  it("shows roster usernames and hides email and full names", async () => {
+    vi.mocked(getProfessorClasses).mockResolvedValue({
+      data: [classes[0]],
+      error: null,
+    });
+    vi.mocked(getProfessorClassLectures).mockResolvedValue({
+      data: [lecture(7, "Week 1", "published")],
+      error: null,
+    });
+    vi.mocked(getClassRoster).mockResolvedValue({
+      data: [
+        {
+          name: "Ada Lovelace",
+          username: "ada",
+          joined_at: "2026-11-18T00:00:00Z",
+        },
+        {
+          name: "grace@school.edu",
+          username: "gben",
+          joined_at: "2026-11-18T00:00:00Z",
+        },
+      ],
+      error: null,
+    });
+
+    renderDetail();
+
+    expect(await screen.findByText("ada")).toBeTruthy();
+    expect(screen.getByText("gben")).toBeTruthy();
+    expect(screen.queryByText("Ada Lovelace")).toBeNull();
+    expect(screen.queryByText("grace@school.edu")).toBeNull();
+    expect(screen.queryByText(/@/)).toBeNull();
+  });
 });

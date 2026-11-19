@@ -72,13 +72,38 @@ class ClassRosterTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 2)
-        self.assertEqual(response.data[0]["name"], "John Smith")
+        self.assertEqual(response.data[0]["name"], "student")
+        self.assertEqual(response.data[0]["username"], "student")
         self.assertEqual(response.data[1]["name"], "student2")
+        self.assertEqual(response.data[1]["username"], "student2")
+        self.assertNotIn("@", response.data[0]["name"])
 
         self.assertEqual(
             parse_datetime(response.data[0]["joined_at"]),
             enrollment.joined_at,
         )
+
+    def test_roster_shows_username_instead_of_email_or_full_name(self):
+        student = User.objects.create_user(
+            username="torres11@gmail.com",
+            email="torres11@gmail.com",
+            password="testpass",
+            first_name="Ada",
+            last_name="Lovelace",
+        )
+        Profile.objects.create(user=student, role="student")
+        Enrollment.objects.create(
+            user=student,
+            classroom=self.classroom,
+        )
+
+        self.client.force_authenticate(user=self.professor)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]["name"], "torres11")
+        self.assertEqual(response.data[0]["username"], "torres11")
+        self.assertNotIn("@", str(response.data))
 
     def test_empty_roster(self):
         self.client.force_authenticate(user=self.professor)

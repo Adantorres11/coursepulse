@@ -3,8 +3,9 @@ from pathlib import Path
 from django.conf import settings
 from rest_framework import serializers
 
+from accounts.usernames import display_username
+
 from .models import Classroom, Enrollment
-from .people import dedicated_username, person_display_name
 
 class ClassroomSerializer(serializers.ModelSerializer):
     professor = serializers.SerializerMethodField()
@@ -27,9 +28,11 @@ class ClassroomSerializer(serializers.ModelSerializer):
             return None
 
         professor = classroom.professor
+        public_name = display_username(professor)
         return {
             "id": professor.id,
-            "name": person_display_name(professor),
+            "name": public_name,
+            "username": public_name,
         }
 
 
@@ -170,7 +173,7 @@ class ClassRosterSerializer(serializers.ModelSerializer):
         fields = ["name", "username", "joined_at"]
 
     def get_name(self, enrollment):
-        return person_display_name(enrollment.user)
+        return display_username(enrollment.user)
 
     def get_username(self, enrollment):
-        return dedicated_username(enrollment.user)
+        return display_username(enrollment.user)

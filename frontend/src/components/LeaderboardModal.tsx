@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getLeaderboard, type LeaderboardEntry } from "../lib/apiClient";
+import { displayUsername } from "../lib/displayUsername";
 
 interface LeaderboardModalProps {
   classroomId: number;
@@ -174,7 +175,7 @@ export function LeaderboardModal({
                 </span>
 
                 <span className="min-w-0 flex-1 break-words font-semibold">
-                  {entry.is_current_user ? "You" : entry.display_name}
+                  {entry.is_current_user ? "You" : displayUsername(entry)}
                 </span>
 
                 <span

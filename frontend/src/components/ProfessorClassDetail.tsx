@@ -7,7 +7,7 @@ import {
   getProfessorClassLectures,
 } from "../lib/apiClient";
 import { professorResultsPath } from "../lib/lectureReview";
-import { personLabel } from "../lib/person";
+import { displayUsername } from "../lib/displayUsername";
 import type {
   ProfessorClass,
   ProfessorLecture,
@@ -213,7 +213,7 @@ export function ProfessorClassDetail() {
                       key={`${student.name}-${index}`}
                       className="flex justify-between gap-4 p-4"
                     >
-                      <span>{personLabel(student)}</span>
+                      <span>{displayUsername(student)}</span>
                       <span className="text-sm text-slate-400">
                         Joined{" "}
                         {new Date(student.joined_at).toLocaleDateString()}
