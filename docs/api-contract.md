@@ -274,6 +274,7 @@ Creates an account. No token required.
 Request:
 {
   "email": "student@example.com",
+  "username": "torres11",
   "password": "Maple!River82",
   "role": "student"
 }
@@ -281,6 +282,15 @@ Rules:
 - Email must be valid and at most 150 characters.
 - Emails are trimmed and stored in lowercase.
 - Duplicate emails are rejected regardless of capitalization.
+- Username is required.
+- Usernames are trimmed. Blank usernames are rejected with
+  "Enter a username."
+- A username uses letters, numbers, underscores, or hyphens.
+  It cannot be an email address.
+- Usernames are unique regardless of capitalization.
+  "Torres11" and "torres11" are the same username.
+  A taken username is rejected with "That username is already taken."
+- The stored username keeps the capitalization the person chose.
 - Role must be "student" or "professor".
 - Password must have at least 8 characters and pass Django's
   checks for common, entirely numeric, and user-similar passwords.
@@ -290,6 +300,7 @@ Success: 201 Created
   "user": {
     "id": 1,
     "email": "student@example.com",
+    "username": "torres11",
     "role": "student"
   }
 }
@@ -299,6 +310,14 @@ Duplicate email example:
 {
   "email": ["An account with this email already exists."]
 }
+Blank username example:
+{
+  "username": ["Enter a username."]
+}
+Taken username example:
+{
+  "username": ["That username is already taken."]
+}
 Weak password example:
 {
   "password": [
@@ -307,7 +326,8 @@ Weak password example:
 }
 Password error wording can vary according to the failed check.
 POST /api/auth/login/
-Logs in using email and password. No token required.
+Logs in using email and password. The username is not a login id.
+No token required.
 
 Request:
 {
@@ -332,6 +352,7 @@ Success: 200 OK
 {
   "id": 1,
   "email": "student@example.com",
+  "username": "torres11",
   "role": "student"
 }
 Missing token: 401 Unauthorized
@@ -344,6 +365,35 @@ Invalid token: 401 Unauthorized
 }
 Tokens are reused on login and do not automatically expire.
 Existing users without a role profile receive "role": null.
+
+Usernames
+The public name for a person is their username. Login stays email
+and password.
+
+Other screens should import one helper instead of reading email,
+first name, or last name:
+
+    from accounts.usernames import display_username
+
+display_username(user) returns the username to show. It never returns
+an email. When a legacy account still has an email stored as the
+username, the helper returns the part before @, keeping letters,
+numbers, underscores, and hyphens.
+
+The React helper is displayUsername in frontend/src/lib/displayUsername.ts.
+It reads username, then name, then display_name. It does not read email.
+
+The same value is sent as:
+- username on POST /api/auth/register/, POST /api/auth/login/, and
+  GET /api/auth/me/
+- name and username on a professor, a roster row, and a results row
+- display_name and username on a leaderboard row
+
+Existing accounts receive a default username in migration
+accounts.0002_assign_default_usernames. The default is the part of
+the email before @, with _2, _3, and so on when that name is taken.
+Accounts that already have a username without @ are left as they are.
+
 GET /api/classes/
 Returns only the logged-in student's enrolled classrooms.
 Requires a student account and this header:
@@ -356,7 +406,8 @@ Success: 200 OK
     "course_code": "CS 3398",
     "professor": {
       "id": 2,
-      "name": "Alex Smith"
+      "name": "alexsmith",
+      "username": "alexsmith"
     },
     "quiz_count": 5,
     "new_quiz_count": 3
@@ -366,7 +417,9 @@ Rules:
 - Classes are ordered by name, then ID.
 - No enrollments returns [] with 200 OK.
 - Professor is null if no professor is assigned.
-- Professor name falls back to username when their full name is empty.
+- professor.name and professor.username are the public username from
+  display_username. They are never an email address. A legacy account
+  whose stored username is still an email is shown as the part before @.
 - Course code may be empty for existing classrooms.
 - Each lecture with questions counts as one quiz if its publication
   time has arrived.
@@ -397,7 +450,8 @@ Success: 200 OK
   "course_code": "CS 3398",
   "professor": {
     "id": 2,
-    "name": "Alex Smith"
+    "name": "alexsmith",
+    "username": "alexsmith"
   },
   "quiz_count": 5,
   "new_quiz_count": 3
@@ -434,19 +488,22 @@ Success: 200 OK
 [
   {
     "rank": 1,
-    "display_name": "Bharat K.",
+    "display_name": "bharat",
+    "username": "bharat",
     "points": 500,
     "is_current_user": true
   },
   {
     "rank": 1,
-    "display_name": "Alex S.",
+    "display_name": "alex",
+    "username": "alex",
     "points": 500,
     "is_current_user": false
   },
   {
     "rank": 3,
-    "display_name": "Sam R.",
+    "display_name": "sam",
+    "username": "sam",
     "points": 0,
     "is_current_user": false
   }
@@ -467,10 +524,11 @@ Rules:
   1, 1, 3.
 - Students with no completed attempts receive zero points.
 - Zero-point students appear last and share the same rank.
-- display_name uses the first name and last initial, such as "Bharat K.".
-- If the last name is missing, only the first name is shown.
-- If the first name is missing, display_name is "Student".
-  Email addresses and usernames are not used as name fallbacks.
+- display_name and username are the public username from
+  display_username. They are the same value.
+- They are never an email address, a full name, or the word "Student".
+- A legacy account whose stored username is still an email is shown
+  as the part before @.
 - is_current_user is true only for the requesting student's entry.
 - The response is an unpaginated array.
 Errors:
@@ -634,12 +692,29 @@ Authentication: Required. Only the professor who owns the class can access the r
 
 Response: 200 OK
 {
+  "classroom_id": 4,
+  "classroom": "Software Engineering",
   "students": [
     {
       "student_id": 1,
-      "name": "Example Student",
+      "name": "ada",
+      "username": "ada",
       "total_points": 150,
-      "quizzes_played": 3
+      "quizzes_played": 1,
+      "lectures": [
+        {
+          "lecture_id": 1,
+          "played": true,
+          "score": 300,
+          "correct_count": 4
+        },
+        {
+          "lecture_id": 2,
+          "played": false,
+          "score": null,
+          "correct_count": null
+        }
+      ]
     }
   ],
   "lectures": [
@@ -658,14 +733,17 @@ Response: 200 OK
     }
   ]
 }
-- quizzes_played counts distinct lectures with a completed attempt.
-  A lecture with several parts still counts once. Replays do not add
-  another lecture. Question rows stay one list per lecture and are not
-  grouped by part. answer_count includes answers from completed attempts,
-  including replays. Answer.chosen_index remains the original choice index.
-- Question accuracy is calculated from completed attempts.
-- accuracy_percent is null when no answers exist.
-- Students without completed quizzes have zero quizzes played.
+- Only lectures that are already published are included. Drafts stay off this report.
+- Each student has one entry per published lecture, in the same order as `lectures`.
+- `played` is true when the student has finished at least one part. `score` and `correct_count` are null when nothing is finished. The screen says "Not played". An unfinished attempt does not count as played.
+- `score` is the sum of the student's best finished attempt on each part. `correct_count` is the sum of the correct answers on those same attempts. A tie on one part keeps the earliest attempt.
+- `parts_completed` is how many parts have a finished attempt. `parts_total` is how many parts the lecture has. A lecture of 13 or fewer questions has one part.
+- `total_points` is the class ranking total: the first finished attempt of each part. It matches the leaderboard. A higher replay changes `score` and does not change `total_points`.
+- `quizzes_played` is how many published lectures the student has played. A lecture counts once when any part is finished. Replays do not add another lecture.
+- `name` and `username` are the public username from `display_username`. They are never an email address or a full name.
+- For a question, `answer_count` is how many students have a finished answer. Each student counts once, using the answer on their earliest finished attempt. A replay does not add another answer and does not replace the first one.
+- `Answer.chosen_index` stays the original choice index. Accuracy uses the stored `is_correct` flag, so a shuffled choice order does not change the count.
+- `accuracy_percent` is `correct_count / answer_count * 100`, rounded to two decimals. It is null when `answer_count` is 0.
 Errors:
 - 401: Authentication required.
 - 403: User is not a professor or does not own the class.
@@ -697,18 +775,20 @@ Authentication: Required (professor only).
 Success: 200 OK
 [
   {
-    "name": "John Smith",
+    "name": "ada",
+    "username": "ada",
     "joined_at": "2026-11-12T18:00:00Z"
   },
   {
-    "name": "Jane Doe",
+    "name": "sam",
+    "username": "sam",
     "joined_at": "2026-11-12T18:05:00Z"
   }
 ]
 Rules:
 - Only the professor who owns the classroom can access its roster.
-- Returns each enrolled student's name and join date.
-- Uses the username if the student's full name is unavailable.
+- Returns each enrolled student's public username and join date.
+- name and username are the public username from display_username. They are never an email address or a full name.
 - Students are ordered by join date, earliest first.
 - Returns an empty array if no students are enrolled.
 Errors:
@@ -772,13 +852,21 @@ Example response:
     "id": 2,
     "title": "Introduction to AI",
     "status": "published",
-    "published_at": "2026-11-16T18:00:00Z"
+    "published_at": "2026-11-16T18:00:00Z",
+    "uploaded_at": "2026-11-16T15:00:00Z",
+    "question_count": 12,
+    "students_played": 8,
+    "class_average": 240
   },
   {
     "id": 1,
     "title": "Machine Learning Basics",
     "status": "pending",
-    "published_at": null
+    "published_at": null,
+    "uploaded_at": "2026-11-15T15:00:00Z",
+    "question_count": 0,
+    "students_played": 0,
+    "class_average": null
   }
 ]
 ```
@@ -789,6 +877,10 @@ Rules:
 - Returns an empty array when the class has no lectures.
 - A published lecture is labeled "published". Otherwise the label is the lecture's processing status: "pending", "processing", "ready", or "failed".
 - Lectures made before uploads existed have no recording and are labeled "ready".
+- `uploaded_at` is when the lecture was uploaded.
+- `question_count` is how many questions the lecture has.
+- `students_played` is how many enrolled students have finished at least one part.
+- `class_average` is the mean of those students' lecture scores. A lecture score is the sum of the best finished attempt on each part, the same score as the results report. It is null when nobody has finished. A finished part that scored 0 still counts, and the average is then 0. A replay replaces that part's score only when it is higher.
 
 Errors:
 - 401: Authentication required.

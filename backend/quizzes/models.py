@@ -34,6 +34,8 @@ class Lecture(models.Model):
     )
     notice = models.CharField(max_length=255, blank=True, default="")
     published_at = models.DateTimeField(null=True, blank=True)
+    # When the lecture was uploaded. published_at is a later, separate moment.
+    created_at = models.DateTimeField(auto_now_add=True)
 
     transcript = models.TextField(blank=True, default="")
     raw_transcript = models.JSONField(null=True, blank=True)
