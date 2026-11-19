@@ -13,9 +13,13 @@ import type {
   LoginPayload,
   ProfessorClass,
   ProfessorLecture,
+  ProfessorQuestion,
+  ProfessorQuestionInput,
+  PublishLectureResponse,
   Quiz,
   QuestionStart,
   RegisterPayload,
+  UnpublishLectureResponse,
   User,
   ClassResults,
 } from "../types/api";
@@ -143,6 +147,28 @@ function resolveApiBaseUrl(): string {
 
 export const API_BASE_URL: string = resolveApiBaseUrl();
 
+function fieldErrorMessages(body: Record<string, unknown>): {
+  messages: string[];
+  fields: Record<string, string[]>;
+} {
+  const messages: string[] = [];
+  const fields: Record<string, string[]> = {};
+  for (const [key, val] of Object.entries(body)) {
+    const parts: string[] = [];
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        if (typeof item === "string") parts.push(item);
+      }
+    } else if (typeof val === "string") {
+      parts.push(val);
+    }
+    if (parts.length === 0) continue;
+    fields[key] = parts;
+    messages.push(parts.join(" "));
+  }
+  return { messages, fields };
+}
+
 /**
  * Wraps fetch with consistent JSON parsing and error handling.
  * Automatically injects the Authorization token from session if available.
@@ -175,6 +201,7 @@ export async function request<T>(
 
     if (!response.ok) {
       let errorMessage = `Request failed (${response.status} ${response.statusText || "Error"})`;
+      let fields: Record<string, string[]> | undefined;
 
       try {
         const errorJson = (await response.json()) as Record<string, unknown>;
@@ -187,16 +214,10 @@ export async function request<T>(
             errorMessage = errorJson.error;
           } else {
             // Handle field-level DRF errors (e.g. { email: ["..."], password: ["..."] })
-            const messages: string[] = [];
-            for (const [_, val] of Object.entries(errorJson)) {
-              if (Array.isArray(val)) {
-                messages.push(val.join(" "));
-              } else if (typeof val === "string") {
-                messages.push(val);
-              }
-            }
-            if (messages.length > 0) {
-              errorMessage = messages.join(" ");
+            const parsed = fieldErrorMessages(errorJson);
+            if (parsed.messages.length > 0) {
+              errorMessage = parsed.messages.join(" ");
+              fields = parsed.fields;
             }
           }
         }
@@ -207,9 +228,19 @@ export async function request<T>(
       // Server faults carry no message a student can act on.
       if (response.status >= 500) {
         errorMessage = "The server had a problem. Try again shortly.";
+        fields = undefined;
       }
 
-      return { data: null, error: errorMessage, status: response.status };
+      return {
+        data: null,
+        error: errorMessage,
+        status: response.status,
+        ...(fields ? { fields } : {}),
+      };
+    }
+
+    if (response.status === 204) {
+      return { data: null as T, error: null, status: response.status };
     }
 
     const data = (await response.json()) as T;
@@ -420,6 +451,63 @@ export async function getProfessorClassLectures(
 ): Promise<ApiResult<ProfessorLecture[]>> {
   return request<ProfessorLecture[]>(
     `/professor/classes/${encodeURIComponent(String(classId))}/lectures/`
+  );
+}
+
+export async function getLectureQuestions(
+  lectureId: number | string
+): Promise<ApiResult<ProfessorQuestion[]>> {
+  return request<ProfessorQuestion[]>(
+    `/lectures/${encodeURIComponent(String(lectureId))}/questions/`
+  );
+}
+
+export async function createLectureQuestion(
+  lectureId: number | string,
+  body: ProfessorQuestionInput
+): Promise<ApiResult<ProfessorQuestion>> {
+  return request<ProfessorQuestion>(
+    `/lectures/${encodeURIComponent(String(lectureId))}/questions/`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export async function updateLectureQuestion(
+  lectureId: number | string,
+  questionId: number | string,
+  body: Partial<ProfessorQuestionInput>
+): Promise<ApiResult<ProfessorQuestion>> {
+  return request<ProfessorQuestion>(
+    `/lectures/${encodeURIComponent(String(lectureId))}/questions/${encodeURIComponent(String(questionId))}/`,
+    { method: "PATCH", body: JSON.stringify(body) }
+  );
+}
+
+export async function deleteLectureQuestion(
+  lectureId: number | string,
+  questionId: number | string
+): Promise<ApiResult<null>> {
+  return request<null>(
+    `/lectures/${encodeURIComponent(String(lectureId))}/questions/${encodeURIComponent(String(questionId))}/`,
+    { method: "DELETE" }
+  );
+}
+
+export async function publishLecture(
+  lectureId: number | string
+): Promise<ApiResult<PublishLectureResponse>> {
+  return request<PublishLectureResponse>(
+    `/lectures/${encodeURIComponent(String(lectureId))}/publish/`,
+    { method: "POST" }
+  );
+}
+
+export async function unpublishLecture(
+  lectureId: number | string
+): Promise<ApiResult<UnpublishLectureResponse>> {
+  return request<UnpublishLectureResponse>(
+    `/lectures/${encodeURIComponent(String(lectureId))}/unpublish/`,
+    { method: "POST" }
   );
 }
 

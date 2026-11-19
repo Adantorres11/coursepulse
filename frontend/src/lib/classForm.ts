@@ -35,15 +35,29 @@ export function validateClassName(name: string): ClassNameValidation {
 }
 
 /**
- * Formats a server error response into a human-readable message.
+ * Formats a create-class error. Only the name field's blank or required
+ * errors become "Class name is required." Other fields keep their own text.
  */
-export function formatCreateClassErrorMessage(error: string | null | undefined): string {
+export function formatCreateClassErrorMessage(
+  error: string | null | undefined,
+  fields?: Record<string, string[]> | null,
+): string {
+  const nameErrors = fields?.name ?? [];
+  if (nameErrors.length > 0) {
+    const text = nameErrors.join(" ");
+    if (/blank|required/i.test(text)) {
+      return "Class name is required.";
+    }
+    return text;
+  }
+
   if (!error) {
     return "Could not create class. Please try again.";
   }
 
-  // Handle common server detail strings or fallback gracefully
-  if (error.includes("blank") || error.includes("required")) {
+  const namesTheClassName =
+    /^name\b/i.test(error.trim()) || /\bclass name\b/i.test(error);
+  if (namesTheClassName && /blank|required/i.test(error)) {
     return "Class name is required.";
   }
 

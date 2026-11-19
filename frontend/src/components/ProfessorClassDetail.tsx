@@ -1,11 +1,12 @@
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   getProfessorClasses,
   getClassRoster,
   getProfessorClassLectures,
 } from "../lib/apiClient";
+import { lectureCanBeReviewed, lectureReviewPath } from "../lib/lectureReview";
 import type {
   ProfessorClass,
   ProfessorLecture,
@@ -24,15 +25,20 @@ export function ProfessorClassDetail() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const requestSeq = useRef(0);
 
-  const loadClass = async () => {
+  const loadClass = useCallback(async (options?: { quiet?: boolean }) => {
+    const id = ++requestSeq.current;
+
     if (!classId) {
       setError("Invalid class ID.");
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (!options?.quiet) {
+      setLoading(true);
+    }
     setError(null);
 
     const [classesResult, lecturesResult, rosterResult] =
@@ -41,6 +47,10 @@ export function ProfessorClassDetail() {
         getProfessorClassLectures(classId),
         getClassRoster(classId),
       ]);
+
+    if (id !== requestSeq.current) {
+      return;
+    }
 
     const selectedClass = classesResult.data?.find(
       (item) => String(item.id) === classId
@@ -65,11 +75,14 @@ export function ProfessorClassDetail() {
     }
 
     setLoading(false);
-  };
+  }, [classId]);
 
   useEffect(() => {
     void loadClass();
-  }, [classId]);
+    return () => {
+      requestSeq.current += 1;
+    };
+  }, [loadClass]);
 
   async function copyCode() {
     if (!classInfo) return;
@@ -153,7 +166,7 @@ export function ProfessorClassDetail() {
                     overrideClassId={classInfo.id}
                     onSuccess={() => {
                       setShowUpload(false);
-                      void loadClass();
+                      void loadClass({ quiet: true });
                     }}
                   />
                 </div>
@@ -170,10 +183,20 @@ export function ProfessorClassDetail() {
                       key={lecture.id}
                       className="flex items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-4"
                     >
-                      <p className="font-medium">{lecture.title}</p>
-                      <span className="text-xs font-semibold capitalize px-3 py-1 rounded-full bg-slate-800 text-sky-300">
-                        {lecture.status}
-                      </span>
+                      <p className="font-medium min-w-0">{lecture.title}</p>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-xs font-semibold capitalize px-3 py-1 rounded-full bg-slate-800 text-sky-300">
+                          {lecture.status}
+                        </span>
+                        {lectureCanBeReviewed(lecture.status) && classId && (
+                          <Link
+                            to={lectureReviewPath(classId, lecture.id)}
+                            className="text-sm font-semibold text-sky-400 hover:text-sky-300"
+                          >
+                            Review
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -122,8 +122,10 @@ export interface LoginPayload {
 export interface ApiResult<T> {
   data: T | null;
   error: string | null;
-  /** HTTP status of a non-OK response. Not set for network errors. */
+  /** HTTP status of a non-OK response. Also set for 204. Not set for network errors. */
   status?: number;
+  /** Field errors from a JSON body, keyed by the field name. */
+  fields?: Record<string, string[]>;
 }
 
 // One row of GET /api/classes/{id}/leaderboard/
@@ -185,5 +187,34 @@ export interface ProfessorLecture {
   id: number;
   title: string;
   status: "pending" | "processing" | "ready" | "failed" | "published";
+  published_at: string | null;
+}
+
+// GET/POST/PATCH /api/lectures/{id}/questions/ for the owning professor.
+// Students never receive this shape. correct_index stays off the student quiz.
+export interface ProfessorQuestion {
+  id: number;
+  prompt: string;
+  choices: string[];
+  correct_index: number;
+  difficulty: DifficultyLevel;
+  position: number;
+}
+
+export interface ProfessorQuestionInput {
+  prompt: string;
+  choices: string[];
+  correct_index: number;
+  difficulty: DifficultyLevel;
+}
+
+export interface PublishLectureResponse {
+  id: number;
+  published_at: string;
+  message: string;
+}
+
+export interface UnpublishLectureResponse {
+  id: number;
   published_at: string | null;
 }

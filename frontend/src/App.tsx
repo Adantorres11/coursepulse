@@ -10,6 +10,7 @@ import { ProfessorDashboard } from "./components/ProfessorDashboard";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
 import { ProfessorClassDetail } from "./components/ProfessorClassDetail";
+import { LectureReview } from "./components/LectureReview";
 
 function AppContent() {
   const location = useLocation();
@@ -168,6 +169,14 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRole="professor">
                 <ProfessorClassDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/professor/class/:classId/lectures/:lectureId"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <LectureReview />
               </ProtectedRoute>
             }
           />

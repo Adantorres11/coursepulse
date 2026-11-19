@@ -4,14 +4,15 @@ import {
   getClasses,
   getClassesRoute,
   getClassStats,
-  getLectures,
   getProfessorClasses,
+  getProfessorClassLectures,
   isProfessor,
   type ClassStats,
   type ClassSummary,
-  type Lecture,
   type ProfessorClass,
 } from "../lib/apiClient";
+import { lectureCanBeReviewed, lectureReviewPath } from "../lib/lectureReview";
+import type { ProfessorLecture } from "../types/api";
 import { LeaderboardModal } from "./LeaderboardModal";
 import { ProfessorNav } from "./ProfessorNav";
 import { StudentNav } from "./StudentNav";
@@ -22,7 +23,7 @@ type HubState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; classInfo: ClassSummary; stats: ClassStats }
-  | { status: "professor"; classInfo: ProfessorClass; lectures: Lecture[] };
+  | { status: "professor"; classInfo: ProfessorClass; lectures: ProfessorLecture[] };
 
 export function ClassHub() {
   const { classId } = useParams<{ classId: string }>();
@@ -41,7 +42,11 @@ export function ClassHub() {
     setState({ status: "loading" });
 
     if (isProfessor()) {
-      Promise.all([getProfessorClasses(), getLectures()]).then(
+      if (!classId) {
+        setState({ status: "error", message: "Invalid class ID." });
+        return;
+      }
+      Promise.all([getProfessorClasses(), getProfessorClassLectures(classId)]).then(
         ([profResult, lecturesResult]) => {
           if (cancelled) return;
           if (profResult.error || !profResult.data) {
@@ -63,15 +68,18 @@ export function ClassHub() {
             return;
           }
 
-          const allLectures = lecturesResult.data ?? [];
-          const classLectures = allLectures.filter(
-            (l) => String(l.classroom_id) === String(classId)
-          );
+          if (lecturesResult.error || !lecturesResult.data) {
+            setState({
+              status: "error",
+              message: lecturesResult.error || "Unable to load lectures.",
+            });
+            return;
+          }
 
           setState({
             status: "professor",
             classInfo: profClass,
-            lectures: classLectures,
+            lectures: lecturesResult.data,
           });
         }
       );
@@ -382,8 +390,8 @@ export function ClassHub() {
                           <h4 className="text-sm sm:text-base font-bold text-white truncate">
                             {lecture.title}
                           </h4>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {lecture.question_count} questions
+                          <p className="text-xs text-slate-400 mt-0.5 capitalize">
+                            {lecture.status}
                             {lecture.published_at && (
                               <span> · Published {new Date(lecture.published_at).toLocaleDateString()}</span>
                             )}
@@ -391,14 +399,15 @@ export function ClassHub() {
                         </div>
                       </div>
 
-                      <Link
-                        to={`/quiz/${lecture.id}`}
-                        state={{ from: `/class/${classId}` }}
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 bg-[#162547] hover:bg-[#1D305A] border border-sky-500/30 px-3.5 py-1.5 rounded-xl transition cursor-pointer shrink-0 ml-4"
-                      >
-                        <span>Preview quiz</span>
-                        <span>→</span>
-                      </Link>
+                      {lectureCanBeReviewed(lecture.status) && (
+                        <Link
+                          to={lectureReviewPath(classId ?? "", lecture.id)}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 bg-[#162547] hover:bg-[#1D305A] border border-sky-500/30 px-3.5 py-1.5 rounded-xl transition cursor-pointer shrink-0 ml-4"
+                        >
+                          <span>Review</span>
+                          <span>→</span>
+                        </Link>
+                      )}
                     </div>
                   ))}
                 </div>
