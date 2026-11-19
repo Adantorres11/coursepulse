@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   createClass,
   getProfessorClasses,
+  getStoredToken,
   isProfessor,
+  type CreateClassResponse,
   type ProfessorClass,
 } from "../lib/apiClient";
+import { formatCreateClassErrorMessage, validateClassName } from "../lib/classForm";
 import { ProfessorNav } from "./ProfessorNav";
 
 interface ProfessorDashboardProps {
@@ -28,13 +31,14 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
   const [newClassName, setNewClassName] = useState<string>("");
   const [isCreating, setIsCreating] = useState<boolean>(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [createSuccessMsg, setCreateSuccessMsg] = useState<string | null>(null);
+  const [createdClass, setCreatedClass] = useState<CreateClassResponse | null>(null);
+  const [modalCopied, setModalCopied] = useState<boolean>(false);
 
   const fetchClasses = async () => {
     setLoading(true);
     setError(null);
 
-    const token = sessionStorage.getItem("coursepulse_token");
+    const token = getStoredToken();
     if (!token) {
       setClasses([]);
       setError("Please log in to view your classes.");
@@ -80,28 +84,54 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
     }, 2000);
   };
 
+  const handleOpenCreateModal = () => {
+    setNewClassName("");
+    setCreateError(null);
+    setCreatedClass(null);
+    setModalCopied(false);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleCloseCreateModal = () => {
+    if (isCreating) return;
+    setIsCreateModalOpen(false);
+    setNewClassName("");
+    setCreateError(null);
+    setCreatedClass(null);
+    setModalCopied(false);
+  };
+
+  const handleCopyModalCode = (code: string) => {
+    void navigator.clipboard.writeText(code);
+    setModalCopied(true);
+    setTimeout(() => {
+      setModalCopied(false);
+    }, 2000);
+  };
+
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = newClassName.trim();
-    if (!trimmed) {
-      setCreateError("Class name is required.");
+    const validation = validateClassName(newClassName);
+    if (!validation.isValid) {
+      setCreateError(validation.error);
       return;
     }
 
+    const trimmed = newClassName.trim();
     setIsCreating(true);
     setCreateError(null);
-    setCreateSuccessMsg(null);
 
     const result = await createClass(trimmed);
 
     if (result.error || !result.data) {
-      setCreateError(result.error || "Could not create class. Please try again.");
+      setCreateError(formatCreateClassErrorMessage(result.error));
       setIsCreating(false);
       return;
     }
 
     const created = result.data;
-    setCreateSuccessMsg(`Created "${created.name}"! Access code: ${created.access_code}`);
+    setCreatedClass(created);
+    setIsCreating(false);
 
     // Prepend newly created class into the local state
     const newEntry: ProfessorClass = {
@@ -112,24 +142,13 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
       lecture_count: 0,
     };
     setClasses((prev) => [newEntry, ...prev.filter((c) => c.id !== created.id)]);
-
-    setTimeout(() => {
-      setIsCreating(false);
-      setNewClassName("");
-      setCreateSuccessMsg(null);
-      setIsCreateModalOpen(false);
-    }, 1200);
   };
 
   return (
     <div className="min-h-screen bg-[#0B1220] text-white flex flex-col justify-between selection:bg-sky-500/30">
       {/* Top Navigation */}
       <ProfessorNav
-        onCreateClass={() => {
-          setCreateError(null);
-          setCreateSuccessMsg(null);
-          setIsCreateModalOpen(true);
-        }}
+        onCreateClass={handleOpenCreateModal}
       />
 
       {/* Main Content Area */}
@@ -240,11 +259,7 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
 
             <button
               type="button"
-              onClick={() => {
-                setCreateError(null);
-                setCreateSuccessMsg(null);
-                setIsCreateModalOpen(true);
-              }}
+              onClick={handleOpenCreateModal}
               className="inline-flex items-center gap-2 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-sm px-6 py-3 rounded-xl transition-all shadow-lg shadow-sky-500/20 hover:scale-[1.02] cursor-pointer"
             >
               <span>+ Create class</span>
@@ -388,66 +403,155 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
         >
           <div className="bg-[#10192E] border border-slate-800 rounded-2xl p-6 sm:p-7 max-w-md w-full shadow-2xl relative">
-            <h3 id="create-class-title" className="text-xl font-bold text-white mb-2">
-              Create a Class
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-400 mb-5">
-              Enter your class name. A unique 6-character access code will be generated for your students to join.
-            </p>
+            {createdClass ? (
+              <div>
+                <div className="flex items-center gap-2.5 mb-2 text-emerald-400">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                    <svg
+                      className="w-4 h-4 text-emerald-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h3 id="create-class-title" className="text-xl font-bold text-white">
+                    Class Created!
+                  </h3>
+                </div>
 
-            {createError && (
-              <div className="mb-4 p-3 rounded-xl bg-rose-950/60 border border-rose-500/60 text-rose-300 text-xs font-semibold">
-                {createError}
+                <p className="text-xs sm:text-sm text-slate-300 mb-5 leading-relaxed">
+                  <span className="font-semibold text-white">{createdClass.name}</span> has been created. Share this join code with your students so they can enroll.
+                </p>
+
+                {/* Join code display box with Copy button */}
+                <div className="bg-[#0A101F] border border-slate-800 rounded-2xl p-4 flex items-center justify-between gap-3 mb-6">
+                  <div>
+                    <span className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
+                      Join Code
+                    </span>
+                    <span className="font-mono text-2xl font-bold tracking-widest text-[#38BDF8]">
+                      {createdClass.access_code}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleCopyModalCode(createdClass.access_code)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition bg-[#162547] hover:bg-[#1f3360] text-sky-400 border border-sky-500/30 cursor-pointer"
+                  >
+                    {modalCopied ? (
+                      <>
+                        <svg
+                          className="w-4 h-4 text-emerald-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="text-emerald-400">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-4 h-4"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                        <span>Copy Code</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Action buttons: Done button and Link to the class */}
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800/80">
+                  <button
+                    type="button"
+                    onClick={handleCloseCreateModal}
+                    className="px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                  >
+                    Done
+                  </button>
+                  <Link
+                    to={`/professor/class/${createdClass.id}`}
+                    onClick={() => setIsCreateModalOpen(false)}
+                    className="inline-flex items-center gap-1.5 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl transition cursor-pointer shadow-md"
+                  >
+                    <span>Go to class</span>
+                    <span>→</span>
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h3 id="create-class-title" className="text-xl font-bold text-white mb-2">
+                  Create a Class
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-400 mb-5">
+                  Enter your class name. A unique 6-character access code will be generated for your students to join.
+                </p>
+
+                {createError && (
+                  <div className="mb-4 p-3 rounded-xl bg-rose-950/60 border border-rose-500/60 text-rose-300 text-xs font-semibold">
+                    {createError}
+                  </div>
+                )}
+
+                <form onSubmit={handleCreateSubmit}>
+                  <div className="mb-5">
+                    <label
+                      htmlFor="class-name-input"
+                      className="block text-xs font-semibold text-slate-300 mb-1.5"
+                    >
+                      Class Name
+                    </label>
+                    <input
+                      id="class-name-input"
+                      type="text"
+                      value={newClassName}
+                      onChange={(e) => {
+                        setNewClassName(e.target.value);
+                        if (createError) setCreateError(null);
+                      }}
+                      placeholder="e.g. CS 3398 Software Engineering"
+                      autoFocus
+                      disabled={isCreating}
+                      className="w-full bg-[#0A101F] border border-slate-800 focus:border-[#38BDF8] text-white rounded-xl px-3.5 py-2.5 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-[#38BDF8] transition disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      disabled={isCreating}
+                      onClick={handleCloseCreateModal}
+                      className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isCreating}
+                      className="bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl transition cursor-pointer shadow-md disabled:opacity-60"
+                    >
+                      {isCreating ? "Creating…" : "Create class →"}
+                    </button>
+                  </div>
+                </form>
               </div>
             )}
-
-            {createSuccessMsg && (
-              <div className="mb-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/60 text-emerald-300 text-xs font-semibold">
-                {createSuccessMsg}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateSubmit}>
-              <div className="mb-5">
-                <label
-                  htmlFor="class-name-input"
-                  className="block text-xs font-semibold text-slate-300 mb-1.5"
-                >
-                  Class Name
-                </label>
-                <input
-                  id="class-name-input"
-                  type="text"
-                  value={newClassName}
-                  onChange={(e) => {
-                    setNewClassName(e.target.value);
-                    if (createError) setCreateError(null);
-                  }}
-                  placeholder="e.g. CS 3398 Software Engineering"
-                  autoFocus
-                  disabled={isCreating}
-                  className="w-full bg-[#0A101F] border border-slate-800 focus:border-[#38BDF8] text-white rounded-xl px-3.5 py-2.5 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-[#38BDF8] transition disabled:opacity-50"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  disabled={isCreating}
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl transition cursor-pointer shadow-md disabled:opacity-60"
-                >
-                  {isCreating ? "Creating…" : "Create class →"}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

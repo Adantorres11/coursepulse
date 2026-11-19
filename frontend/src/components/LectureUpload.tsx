@@ -8,9 +8,10 @@ const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 interface UploadLecturePageProps {
   overrideClassId?: string | number;
+  onSuccess?: () => void;
 }
 
-export function UploadLecturePage({ overrideClassId }: UploadLecturePageProps) {
+export function UploadLecturePage({ overrideClassId, onSuccess }: UploadLecturePageProps) {
   const { classId: paramClassId } = useParams<{ classId: string }>();
   const classId = overrideClassId ?? paramClassId ?? "";
   const navigate = useNavigate();
@@ -100,8 +101,12 @@ export function UploadLecturePage({ overrideClassId }: UploadLecturePageProps) {
           const data = JSON.parse(xhr.responseText);
           const lectureId = data.id ?? data.lecture_id;
           if (lectureId != null) {
-            // TODO(SCRUM-84): go to the lecture processing status page once it exists.
-            navigate(`/professor/class/${classId}`);
+            if (onSuccess) {
+              onSuccess();
+            } else {
+              // TODO(SCRUM-84): go to the lecture processing status page once it exists.
+              navigate(`/professor/class/${classId}`);
+            }
           } else {
             setUploadError("Upload completed, but no lecture ID was returned by the server.");
           }

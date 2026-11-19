@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getQuiz } from "./apiClient";
+import { createClass, getQuiz } from "./apiClient";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status });
@@ -72,5 +72,81 @@ describe("getQuiz", () => {
     const result = await getQuiz(7);
     expect(result.data).toBeNull();
     expect(result.error?.startsWith("Could not reach API")).toBe(true);
+  });
+});
+
+describe("createClass", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    const store = new Map<string, string>();
+    store.set("coursepulse_token", "test-token-123");
+    const mockStorage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+      clear: () => store.clear(),
+    };
+    vi.stubGlobal("sessionStorage", mockStorage);
+    vi.stubGlobal("localStorage", mockStorage);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends POST to /classes/ with class name and auth header", async () => {
+    fetchMock.mockResolvedValue(
+      json(
+        {
+          id: 42,
+          name: "CS 3398 Software Engineering",
+          access_code: "ABC123",
+        },
+        201
+      )
+    );
+
+    const result = await createClass("CS 3398 Software Engineering");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toMatch(/\/classes\/$/);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ name: "CS 3398 Software Engineering" });
+    expect(init.headers.Authorization || init.headers.get?.("Authorization")).toBe("Token test-token-123");
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({
+      id: 42,
+      name: "CS 3398 Software Engineering",
+      access_code: "ABC123",
+    });
+  });
+
+  it("returns readable server error when class name is blank or invalid", async () => {
+    fetchMock.mockResolvedValue(
+      json({ detail: "This field may not be blank." }, 400)
+    );
+
+    const result = await createClass("");
+
+    expect(result.status).toBe(400);
+    expect(result.data).toBeNull();
+    expect(result.error).toBe("This field may not be blank.");
+  });
+
+  it("handles forbidden response when user is not a professor", async () => {
+    fetchMock.mockResolvedValue(
+      json({ detail: "Only professors can create classes." }, 403)
+    );
+
+    const result = await createClass("Unauthorized Class");
+
+    expect(result.status).toBe(403);
+    expect(result.data).toBeNull();
+    expect(result.error).toBe("Only professors can create classes.");
   });
 });
