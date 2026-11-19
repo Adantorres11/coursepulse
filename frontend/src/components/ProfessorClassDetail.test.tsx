@@ -49,8 +49,23 @@ const classes: ProfessorClass[] = [
   },
 ];
 
-function lecture(id: number, title: string, status: ProfessorLecture["status"]): ProfessorLecture {
-  return { id, title, status, published_at: null };
+function lecture(
+  id: number,
+  title: string,
+  status: ProfessorLecture["status"],
+  extras: Partial<ProfessorLecture> = {}
+): ProfessorLecture {
+  return {
+    id,
+    title,
+    status,
+    published_at: null,
+    uploaded_at: "2026-11-18T15:00:00Z",
+    question_count: 4,
+    students_played: 0,
+    class_average: null,
+    ...extras,
+  };
 }
 
 function renderDetail() {
@@ -171,5 +186,31 @@ describe("ProfessorClassDetail", () => {
     expect(screen.getAllByRole("link", { name: "Review" })).toHaveLength(1);
     expect(screen.getByText("Processing lecture")).toBeTruthy();
     expect(screen.getByText("processing")).toBeTruthy();
+  });
+
+  it("shows upload date, question count, players, average, and a results link", async () => {
+    vi.mocked(getProfessorClasses).mockResolvedValue({
+      data: [classes[0]],
+      error: null,
+    });
+    vi.mocked(getProfessorClassLectures).mockResolvedValue({
+      data: [
+        lecture(7, "Week 1", "published", {
+          published_at: "2026-11-18T18:00:00Z",
+          question_count: 12,
+          students_played: 8,
+          class_average: 240,
+        }),
+      ],
+      error: null,
+    });
+
+    renderDetail();
+
+    expect(await screen.findByText(
+      "Nov 18, 2026 · 12 questions · 8 students played · Avg 240"
+    )).toBeTruthy();
+    const results = screen.getByRole("link", { name: "View results" });
+    expect(results.getAttribute("href")).toBe("/professor/class/1/results");
   });
 });

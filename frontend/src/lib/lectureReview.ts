@@ -14,6 +14,10 @@ export function lectureReviewPath(
   return `/professor/class/${classId}/lectures/${lectureId}`;
 }
 
+export function professorResultsPath(classId: string | number): string {
+  return `/professor/class/${classId}/results`;
+}
+
 /** Ready and published lectures have questions a professor can review. */
 export function lectureCanBeReviewed(status: ProfessorLecture["status"]): boolean {
   return status === "ready" || status === "published";

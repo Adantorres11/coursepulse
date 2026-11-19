@@ -26,6 +26,7 @@ from .stats import (
     build_class_stats,
     class_standings,
     build_class_results,
+    lecture_row_stats,
 )
 
 class StudentClassListView(ListAPIView):
@@ -336,7 +337,7 @@ class ClassRosterView(APIView):
         enrollments = (
             Enrollment.objects
             .filter(classroom=classroom)
-            .select_related("user")
+            .select_related("user", "user__profile")
             .order_by("joined_at", "id")
         )
 
@@ -415,12 +416,17 @@ class ProfessorClassLecturesView(APIView):
                 "Only the class owner can view these lectures."
             )
 
-        lectures = Lecture.objects.filter(
-            classroom=classroom
-        ).order_by("-id")
+        stats = lecture_row_stats(classroom)
+        lectures = (
+            Lecture.objects.filter(classroom=classroom)
+            .annotate(question_count=Count("questions", distinct=True))
+            .order_by("-id")
+        )
 
-        return Response([
-            {
+        rows = []
+        for lecture in lectures:
+            summary = stats.get(lecture.id, {})
+            rows.append({
                 "id": lecture.id,
                 "title": lecture.title,
                 "status": (
@@ -429,6 +435,9 @@ class ProfessorClassLecturesView(APIView):
                     else getattr(lecture, "status", "pending")
                 ),
                 "published_at": lecture.published_at,
-            }
-            for lecture in lectures
-        ])
+                "uploaded_at": lecture.created_at,
+                "question_count": lecture.question_count,
+                "students_played": summary.get("students_played", 0),
+                "class_average": summary.get("class_average"),
+            })
+        return Response(rows)

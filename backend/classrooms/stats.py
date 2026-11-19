@@ -1,10 +1,14 @@
+from collections import defaultdict
+
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from quizzes.models import Answer, Attempt, DayStreak
 from quizzes.streaks import current_day_streak
-from quizzes.models import Answer, Attempt, DayStreak
+
+from .people import dedicated_username, person_display_name
+
 
 def class_standings(classroom):
     students = (
@@ -13,6 +17,7 @@ def class_standings(classroom):
             enrollments__classroom=classroom,
             profile__role="student",
         )
+        .select_related("profile")
         .annotate(
             points=Sum(
                 "quiz_attempts__total_points",
@@ -129,87 +134,194 @@ def build_class_stats(classroom, user):
         "lectures": items,
     }
 
-def build_class_results(classroom):
-    standings = class_standings(classroom)
-    student_ids = [
-        standing["user"].id for standing in standings
-    ]
+def counted_attempt(attempts):
+    """The play that stands for one lecture.
 
-    completed_attempts = Attempt.objects.filter(
-        lecture__classroom=classroom,
-        user_id__in=student_ids,
-        completed_at__isnull=False,
-    )
+    A lecture is one quiz today, so this is the completed attempt with the
+    highest score. A tie keeps the earliest attempt. If a lecture is later
+    split into quiz parts, combine the parts here and still return one score
+    and one correct count. Callers treat that pair as the lecture total.
+    """
+    if not attempts:
+        return None
+    return max(attempts, key=lambda attempt: (attempt.total_points, -attempt.id))
 
-    quiz_counts = {
-        item["user_id"]: item["quizzes_played"]
-        for item in completed_attempts
-        .values("user_id")
-        .annotate(
-            quizzes_played=Count("lecture", distinct=True)
-        )
+
+def _mean_score(scores):
+    if not scores:
+        return None
+    rounded = round(sum(scores) / len(scores), 2)
+    if rounded == int(rounded):
+        return int(rounded)
+    return rounded
+
+
+def _completed_attempts(classroom, student_ids, lecture_ids=None):
+    if not student_ids:
+        return []
+    if lecture_ids is not None and not lecture_ids:
+        return []
+
+    filters = {
+        "lecture__classroom": classroom,
+        "user_id__in": student_ids,
+        "completed_at__isnull": False,
     }
+    if lecture_ids is not None:
+        filters["lecture_id__in"] = lecture_ids
 
-    students = []
-
-    for standing in standings:
-        student = standing["user"]
-
-        students.append({
-            "student_id": student.id,
-            "name": student.get_full_name() or student.username,
-            "total_points": standing["points"],
-            "quizzes_played": quiz_counts.get(student.id, 0),
-        })
-
-    question_results = {
-        item["question_id"]: item
-        for item in Answer.objects.filter(
-            attempt__in=completed_attempts,
-            question__lecture__classroom=classroom,
-        )
-        .values("question_id")
-        .annotate(
-            answer_count=Count("id"),
+    return list(
+        Attempt.objects.filter(**filters).annotate(
             correct_count=Count(
-                "id",
-                filter=Q(is_correct=True),
+                "answers",
+                filter=Q(answers__is_correct=True),
             ),
         )
+    )
+
+
+def _best_by_student_and_lecture(attempts):
+    grouped = defaultdict(list)
+    for attempt in attempts:
+        grouped[(attempt.user_id, attempt.lecture_id)].append(attempt)
+
+    best = {}
+    for key, group in grouped.items():
+        chosen = counted_attempt(group)
+        if chosen is not None:
+            best[key] = chosen
+    return best
+
+
+def _enrolled_student_ids(classroom):
+    return list(
+        get_user_model().objects.filter(
+            enrollments__classroom=classroom,
+            profile__role="student",
+        ).values_list("id", flat=True)
+    )
+
+
+def lecture_row_stats(classroom):
+    """Played counts and class averages for every lecture in a class.
+
+    The average uses the same lecture score as the results report: each
+    enrolled student's best completed attempt. Students who have not finished
+    are left out of the average. Nobody finished means a null average.
+    """
+    attempts = _completed_attempts(classroom, _enrolled_student_ids(classroom))
+    scores_by_lecture = defaultdict(list)
+    for attempt in _best_by_student_and_lecture(attempts).values():
+        scores_by_lecture[attempt.lecture_id].append(attempt.total_points)
+
+    return {
+        lecture_id: {
+            "students_played": len(scores),
+            "class_average": _mean_score(scores),
+        }
+        for lecture_id, scores in scores_by_lecture.items()
     }
 
-    lectures = []
 
-    for lecture in classroom.lectures.prefetch_related(
-        "questions"
-    ).order_by("id"):
+def _published_lectures(classroom):
+    return list(
+        classroom.lectures.filter(
+            published_at__isnull=False,
+            published_at__lte=timezone.now(),
+        )
+        .prefetch_related("questions")
+        .order_by("id")
+    )
+
+
+def _question_accuracy(best_attempts):
+    attempt_ids = [attempt.id for attempt in best_attempts]
+    if not attempt_ids:
+        return {}
+
+    rows = (
+        Answer.objects.filter(attempt_id__in=attempt_ids)
+        .values("question_id")
+        .annotate(
+            answer_count=Count("attempt__user_id", distinct=True),
+            correct_count=Count(
+                "attempt__user_id",
+                filter=Q(is_correct=True),
+                distinct=True,
+            ),
+        )
+    )
+    return {row["question_id"]: row for row in rows}
+
+
+def build_class_results(classroom):
+    standings = class_standings(classroom)
+    student_ids = [standing["user"].id for standing in standings]
+    lectures = _published_lectures(classroom)
+    lecture_ids = [lecture.id for lecture in lectures]
+    best = _best_by_student_and_lecture(
+        _completed_attempts(classroom, student_ids, lecture_ids)
+    )
+    accuracy = _question_accuracy(best.values())
+
+    students = []
+    for standing in standings:
+        student = standing["user"]
+        lecture_rows = []
+        played = 0
+        for lecture in lectures:
+            attempt = best.get((student.id, lecture.id))
+            if attempt is None:
+                lecture_rows.append({
+                    "lecture_id": lecture.id,
+                    "played": False,
+                    "score": None,
+                    "correct_count": None,
+                })
+                continue
+            played += 1
+            lecture_rows.append({
+                "lecture_id": lecture.id,
+                "played": True,
+                "score": attempt.total_points,
+                "correct_count": attempt.correct_count,
+            })
+        students.append({
+            "student_id": student.id,
+            "name": person_display_name(student),
+            "username": dedicated_username(student),
+            "total_points": standing["points"],
+            "quizzes_played": played,
+            "lectures": lecture_rows,
+        })
+
+    lecture_rows = []
+    for lecture in lectures:
         questions = []
-
         for question in lecture.questions.all():
-            result = question_results.get(question.id, {})
+            result = accuracy.get(question.id, {})
             answer_count = result.get("answer_count", 0)
             correct_count = result.get("correct_count", 0)
-
-            accuracy = (
-                round(correct_count / answer_count * 100, 2)
-                if answer_count else None
-            )
-
             questions.append({
                 "question_id": question.id,
                 "prompt": question.prompt,
                 "answer_count": answer_count,
                 "correct_count": correct_count,
-                "accuracy_percent": accuracy,
+                "accuracy_percent": (
+                    round(correct_count / answer_count * 100, 2)
+                    if answer_count
+                    else None
+                ),
             })
-
-        lectures.append({
+        lecture_rows.append({
             "lecture_id": lecture.id,
             "title": lecture.title,
             "questions": questions,
         })
 
     return {
+        "classroom_id": classroom.id,
+        "classroom": classroom.name,
         "students": students,
-        "lectures": lectures,
+        "lectures": lecture_rows,
     }

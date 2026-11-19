@@ -6,12 +6,14 @@ import {
   getClassRoster,
   getProfessorClassLectures,
 } from "../lib/apiClient";
-import { lectureCanBeReviewed, lectureReviewPath } from "../lib/lectureReview";
+import { professorResultsPath } from "../lib/lectureReview";
+import { personLabel } from "../lib/person";
 import type {
   ProfessorClass,
   ProfessorLecture,
   ClassRosterStudent,
 } from "../types/api";
+import { ProfessorLectureRow } from "./ProfessorLectureRow";
 import { ProfessorNav } from "./ProfessorNav";
 import { UploadLecturePage } from "./LectureUpload";
 
@@ -122,9 +124,17 @@ export function ProfessorClassDetail() {
         ) : classInfo ? (
           <>
             <section className="mt-6 bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <h1 className="text-3xl font-bold">
-                {classInfo.name}
-              </h1>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <h1 className="text-3xl font-bold">
+                  {classInfo.name}
+                </h1>
+                <Link
+                  to={professorResultsPath(classInfo.id)}
+                  className="inline-flex items-center px-4 py-2 rounded-xl border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-sm font-semibold"
+                >
+                  View results
+                </Link>
+              </div>
 
               <div className="flex flex-wrap items-center gap-3 mt-4">
                 <span className="text-slate-400">
@@ -179,25 +189,11 @@ export function ProfessorClassDetail() {
               ) : (
                 <div className="mt-4 space-y-3">
                   {lectures.map((lecture) => (
-                    <div
+                    <ProfessorLectureRow
                       key={lecture.id}
-                      className="flex items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-4"
-                    >
-                      <p className="font-medium min-w-0">{lecture.title}</p>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-xs font-semibold capitalize px-3 py-1 rounded-full bg-slate-800 text-sky-300">
-                          {lecture.status}
-                        </span>
-                        {lectureCanBeReviewed(lecture.status) && classId && (
-                          <Link
-                            to={lectureReviewPath(classId, lecture.id)}
-                            className="text-sm font-semibold text-sky-400 hover:text-sky-300"
-                          >
-                            Review
-                          </Link>
-                        )}
-                      </div>
-                    </div>
+                      lecture={lecture}
+                      classId={classId ?? ""}
+                    />
                   ))}
                 </div>
               )}
@@ -217,7 +213,7 @@ export function ProfessorClassDetail() {
                       key={`${student.name}-${index}`}
                       className="flex justify-between gap-4 p-4"
                     >
-                      <span>{student.name}</span>
+                      <span>{personLabel(student)}</span>
                       <span className="text-sm text-slate-400">
                         Joined{" "}
                         {new Date(student.joined_at).toLocaleDateString()}

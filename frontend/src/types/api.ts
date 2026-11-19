@@ -152,11 +152,20 @@ export interface CreateClassResponse {
   access_code: string;
 }
 
+export interface ClassResultLectureScore {
+  lecture_id: number;
+  played: boolean;
+  score: number | null;
+  correct_count: number | null;
+}
+
 export interface ClassResultStudent {
   student_id: number;
   name: string;
+  username?: string | null;
   total_points: number;
   quizzes_played: number;
+  lectures: ClassResultLectureScore[];
 }
 
 export interface ClassResultQuestion {
@@ -174,12 +183,15 @@ export interface ClassResultLecture {
 }
 
 export interface ClassResults {
+  classroom_id: number;
+  classroom: string;
   students: ClassResultStudent[];
   lectures: ClassResultLecture[];
 }
 
 export interface ClassRosterStudent {
   name: string;
+  username?: string | null;
   joined_at: string;
 }
 
@@ -196,6 +208,10 @@ export interface ProfessorLecture {
   title: string;
   status: LectureProcessingStatus["status"] | "published";
   published_at: string | null;
+  uploaded_at: string;
+  question_count: number;
+  students_played: number;
+  class_average: number | null;
 }
 
 // GET/POST/PATCH /api/lectures/{id}/questions/ for the owning professor.

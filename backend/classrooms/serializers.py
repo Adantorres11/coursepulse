@@ -4,6 +4,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from .models import Classroom, Enrollment
+from .people import dedicated_username, person_display_name
 
 class ClassroomSerializer(serializers.ModelSerializer):
     professor = serializers.SerializerMethodField()
@@ -28,7 +29,7 @@ class ClassroomSerializer(serializers.ModelSerializer):
         professor = classroom.professor
         return {
             "id": professor.id,
-            "name": professor.get_full_name() or professor.username,
+            "name": person_display_name(professor),
         }
 
 
@@ -162,13 +163,14 @@ class ProfessorClassSerializer(serializers.ModelSerializer):
 
 class ClassRosterSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
+    username = serializers.SerializerMethodField()
 
     class Meta:
         model = Enrollment
-        fields = ["name", "joined_at"]
+        fields = ["name", "username", "joined_at"]
 
     def get_name(self, enrollment):
-        return (
-            enrollment.user.get_full_name()
-            or enrollment.user.username
-        )
+        return person_display_name(enrollment.user)
+
+    def get_username(self, enrollment):
+        return dedicated_username(enrollment.user)

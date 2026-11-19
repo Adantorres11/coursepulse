@@ -173,6 +173,14 @@ function AppContent() {
             }
           />
           <Route
+            path="/professor/class/:classId/results"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <ProfessorClassResults />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/professor/class/:classId/lectures/:lectureId"
             element={
               <ProtectedRoute allowedRole="professor">

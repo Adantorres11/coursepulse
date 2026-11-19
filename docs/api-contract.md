@@ -543,12 +543,29 @@ Authentication: Required. Only the professor who owns the class can access the r
 
 Response: 200 OK
 {
+  "classroom_id": 4,
+  "classroom": "Software Engineering",
   "students": [
     {
       "student_id": 1,
       "name": "Example Student",
+      "username": null,
       "total_points": 150,
-      "quizzes_played": 3
+      "quizzes_played": 1,
+      "lectures": [
+        {
+          "lecture_id": 1,
+          "played": true,
+          "score": 300,
+          "correct_count": 4
+        },
+        {
+          "lecture_id": 2,
+          "played": false,
+          "score": null,
+          "correct_count": null
+        }
+      ]
     }
   ],
   "lectures": [
@@ -567,10 +584,16 @@ Response: 200 OK
     }
   ]
 }
-- quizzes_played counts distinct lectures with completed attempts.
-- Question accuracy is calculated from completed attempts.
-- accuracy_percent is null when no answers exist.
-- Students without completed quizzes have zero quizzes played.
+- Only lectures that are already published are included. Drafts stay off this report.
+- Each student has one entry per published lecture, in the same order as `lectures`.
+- `played` is false when that student has no completed attempt. `score` and `correct_count` are then null. The screen says "Not played". An unfinished attempt does not count as played.
+- `score` is the points on the student's best completed attempt for that lecture. `correct_count` is how many answers on that same attempt were correct. Ties keep the earliest attempt.
+- Those two numbers are the lecture total. If a lecture is later split into quiz parts, the parts still fold into this one score and correct count.
+- `total_points` is the class ranking total: the first completed attempt on each published lecture. A higher retake changes `score` and does not change `total_points`.
+- `quizzes_played` is how many of the published lectures that student has finished.
+- `name` is the person's label. `username` is the public username when the account has that field, otherwise null. When `username` is set it is also what `name` returns.
+- For a question, `answer_count` is how many students answered it on the attempt counted above. `correct_count` is how many of those students were correct. Retakes do not add another student.
+- `accuracy_percent` is `correct_count / answer_count * 100`, rounded to two decimals. It is null when `answer_count` is 0.
 Errors:
 - 401: Authentication required.
 - 403: User is not a professor or does not own the class.
@@ -603,17 +626,20 @@ Success: 200 OK
 [
   {
     "name": "John Smith",
+    "username": null,
     "joined_at": "2026-11-12T18:00:00Z"
   },
   {
     "name": "Jane Doe",
+    "username": null,
     "joined_at": "2026-11-12T18:05:00Z"
   }
 ]
 Rules:
 - Only the professor who owns the classroom can access its roster.
 - Returns each enrolled student's name and join date.
-- Uses the username if the student's full name is unavailable.
+- `name` is the student's label: public username when that field exists, otherwise full name, otherwise the login.
+- `username` is that public username, or null when the account has no username field.
 - Students are ordered by join date, earliest first.
 - Returns an empty array if no students are enrolled.
 Errors:
@@ -677,13 +703,21 @@ Example response:
     "id": 2,
     "title": "Introduction to AI",
     "status": "published",
-    "published_at": "2026-11-16T18:00:00Z"
+    "published_at": "2026-11-16T18:00:00Z",
+    "uploaded_at": "2026-11-16T15:00:00Z",
+    "question_count": 12,
+    "students_played": 8,
+    "class_average": 240
   },
   {
     "id": 1,
     "title": "Machine Learning Basics",
     "status": "pending",
-    "published_at": null
+    "published_at": null,
+    "uploaded_at": "2026-11-15T15:00:00Z",
+    "question_count": 0,
+    "students_played": 0,
+    "class_average": null
   }
 ]
 ```
@@ -694,6 +728,10 @@ Rules:
 - Returns an empty array when the class has no lectures.
 - A published lecture is labeled "published". Otherwise the label is the lecture's processing status: "pending", "processing", "ready", or "failed".
 - Lectures made before uploads existed have no recording and are labeled "ready".
+- `uploaded_at` is when the lecture was uploaded.
+- `question_count` is how many questions the lecture has.
+- `students_played` is how many enrolled students have a completed attempt.
+- `class_average` is the mean of those students' best-attempt scores, the same score as the results report. It is null when nobody has finished. A finished quiz that scored 0 still counts, and the average is then 0. A retake replaces that student's score only when it is higher.
 
 Errors:
 - 401: Authentication required.
