@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from classrooms.models import Classroom
+from .grading import QUESTION_TIME_LIMIT_MS, TIME_GRACE_MS
 from .models import Answer, Attempt, Lecture, QuestionStart, QuizCompletion
 from .test_lectures import add_questions
 from .testing import answer, make_student, start
@@ -233,7 +234,7 @@ class ServerTimingTests(APITestCase):
         self.assertTrue(4000 <= Answer.objects.get().time_taken_ms < 5000)
 
     def test_client_time_taken_ms_is_ignored(self):
-        self.start_and_backdate(20000)
+        self.start_and_backdate(QUESTION_TIME_LIMIT_MS + TIME_GRACE_MS + 4000)
         response = self.post(
             self.question.correct_index, extra={"time_taken_ms": 100}
         )
@@ -242,12 +243,12 @@ class ServerTimingTests(APITestCase):
         self.assertEqual(response.json()["points_awarded"], 0)
 
     def test_answer_inside_grace_is_correct(self):
-        self.start_and_backdate(15500)
+        self.start_and_backdate(QUESTION_TIME_LIMIT_MS + TIME_GRACE_MS - 500)
         response = self.post(self.question.correct_index)
         self.assertTrue(response.json()["is_correct"])
 
     def test_answer_after_grace_times_out(self):
-        self.start_and_backdate(16500)
+        self.start_and_backdate(QUESTION_TIME_LIMIT_MS + TIME_GRACE_MS + 500)
         response = self.post(self.question.correct_index)
         self.assertFalse(response.json()["is_correct"])
         self.assertEqual(response.json()["points_awarded"], 0)

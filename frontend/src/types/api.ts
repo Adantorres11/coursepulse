@@ -56,6 +56,13 @@ export interface QuizQuestion {
   difficulty?: DifficultyLevel;
 }
 
+// A question already answered in the open attempt, including one from an earlier visit.
+export interface AnsweredQuestion {
+  question_id: number;
+  is_correct: boolean;
+  points_awarded: number;
+}
+
 export interface Quiz {
   id?: number | string;
   lecture_id: number | string;
@@ -64,6 +71,8 @@ export interface Quiz {
   // For the logged-in student's open attempt. Empty and 0 when there is none.
   // Optional only because the offline sample data lacks them; the API always sends them (see docs/api-contract.md).
   answered_question_ids?: number[];
+  // Points for questions answered in the open attempt, including an earlier visit.
+  answered_questions?: AnsweredQuestion[];
   total_points?: number;
 
   // Optional legacy alias for backwards compatibility

@@ -2,6 +2,7 @@ from django.test import SimpleTestCase
 
 from .grading import (
     QUESTION_TIME_LIMIT_MS,
+    QUESTION_TIME_LIMIT_SECONDS,
     TIME_GRACE_MS,
     capped_points,
     grade_answer,
@@ -14,6 +15,10 @@ def make_question(difficulty="easy"):
 
 
 class GradeAnswerTests(SimpleTestCase):
+    def test_question_limit_is_35_seconds(self):
+        self.assertEqual(QUESTION_TIME_LIMIT_SECONDS, 35)
+        self.assertEqual(QUESTION_TIME_LIMIT_MS, QUESTION_TIME_LIMIT_SECONDS * 1000)
+
     def test_correct_answer_earns_points_by_difficulty(self):
         for difficulty, points in (("easy", 100), ("medium", 200), ("hard", 300)):
             with self.subTest(difficulty=difficulty):

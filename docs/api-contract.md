@@ -42,6 +42,9 @@ Success: 200 OK.
     }
   ],
   "answered_question_ids": [11],
+  "answered_questions": [
+    {"question_id": 11, "is_correct": true, "points_awarded": 100}
+  ],
   "total_points": 100
 }
 Field rules
@@ -55,6 +58,12 @@ Field rules
   The open attempt is the student's newest attempt for this lecture with no
   completed_at. Send the token to get these fields. When the request has no
   token, or there is no open attempt, they are [] and 0.
+- answered_questions: one row per question already answered in that open
+  attempt, in the order they were answered. Each row is question_id,
+  is_correct, and points_awarded (the points earned on that answer, including
+  a streak bonus). The Quiz Complete screen uses this for questions the
+  student answered on an earlier visit. It is [] in the same cases as
+  answered_question_ids. It does not include the correct choice.
 Errors: 404 with {"detail": "Not found."} for an unknown lecture id. The same
 404 is returned when the lecture is not published yet or has no questions.
 POST /api/lectures/{id}/answers/
@@ -82,9 +91,11 @@ Rules:
 - The server measures the time. It counts from the question's start call
   (POST /api/lectures/{id}/questions/{question_id}/start/) to the moment
   the answer arrives. The client does not send a time.
-- The screen shows 15 seconds per question: QUESTION_TIME_LIMIT_MS = 15000.
+- The screen shows 35 seconds per question. That limit is one setting:
+  QUESTION_TIME_LIMIT_SECONDS = 35, and QUESTION_TIME_LIMIT_MS is
+  QUESTION_TIME_LIMIT_SECONDS * 1000 (35000). Grading uses that same limit.
   The server allows 1000 ms more for network delay: TIME_GRACE_MS = 1000.
-  An answer timed out when the measured time is greater than 16000 ms.
+  An answer timed out when the measured time is greater than 36000 ms.
 - A null answer is never correct, so is_correct is false.
 - An answer to a question that was not started in the open attempt is
   rejected. Call the start endpoint first.

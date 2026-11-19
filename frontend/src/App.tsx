@@ -17,6 +17,8 @@ function AppContent() {
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
 
+  const isQuizPlay = location.pathname.startsWith("/quiz/");
+
   const hasCustomHeader =
     location.pathname === "/" ||
     location.pathname === "/landing" ||
@@ -28,7 +30,9 @@ function AppContent() {
     location.pathname.startsWith("/professor");
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white flex flex-col">
+    <main
+      className={`${isQuizPlay ? "h-dvh overflow-hidden" : "min-h-screen"} bg-slate-950 text-white flex flex-col`}
+    >
       {/* Top Navbar (hidden on dedicated screens with their own mockup headers) */}
       {!hasCustomHeader && (
         <nav className="border-b border-slate-800/80 bg-slate-900/50 backdrop-blur px-4 sm:px-6 py-4">
@@ -88,7 +92,9 @@ function AppContent() {
       )}
 
       {/* Screen Router */}
-      <div className="flex-1 w-full">
+      <div
+        className={`w-full ${isQuizPlay ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "flex-1"}`}
+      >
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/landing" element={<LandingPage />} />

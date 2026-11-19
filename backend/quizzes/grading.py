@@ -5,7 +5,10 @@ from .models import Answer, Attempt, DayStreak, QuestionStart, QuizCompletion
 from .streaks import next_day_streak, streak_bonus
 
 POINTS_BY_DIFFICULTY = {"easy": 100, "medium": 200, "hard": 300}
-QUESTION_TIME_LIMIT_MS = 15000
+# One limit for the play screen and for scoring. The client shows this many
+# seconds; grading allows TIME_GRACE_MS more for the request to arrive.
+QUESTION_TIME_LIMIT_SECONDS = 35
+QUESTION_TIME_LIMIT_MS = QUESTION_TIME_LIMIT_SECONDS * 1000
 TIME_GRACE_MS = 1000
 DAILY_FULL_POINTS_QUESTIONS = 35
 CAPPED_POINTS_PERCENT = 25
