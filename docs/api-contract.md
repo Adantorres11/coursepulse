@@ -42,19 +42,99 @@ Success: 200 OK.
     }
   ],
   "answered_question_ids": [11],
-  "total_points": 100
+  "total_points": 100,
+  "part": null,
+  "part_count": 1
 }
 Field rules
 - choices: exactly 4 strings.
 - The quiz does not include the correct answer. The correct answer comes from
   POST /api/lectures/{id}/answers/.
 - difficulty: "easy" (100 pts), "medium" (200 pts) or "hard" (300 pts).
-- Questions are returned in a fixed order.
+- Without a part query, questions are returned in position order, then id.
+  part is null. part_count is how many parts the lecture splits into.
 - answered_question_ids: the ids of the questions the logged-in student has
   answered in their open attempt. total_points: the points of that open attempt.
   The open attempt is the student's newest attempt for this lecture with no
   completed_at. Send the token to get these fields. When the request has no
   token, or there is no open attempt, they are [] and 0.
+Quiz parts
+A lecture is split into parts of about 12 to 13 questions. The split is even,
+so sizes differ by at most one and there is no tiny last part. 13 or fewer
+questions stay one part. 30 questions are 3 parts of 10. 14 questions are 2
+parts of 7. Parts are contiguous slices of the lecture's question order
+(position, then id). Every student in a part gets those same questions.
+
+GET /api/lectures/{id}/quiz/?part=2
+Returns one part for play. part is 1-based. A logged-in student gets a saved
+shuffle of question order and choice order. Repeating the call, including
+after a refresh, returns that same order until the attempt is finished. The
+next play of the same part is a new attempt and a new shuffle. Logged-out
+callers get the part in position order with the stored choice order. The
+response uses the same fields as the unscoped quiz, with part set to the
+requested part and questions limited to that part. The response still has no
+correct_index.
+
+Errors: 400 when part is not a whole number. 404 when the part is outside
+1..part_count, or the lecture is unavailable.
+POST /api/lectures/{id}/answers/ and
+POST /api/lectures/{id}/questions/{question_id}/start/
+accept the same part. On the answer body it is an optional integer field.
+On start it is the query ?part=. Omit part only for a one-part lecture. That
+play uses the stored choice order, and correct_index in the answer response
+is the stored index. Sending part shuffles. chosen_index is then the button
+index in the shuffled list from the quiz response. The server maps it through
+the saved choice order before grading. The stored answer keeps the original
+choice index, so reports that compare chosen_index to the question's
+correct_index stay valid. The answer response's correct_index is the button
+index in the shuffled list the student saw.
+
+A question that is not in the requested part is 404, the same as a question
+that is not in the lecture. A missing part on a multi-part lecture is 400
+{"detail": "This lecture is played in parts. Send part."}. A choice index
+outside 0-3 is still 400 on chosen_index. One student cannot read or add to
+another student's attempt: the server always uses the authenticated user.
+
+The first completed attempt of each part is the one that counts toward class
+points, the leaderboard, and the daily full-points cap. A replay's
+points_awarded and total_points are the score of that replay only. A new part
+starts a new attempt, so its correct-answer streak starts at 0. The day streak
+still advances on any answer. The best score shown for a part is the highest
+completed attempt, which can be a replay, and that display value does not
+change the leaderboard.
+
+An attempt saved before parts that already answered questions from more than
+one part keeps those points for the whole lecture. Later part attempts for
+that student and lecture do not add points again.
+
+GET /api/lectures/{id}/parts/{part}/review/
+The logged-in student's most recent completed attempt at that part. Requires
+a student token and enrollment.
+
+Success: 200 OK
+{
+  "lecture_id": 1,
+  "title": "Tuesday's Lecture: Agile and Scrum",
+  "part": 1,
+  "part_count": 3,
+  "question_count": 10,
+  "total_points": 400,
+  "correct_count": 4,
+  "questions": [
+    {
+      "id": 11,
+      "prompt": "Why does Scrum use fixed-length sprints?",
+      "your_answer": "Option A",
+      "correct_answer": "Option B",
+      "is_correct": false,
+      "points_awarded": 0
+    }
+  ]
+}
+your_answer is null when the student ran out of time. Questions are in the
+order of that attempt. 404 when the student has no completed attempt for the
+part, with {"detail": "No completed attempt for this part."}. 401 and 403
+match the answer endpoint.
 Errors: 404 with {"detail": "Not found."} for an unknown lecture id. The same
 404 is returned when the lecture is not published yet or has no questions.
 POST /api/lectures/{id}/answers/
@@ -78,7 +158,7 @@ Rules:
   The question must belong to that lecture.
 - question_id: integer. chosen_index: integer 0-3, or null when time
   ran out. Both fields are required. chosen_index is still required
-  when it is null.
+  when it is null. part is optional. See Quiz parts.
 - The server measures the time. It counts from the question's start call
   (POST /api/lectures/{id}/questions/{question_id}/start/) to the moment
   the answer arrives. The client does not send a time.
@@ -102,10 +182,12 @@ Rules:
   for hard. The 50-point streak bonus is never reduced. Only first-attempt
   answers count toward the cap, and only first-attempt answers are reduced
   by it. Replay answers never count toward the cap and are never reduced.
-- The first attempt at each lecture is the only attempt that counts toward
-  class totals. For a replay, points_awarded and total_points are the
+- The first completed attempt at each part is the only attempt that counts
+  toward class totals. For a replay, points_awarded and total_points are the
   score of that replay only. They do not change the leaderboard or the
-  class stats.
+  class total. The class page can still show the best score of a part,
+  including a replay. A one-part lecture behaves as one quiz, matching the
+  older first-attempt-per-lecture rule.
 - A wrong or timed-out answer sets the run of correct answers to 0.
 - A new attempt starts with a run of correct answers of 0, so a replay
   starts the bonus count again.
@@ -113,10 +195,12 @@ Rules:
 - correct_index is always returned, so the screen can show green and red
   feedback.
 - The server picks the attempt. It uses the student's open attempt for the
-  lecture, the one that the start call created or reused.
-- When every question in the lecture has an answer, the attempt is completed
-  (completed_at is set). The next start call, not the next answer, begins a
-  new attempt.
+  lecture and part, the one that the start call created or reused.
+- When every question in the part has an answer, the attempt is completed
+  (completed_at is set). For a one-part lecture that is every question in
+  the lecture. The next start call, not the next answer, begins a new
+  attempt. The lecture is marked complete for the class list when every
+  part has a completed attempt.
 - A second answer to the same question in the same attempt is rejected.
 Errors:
 - 400: Invalid body. Errors appear under the field name, as in
@@ -190,6 +274,7 @@ Creates an account. No token required.
 Request:
 {
   "email": "student@example.com",
+  "username": "torres11",
   "password": "Maple!River82",
   "role": "student"
 }
@@ -197,6 +282,15 @@ Rules:
 - Email must be valid and at most 150 characters.
 - Emails are trimmed and stored in lowercase.
 - Duplicate emails are rejected regardless of capitalization.
+- Username is required.
+- Usernames are trimmed. Blank usernames are rejected with
+  "Enter a username."
+- A username uses letters, numbers, underscores, or hyphens.
+  It cannot be an email address.
+- Usernames are unique regardless of capitalization.
+  "Torres11" and "torres11" are the same username.
+  A taken username is rejected with "That username is already taken."
+- The stored username keeps the capitalization the person chose.
 - Role must be "student" or "professor".
 - Password must have at least 8 characters and pass Django's
   checks for common, entirely numeric, and user-similar passwords.
@@ -206,6 +300,7 @@ Success: 201 Created
   "user": {
     "id": 1,
     "email": "student@example.com",
+    "username": "torres11",
     "role": "student"
   }
 }
@@ -215,6 +310,14 @@ Duplicate email example:
 {
   "email": ["An account with this email already exists."]
 }
+Blank username example:
+{
+  "username": ["Enter a username."]
+}
+Taken username example:
+{
+  "username": ["That username is already taken."]
+}
 Weak password example:
 {
   "password": [
@@ -223,7 +326,8 @@ Weak password example:
 }
 Password error wording can vary according to the failed check.
 POST /api/auth/login/
-Logs in using email and password. No token required.
+Logs in using email and password. The username is not a login id.
+No token required.
 
 Request:
 {
@@ -248,6 +352,7 @@ Success: 200 OK
 {
   "id": 1,
   "email": "student@example.com",
+  "username": "torres11",
   "role": "student"
 }
 Missing token: 401 Unauthorized
@@ -260,6 +365,35 @@ Invalid token: 401 Unauthorized
 }
 Tokens are reused on login and do not automatically expire.
 Existing users without a role profile receive "role": null.
+
+Usernames
+The public name for a person is their username. Login stays email
+and password.
+
+Other screens should import one helper instead of reading email,
+first name, or last name:
+
+    from accounts.usernames import display_username
+
+display_username(user) returns the username to show. It never returns
+an email. When a legacy account still has an email stored as the
+username, the helper returns the part before @, keeping letters,
+numbers, underscores, and hyphens.
+
+The React helper is displayUsername in frontend/src/lib/displayUsername.ts.
+It reads username, then name, then display_name. It does not read email.
+
+The same value is sent as:
+- username on POST /api/auth/register/, POST /api/auth/login/, and
+  GET /api/auth/me/
+- name and username on a professor, a roster row, and a results row
+- display_name and username on a leaderboard row
+
+Existing accounts receive a default username in migration
+accounts.0002_assign_default_usernames. The default is the part of
+the email before @, with _2, _3, and so on when that name is taken.
+Accounts that already have a username without @ are left as they are.
+
 GET /api/classes/
 Returns only the logged-in student's enrolled classrooms.
 Requires a student account and this header:
@@ -272,7 +406,8 @@ Success: 200 OK
     "course_code": "CS 3398",
     "professor": {
       "id": 2,
-      "name": "Alex Smith"
+      "name": "alexsmith",
+      "username": "alexsmith"
     },
     "quiz_count": 5,
     "new_quiz_count": 3
@@ -282,7 +417,9 @@ Rules:
 - Classes are ordered by name, then ID.
 - No enrollments returns [] with 200 OK.
 - Professor is null if no professor is assigned.
-- Professor name falls back to username when their full name is empty.
+- professor.name and professor.username are the public username from
+  display_username. They are never an email address. A legacy account
+  whose stored username is still an email is shown as the part before @.
 - Course code may be empty for existing classrooms.
 - Each lecture with questions counts as one quiz if its publication
   time has arrived.
@@ -313,7 +450,8 @@ Success: 200 OK
   "course_code": "CS 3398",
   "professor": {
     "id": 2,
-    "name": "Alex Smith"
+    "name": "alexsmith",
+    "username": "alexsmith"
   },
   "quiz_count": 5,
   "new_quiz_count": 3
@@ -350,19 +488,22 @@ Success: 200 OK
 [
   {
     "rank": 1,
-    "display_name": "Bharat K.",
+    "display_name": "bharat",
+    "username": "bharat",
     "points": 500,
     "is_current_user": true
   },
   {
     "rank": 1,
-    "display_name": "Alex S.",
+    "display_name": "alex",
+    "username": "alex",
     "points": 500,
     "is_current_user": false
   },
   {
     "rank": 3,
-    "display_name": "Sam R.",
+    "display_name": "sam",
+    "username": "sam",
     "points": 0,
     "is_current_user": false
   }
@@ -371,8 +512,9 @@ Rules:
 - Includes enrolled users with the student role.
 - Points are the sum of total_points from completed attempts across
   all lectures in this class. Incomplete attempts are excluded.
-- Only the student's first attempt at each lecture counts, once it is
-  completed. Replays add 0.
+- Only the student's first completed attempt at each part counts.
+  Replays add 0. A part is one slice of a lecture's questions. Every
+  student in a part is scored on the same questions.
 - Attempts at a lecture whose published_at is empty or still in the
   future add 0.
 - Attempts from other classes are excluded.
@@ -382,10 +524,11 @@ Rules:
   1, 1, 3.
 - Students with no completed attempts receive zero points.
 - Zero-point students appear last and share the same rank.
-- display_name uses the first name and last initial, such as "Bharat K.".
-- If the last name is missing, only the first name is shown.
-- If the first name is missing, display_name is "Student".
-  Email addresses and usernames are not used as name fallbacks.
+- display_name and username are the public username from
+  display_username. They are the same value.
+- They are never an email address, a full name, or the word "Student".
+- A legacy account whose stored username is still an email is shown
+  as the part before @.
 - is_current_user is true only for the requesting student's entry.
 - The response is an unpaginated array.
 Errors:
@@ -444,15 +587,14 @@ Rules:
 - An available quiz is a lecture in this class with published_at in
   the past and at least one question. Only available quizzes appear
   in lectures and count in quizzes_total.
-- A quiz is played when the student has an attempt for it with
-  completed_at set. Incomplete attempts do not count.
-- quizzes_played is the number of available quizzes the student has
-  played. Repeat attempts do not add to it.
+- A quiz in quizzes_played and quizzes_total is one part. A lecture of
+  13 or fewer questions is one part, so those counts match a lecture count.
+  A part is played when the student has a completed attempt for it.
+  Incomplete attempts do not count. Replays do not add to quizzes_played.
 - total_points is the sum of total_points from the student's first
-  attempt at each lecture in this class, once that attempt is completed.
-  Replays add 0. Attempts at a lecture whose published_at is empty or
-  still in the future add 0. It matches the student's points in the
-  leaderboard.
+  completed attempt of each part in this class. Replays add 0. Attempts
+  at a lecture whose published_at is empty or still in the future add 0.
+  It matches the student's points in the leaderboard.
 - rank uses competition ranking, the same as the leaderboard:
   1, 1, 3.
 - points_to_next_rank is the gap to the nearest student with strictly
@@ -460,16 +602,23 @@ Rules:
   students are tied at the top.
 - lectures are ordered newest first by published_at, the same as
   GET /api/lectures/.
-- up_next is the first unplayed lecture in that order, which is the
-  newest unplayed lecture. It has the same shape as a lectures item.
-  It is null when every available quiz is played.
-- best_score is the highest total_points among the student's completed
-  attempts for the lecture.
-- correct_count is the number of correct answers in that same attempt.
-  If two attempts tie on score, the attempt with the lowest attempt ID
-  is used.
+- up_next is the first lecture in that order that still has a part with
+  no completed attempt. It has the same shape as a lectures item. It is
+  null when every part of every available lecture is complete. For a
+  one-part lecture this is the newest lecture the student has not finished.
+- Each lectures item includes part_count and parts. A part has part
+  (1-based), question_count, completed, best_score, correct_count, and
+  in_progress. in_progress is true when the student has an open attempt
+  for that part. is_complete is true when every part is completed.
+  is_new is true when no part is completed.
+- best_score on a lecture is the sum of each part's best completed
+  attempt. For one part, that is the highest total_points among the
+  student's completed attempts for the lecture.
+- correct_count is the sum of correct answers on those same part
+  attempts. If two attempts for a part tie on score, the attempt with
+  the lowest attempt ID is used.
 - An unplayed lecture has best_score 0, correct_count 0, and is_new
-  true. A played lecture has is_new false.
+  true. A lecture with any completed part has is_new false.
 - A student with no completed attempts gets total_points 0,
   quizzes_played 0, and points_to_next_rank as defined above. The
   student shares the last rank with the other zero-point students.
@@ -543,12 +692,29 @@ Authentication: Required. Only the professor who owns the class can access the r
 
 Response: 200 OK
 {
+  "classroom_id": 4,
+  "classroom": "Software Engineering",
   "students": [
     {
       "student_id": 1,
-      "name": "Example Student",
+      "name": "ada",
+      "username": "ada",
       "total_points": 150,
-      "quizzes_played": 3
+      "quizzes_played": 1,
+      "lectures": [
+        {
+          "lecture_id": 1,
+          "played": true,
+          "score": 300,
+          "correct_count": 4
+        },
+        {
+          "lecture_id": 2,
+          "played": false,
+          "score": null,
+          "correct_count": null
+        }
+      ]
     }
   ],
   "lectures": [
@@ -567,10 +733,17 @@ Response: 200 OK
     }
   ]
 }
-- quizzes_played counts distinct lectures with completed attempts.
-- Question accuracy is calculated from completed attempts.
-- accuracy_percent is null when no answers exist.
-- Students without completed quizzes have zero quizzes played.
+- Only lectures that are already published are included. Drafts stay off this report.
+- Each student has one entry per published lecture, in the same order as `lectures`.
+- `played` is true when the student has finished at least one part. `score` and `correct_count` are null when nothing is finished. The screen says "Not played". An unfinished attempt does not count as played.
+- `score` is the sum of the student's best finished attempt on each part. `correct_count` is the sum of the correct answers on those same attempts. A tie on one part keeps the earliest attempt.
+- `parts_completed` is how many parts have a finished attempt. `parts_total` is how many parts the lecture has. A lecture of 13 or fewer questions has one part.
+- `total_points` is the class ranking total: the first finished attempt of each part. It matches the leaderboard. A higher replay changes `score` and does not change `total_points`.
+- `quizzes_played` is how many published lectures the student has played. A lecture counts once when any part is finished. Replays do not add another lecture.
+- `name` and `username` are the public username from `display_username`. They are never an email address or a full name.
+- For a question, `answer_count` is how many students have a finished answer. Each student counts once, using the answer on their earliest finished attempt. A replay does not add another answer and does not replace the first one.
+- `Answer.chosen_index` stays the original choice index. Accuracy uses the stored `is_correct` flag, so a shuffled choice order does not change the count.
+- `accuracy_percent` is `correct_count / answer_count * 100`, rounded to two decimals. It is null when `answer_count` is 0.
 Errors:
 - 401: Authentication required.
 - 403: User is not a professor or does not own the class.
@@ -602,18 +775,20 @@ Authentication: Required (professor only).
 Success: 200 OK
 [
   {
-    "name": "John Smith",
+    "name": "ada",
+    "username": "ada",
     "joined_at": "2026-11-12T18:00:00Z"
   },
   {
-    "name": "Jane Doe",
+    "name": "sam",
+    "username": "sam",
     "joined_at": "2026-11-12T18:05:00Z"
   }
 ]
 Rules:
 - Only the professor who owns the classroom can access its roster.
-- Returns each enrolled student's name and join date.
-- Uses the username if the student's full name is unavailable.
+- Returns each enrolled student's public username and join date.
+- name and username are the public username from display_username. They are never an email address or a full name.
 - Students are ordered by join date, earliest first.
 - Returns an empty array if no students are enrolled.
 Errors:
@@ -677,13 +852,21 @@ Example response:
     "id": 2,
     "title": "Introduction to AI",
     "status": "published",
-    "published_at": "2026-11-16T18:00:00Z"
+    "published_at": "2026-11-16T18:00:00Z",
+    "uploaded_at": "2026-11-16T15:00:00Z",
+    "question_count": 12,
+    "students_played": 8,
+    "class_average": 240
   },
   {
     "id": 1,
     "title": "Machine Learning Basics",
     "status": "pending",
-    "published_at": null
+    "published_at": null,
+    "uploaded_at": "2026-11-15T15:00:00Z",
+    "question_count": 0,
+    "students_played": 0,
+    "class_average": null
   }
 ]
 ```
@@ -694,6 +877,10 @@ Rules:
 - Returns an empty array when the class has no lectures.
 - A published lecture is labeled "published". Otherwise the label is the lecture's processing status: "pending", "processing", "ready", or "failed".
 - Lectures made before uploads existed have no recording and are labeled "ready".
+- `uploaded_at` is when the lecture was uploaded.
+- `question_count` is how many questions the lecture has.
+- `students_played` is how many enrolled students have finished at least one part.
+- `class_average` is the mean of those students' lecture scores. A lecture score is the sum of the best finished attempt on each part, the same score as the results report. It is null when nobody has finished. A finished part that scored 0 still counts, and the average is then 0. A replay replaces that part's score only when it is higher.
 
 Errors:
 - 401: Authentication required.

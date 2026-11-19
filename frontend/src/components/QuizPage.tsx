@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useLocation, Link } from "react-router-dom";
+import { useParams, useLocation, useSearchParams, Link } from "react-router-dom";
 import { getClassesRoute, getQuiz, isProfessor, request, type Quiz, type Lecture } from "../lib/apiClient";
 import QuizGame from "./quiz";
 
@@ -13,6 +13,9 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
   const lectureId = propLectureId ?? routeLectureId ?? "";
 
   // The Class Hub passes the page it came from; otherwise go to the Student Hub.
+  const [searchParams] = useSearchParams();
+  const partParam = Number(searchParams.get("part"));
+  const part = Number.isInteger(partParam) && partParam > 0 ? partParam : undefined;
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from;
   const backTo = from ?? getClassesRoute();
@@ -70,7 +73,7 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
       return;
     }
 
-    getQuiz(lectureId).then((result) => {
+    getQuiz(lectureId, part).then((result) => {
       if (!isMounted) return;
       if (result.error || !result.data) {
         // A 404 normally has server text; only an empty 200 body has none, and the Not Found card then shows its own message.
@@ -86,7 +89,7 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
     return () => {
       isMounted = false;
     };
-  }, [lectureId, reloadKey]);
+  }, [lectureId, reloadKey, part]);
 
   // Any failure except 404 can be retried. No lecture ID and empty data keep the Not Found card.
   const loadFailed = Boolean(lectureId) && Boolean(error) && errorStatus !== 404;
@@ -160,6 +163,9 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
               Lecture Quiz
             </span>
             <h2 className="text-xl sm:text-2xl font-bold text-white mt-1">{quiz.title}</h2>
+            {part !== undefined && (
+              <p className="text-sm text-sky-300 mt-1">Part {quiz.part ?? part}{quiz.part_count ? ` of ${quiz.part_count}` : ""}</p>
+            )}
             <p className="text-slate-400 text-sm mt-1">
               {quiz.questions.length} questions loaded and ready to play.
             </p>
@@ -172,6 +178,8 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
             initialAnsweredIds={quiz.answered_question_ids ?? []}
             initialScore={quiz.total_points ?? 0}
             classroomId={classroomId}
+            part={part}
+            onReplay={() => setReloadKey((n) => n + 1)}
           />
         </div>
       )}

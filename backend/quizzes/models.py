@@ -34,6 +34,8 @@ class Lecture(models.Model):
     )
     notice = models.CharField(max_length=255, blank=True, default="")
     published_at = models.DateTimeField(null=True, blank=True)
+    # When the lecture was uploaded. published_at is a later, separate moment.
+    created_at = models.DateTimeField(auto_now_add=True)
 
     transcript = models.TextField(blank=True, default="")
     raw_transcript = models.JSONField(null=True, blank=True)
@@ -143,28 +145,80 @@ class Attempt(models.Model):
     total_points = models.PositiveIntegerField(default=0)
     answer_streak = models.PositiveIntegerField(default=0)
     is_first = models.BooleanField(default=False)
+    # 0-based slice of the lecture. Part 0 is the first part.
+    part_index = models.PositiveIntegerField(default=0)
+    # Question ids in the order this attempt shows them. Empty means canonical.
+    question_order = models.JSONField(blank=True, default=list)
+    # Original choice indexes in display order, keyed by question id string.
+    choice_orders = models.JSONField(blank=True, default=dict)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "lecture"],
+                fields=["user", "lecture", "part_index"],
                 condition=models.Q(completed_at__isnull=True),
-                name="unique_open_attempt_per_user_lecture",
+                name="unique_open_attempt_per_user_lecture_part",
             ),
         ]
 
     def save(self, *args, **kwargs):
         if self._state.adding:
-            self.is_first = not Attempt.objects.filter(
-                user=self.user_id, lecture=self.lecture_id
+            # First attempt of this part counts. A later part is its own first
+            # attempt. An older attempt that already scored questions from more
+            # than one part keeps those points, and new part attempts do not
+            # add them again.
+            same_part = Attempt.objects.filter(
+                user_id=self.user_id,
+                lecture_id=self.lecture_id,
+                part_index=self.part_index,
             ).exists()
+            self.is_first = not same_part and not _legacy_whole_attempt_exists(
+                self.user_id, self.lecture_id
+            )
         super().save(*args, **kwargs)
 
     def __str__(self):
         return (
             f"Attempt {self.pk}: "
-            f"user {self.user_id}, lecture {self.lecture_id}"
+            f"user {self.user_id}, lecture {self.lecture_id}, "
+            f"part {self.part_index}"
         )
+
+
+def _legacy_whole_attempt_exists(user_id, lecture_id):
+    """True when an attempt already scored questions from more than one part.
+
+    Those attempts were saved before parts, with every question on one row.
+    Their points already stand in for the whole lecture.
+    """
+    from .parts import part_sizes
+
+    question_ids = list(
+        Question.objects.filter(lecture_id=lecture_id)
+        .order_by("position", "id")
+        .values_list("id", flat=True)
+    )
+    sizes = part_sizes(len(question_ids))
+    if len(sizes) <= 1:
+        return False
+    id_to_part = {}
+    cursor = 0
+    for part_index, size in enumerate(sizes):
+        for question_id in question_ids[cursor:cursor + size]:
+            id_to_part[question_id] = part_index
+        cursor += size
+    attempts = Attempt.objects.filter(
+        user_id=user_id, lecture_id=lecture_id
+    ).prefetch_related("answers")
+    for attempt in attempts:
+        touched = {
+            id_to_part[answer.question_id]
+            for answer in attempt.answers.all()
+            if answer.question_id in id_to_part
+        }
+        if len(touched) > 1:
+            return True
+    return False
 
 
 class Answer(models.Model):

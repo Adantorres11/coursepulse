@@ -13,6 +13,8 @@ interface QuizGameProps {
   initialAnsweredIds?: number[];
   initialScore?: number;
   classroomId?: number;
+  part?: number;
+  onReplay?: () => void;
 }
 
 export default function QuizGame({
@@ -21,6 +23,8 @@ export default function QuizGame({
   initialAnsweredIds = [],
   initialScore = 0,
   classroomId,
+  part,
+  onReplay,
 }: QuizGameProps) {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
 
@@ -76,7 +80,7 @@ export default function QuizGame({
 
     let cancelled = false;
     setStartError(null);
-    startQuestion(lectureId, Number(questions[questionIndex].id)).then((result) => {
+    startQuestion(lectureId, Number(questions[questionIndex].id), part).then((result) => {
       if (cancelled) {
         return;
       }
@@ -90,7 +94,7 @@ export default function QuizGame({
     return () => {
       cancelled = true;
     };
-  }, [questionIndex, startAttempt, currentResult, lectureId, questions.length]);
+  }, [questionIndex, startAttempt, currentResult, lectureId, questions.length, part]);
 
   // sets color of buttons based on user input
   function getAnswerColor(answerIndex: number) {
@@ -121,6 +125,7 @@ export default function QuizGame({
     const body: AnswerRequest = {
       question_id: Number(questions[questionIndex].id),
       chosen_index: answerIndex,
+      ...(part !== undefined ? { part } : {}),
     };
     await submitAnswer(body, answerIndex, questionIndex);
   }
@@ -493,7 +498,7 @@ export default function QuizGame({
       </div>
 
       <div className="flex items-center justify-center flex-row p-6 gap-2">
-        <button className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors text-left bg-blue-300 text-black leading-none" onClick={() => restartQuiz()}>
+        <button className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors text-left bg-blue-300 text-black leading-none" onClick={() => (onReplay ? onReplay() : restartQuiz())}>
           <span className="font-bold flex items-center justify-center">⟳</span>
           <span className="font-medium">Replay</span>
         </button>

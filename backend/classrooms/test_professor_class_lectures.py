@@ -2,11 +2,12 @@
 from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework.test import APITestCase
 
 from accounts.models import Profile
-from classrooms.models import Classroom
-from quizzes.models import Lecture
+from classrooms.models import Classroom, Enrollment
+from quizzes.models import Answer, Attempt, Lecture, Question
 
 
 class ProfessorClassLecturesTests(APITestCase):
@@ -144,3 +145,116 @@ class ProfessorClassLecturesTests(APITestCase):
             response.data[0]["title"],
             "Correct Lecture",
         )
+
+    def test_lecture_row_includes_upload_date_questions_played_and_average(self):
+        lecture = Lecture.objects.create(
+            classroom=self.classroom,
+            title="Week 1",
+            published_at=timezone.now(),
+        )
+        first = Question.objects.create(
+            lecture=lecture,
+            prompt="What is 2 + 2?",
+            choices=["4", "3", "5", "6"],
+            correct_index=0,
+            difficulty="easy",
+            position=1,
+        )
+        Question.objects.create(
+            lecture=lecture,
+            prompt="What is 3 + 3?",
+            choices=["6", "5", "7", "8"],
+            correct_index=0,
+            difficulty="medium",
+            position=2,
+        )
+        student = User.objects.create_user(
+            username="enrolled",
+            password="testpass",
+        )
+        Profile.objects.create(user=student, role="student")
+        Enrollment.objects.create(user=student, classroom=self.classroom)
+        other = User.objects.create_user(
+            username="also",
+            password="testpass",
+        )
+        Profile.objects.create(user=other, role="student")
+        Enrollment.objects.create(user=other, classroom=self.classroom)
+
+        low = Attempt.objects.create(
+            user=student,
+            lecture=lecture,
+            total_points=0,
+            completed_at=timezone.now(),
+        )
+        Answer.objects.create(
+            attempt=low,
+            question=first,
+            chosen_index=1,
+            is_correct=False,
+            time_taken_ms=1000,
+            points_awarded=0,
+        )
+        Attempt.objects.create(
+            user=student,
+            lecture=lecture,
+            total_points=300,
+            completed_at=timezone.now(),
+        )
+        Attempt.objects.create(
+            user=other,
+            lecture=lecture,
+            total_points=100,
+            completed_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.professor)
+        response = self.client.get(self.url)
+        row = response.data[0]
+
+        self.assertEqual(row["question_count"], 2)
+        self.assertEqual(row["students_played"], 2)
+        self.assertEqual(row["class_average"], 200)
+        uploaded_at = row["uploaded_at"]
+        if isinstance(uploaded_at, str):
+            uploaded_at = parse_datetime(uploaded_at)
+        self.assertEqual(uploaded_at, lecture.created_at)
+
+    def test_a_finished_quiz_with_zero_points_still_counts(self):
+        lecture = Lecture.objects.create(
+            classroom=self.classroom,
+            title="Quiet week",
+            published_at=timezone.now(),
+        )
+        student = User.objects.create_user(
+            username="quiet",
+            password="testpass",
+        )
+        Profile.objects.create(user=student, role="student")
+        Enrollment.objects.create(user=student, classroom=self.classroom)
+        Attempt.objects.create(
+            user=student,
+            lecture=lecture,
+            total_points=0,
+            completed_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.professor)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.data[0]["students_played"], 1)
+        self.assertEqual(response.data[0]["class_average"], 0)
+
+    def test_lecture_average_is_null_when_nobody_has_played(self):
+        Lecture.objects.create(
+            classroom=self.classroom,
+            title="Unused",
+        )
+
+        self.client.force_authenticate(user=self.professor)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.data[0]["students_played"], 0)
+        self.assertIsNone(response.data[0]["class_average"])
+        self.assertEqual(response.data[0]["question_count"], 0)
+        self.assertIn("uploaded_at", response.data[0])
