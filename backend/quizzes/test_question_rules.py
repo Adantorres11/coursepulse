@@ -625,6 +625,13 @@ class LopsidedTests(SimpleTestCase):
         draft = make_draft(choices=["w" * 15 + "     ", "c" * 20, "x", "y"], correct_index=1)
         self.assertTrue(is_lopsided(draft))
 
+    def test_boundary_needs_no_float_rounding(self):
+        # 20% of 15 is exactly 3, which a float compare can get wrong.
+        self.assertFalse(self.lopsided("c" * 15, "w" * 12))
+        self.assertTrue(self.lopsided("c" * 15, "w" * 11))
+        self.assertFalse(self.lopsided("c" * 35, "w" * 28))
+        self.assertTrue(self.lopsided("c" * 35, "w" * 27))
+
     def test_short_correct_answer_is_not_lopsided(self):
         self.assertFalse(self.lopsided("short", "a much longer wrong choice"))
 

@@ -957,6 +957,43 @@ class LopsidedRewriteTests(QuestionJobMixin, TestCase):
             messages.index("Balancing answer choices"), messages.index("Saving questions")
         )
 
+    def test_not_except_drafts_are_never_sent(self):
+        self.model = self.model_with(
+            [
+                lopsided_question("c1", 0, pattern="not_except"),
+                lopsided_question("c1", 1),
+                make_question("c1", 2),
+            ],
+            [distractor_reply()],
+        )
+        lecture = self.make_lecture()
+
+        with self.assertLogs("quizzes", "INFO") as logs:
+            self.assertTrue(self.run_job(lecture))
+
+        calls = self.distractor_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(
+            [item["prompt"] for item in self.listed(calls[0])], [make_question("c1", 1)["prompt"]]
+        )
+        self.assertIn("rebalanced=0 still_lopsided=2", self.summary(logs.output))
+
+    def test_only_not_except_lopsided_makes_no_call(self):
+        self.model = self.model_with(
+            [
+                lopsided_question("c1", 0, pattern="not_except"),
+                make_question("c1", 1),
+                make_question("c1", 2),
+            ],
+        )
+        lecture = self.make_lecture()
+
+        with self.assertLogs("quizzes", "INFO") as logs:
+            self.assertTrue(self.run_job(lecture))
+
+        self.assertEqual(self.distractor_calls(), [])
+        self.assertIn("rebalanced=0 still_lopsided=1", self.summary(logs.output))
+
     def test_valid_rewrite_replaces_distractors_before_balancing(self):
         self.model = self.model_with(
             [make_question("c1", 0), lopsided_question("c1", 1, correct_index=0), make_question("c1", 2)],

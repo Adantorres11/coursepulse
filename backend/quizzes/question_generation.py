@@ -479,8 +479,13 @@ def _rewrite_lopsided(run: _Run, drafts: list[Draft], concepts: list[Concept]) -
     """One call per lecture to rewrite the wrong choices of new drafts whose answer stands out.
 
     This is optional polish: a bad reply or the cost cap keeps the drafts as they are.
+    NOT/EXCEPT questions are never sent: their other choices are true statements, and a
+    rewrite as "plausible mistakes" could give them several correct answers.
     """
-    positions = [i for i, d in enumerate(drafts) if is_lopsided(d)]
+    run.still_lopsided = sum(is_lopsided(d) for d in drafts)
+    positions = [
+        i for i, d in enumerate(drafts) if is_lopsided(d) and d.pattern != "not_except"
+    ]
     lopsided = [drafts[i] for i in positions]
     if not lopsided:
         return drafts
@@ -500,7 +505,6 @@ def _rewrite_lopsided(run: _Run, drafts: list[Draft], concepts: list[Concept]) -
         if exc.message not in (BAD_OUTPUT, QUESTIONS_TOO_EXPENSIVE):
             raise
         run.log.warning("rewrite skipped lopsided=%d: %s", len(lopsided), exc.message)
-        run.still_lopsided = len(lopsided)
         return drafts
 
     drafts = list(drafts)

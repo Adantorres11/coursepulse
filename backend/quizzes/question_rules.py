@@ -462,7 +462,7 @@ def is_lopsided(draft: Draft) -> bool:
         for i, choice in enumerate(draft.choices)
         if i != draft.correct_index
     )
-    return correct - longest_wrong > 0.2 * correct
+    return 5 * (correct - longest_wrong) > correct  # over 20%, in exact integers
 
 
 def mix_warnings(drafts: list[Draft]) -> list[str]:
