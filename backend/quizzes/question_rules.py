@@ -358,9 +358,12 @@ def section_quotas(needed: int, sections: list[Section], with_concepts: set[int]
 
 
 def trim(drafts: list[Draft], needed: int, quotas: dict[int, int]) -> list[Draft]:
-    """Drop extras from the section with the most surplus over its quota, last draft first.
+    """Drop extras from the section with the most surplus over its quota.
 
-    Ties go to the higher section index. A section missing from quotas has a quota of 0.
+    Ties between sections go to the higher section index. A section missing from quotas has a
+    quota of 0. Inside that section, drop the last draft of the difficulty with the largest
+    surplus over difficulty_split(quota), so the hard questions that come last are kept.
+    Ties between difficulties drop medium first, then easy, then hard. Returns a new list.
     """
     result = list(drafts)
     while len(result) > max(needed, 0):
@@ -368,9 +371,24 @@ def trim(drafts: list[Draft], needed: int, quotas: dict[int, int]) -> list[Draft
         for draft in result:
             counts[draft.section_index] = counts.get(draft.section_index, 0) + 1
         section = max(counts, key=lambda index: (counts[index] - quotas.get(index, 0), index))
-        last = max(i for i, draft in enumerate(result) if draft.section_index == section)
+        split = difficulty_split(quotas.get(section, 0))
+        by_level = {level: 0 for level in DIFFICULTIES}
+        for draft in result:
+            if draft.section_index == section:
+                by_level[draft.difficulty] += 1
+        level = max(
+            (l for l in DIFFICULTIES if by_level[l]),
+            key=lambda l: (by_level[l] - split[l], _TRIM_TIE_ORDER[l]),
+        )
+        last = max(
+            i for i, draft in enumerate(result)
+            if draft.section_index == section and draft.difficulty == level
+        )
         del result[last]
     return result
+
+
+_TRIM_TIE_ORDER = {"medium": 2, "easy": 1, "hard": 0}
 
 
 def balance_positions(drafts: list[Draft], seed: int) -> list[Draft]:

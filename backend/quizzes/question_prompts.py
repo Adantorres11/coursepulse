@@ -144,7 +144,7 @@ Content:
 - Questions and choices never mention the professor, instructor, lecturer, or speaker. Never ask "What did the professor say..." or use the words "said", "mentioned", "the lecture", "this lecture", "in class", or "this class".
 - Never ask about logistics, homework, due dates, exams, grading, attendance, the syllabus, announcements, stories, jokes, or small talk.
 - When a concept comes from a story or example, ask about the concept in neutral wording. Do not refer to the story or the people in it.
-- Every question must stand alone. Never write 'described', 'stated', 'mentioned', 'discussed', 'shown', 'the example above', 'in this lecture', 'in class', or similar words that point back to the lecture. Give the needed context inside the question.
+- Every question must stand alone. Never write 'described', 'stated', 'mentioned', 'discussed', 'covered', 'shown', 'the example above', 'in this lecture', 'in class', or similar words that point back to the lecture. Give the needed context inside the question.
 - Every question must be answerable from the transcript alone. Do not depend on outside knowledge. Do not invent facts.
 - Each question tests one concept. Set concept_id to the id of that concept, taken from the given concept list. Never invent an id.
 

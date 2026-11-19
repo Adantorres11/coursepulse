@@ -103,6 +103,7 @@ class InstructionTests(SimpleTestCase):
                 self.assertIn("only long, detailed, or hedged choice", instructions)
                 self.assertIn("must stand alone", instructions)
                 self.assertIn("'described', 'stated'", instructions)
+                self.assertIn("'covered'", instructions)
                 self.assertIn("connecting two or more ideas", instructions)
 
     def test_question_instructions_ask_for_exact_counts_and_no_repeats(self):
@@ -498,6 +499,28 @@ class TrimTests(SimpleTestCase):
         drafts.append(make_draft("extra", section_index=4))
         result = trim(drafts, 3, {0: 3})
         self.assertEqual([d.prompt for d in result], ["s0-0", "s0-1", "s0-2"])
+
+    def test_trim_keeps_hard_question(self):
+        split = difficulty_split(5)
+        self.assertEqual(split, {"easy": 1, "medium": 3, "hard": 1})
+        levels = ["easy", "easy", "medium", "medium", "medium", "hard"]
+        drafts = [make_draft(f"q{i}", difficulty=level) for i, level in enumerate(levels)]
+        result = trim(drafts, 5, {0: 5})
+        self.assertIn("q5", [d.prompt for d in result])
+        kept = [d.difficulty for d in result]
+        self.assertEqual({level: kept.count(level) for level in split}, split)
+        self.assertEqual(len(drafts), 6)
+
+    def test_trim_removes_easy_when_easy_is_over_its_split(self):
+        levels = ["easy", "easy", "easy", "medium", "medium", "medium", "hard"]
+        drafts = [make_draft(f"q{i}", difficulty=level) for i, level in enumerate(levels)]
+        result = trim(drafts, 6, {0: 6})
+        self.assertEqual([d.prompt for d in result], ["q0", "q1", "q3", "q4", "q5", "q6"])
+
+    def test_trim_difficulty_tie_removes_medium_first(self):
+        drafts = [make_draft("e", difficulty="easy"), make_draft("m", difficulty="medium"), make_draft("h", difficulty="hard")]
+        result = trim(drafts, 2, {0: 0})
+        self.assertEqual([d.prompt for d in result], ["e", "h"])
 
 
 class BalanceTests(SimpleTestCase):
