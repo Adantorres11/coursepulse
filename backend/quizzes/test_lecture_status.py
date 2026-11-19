@@ -198,6 +198,46 @@ class LectureStatusTests(TestCase):
 
         mock_enqueue.assert_called_once_with(self.lecture.id)
 
+    def test_status_returns_notice_when_ready(self):
+        self.authenticate(self.professor)
+
+        notice = (
+            "Generated 16 questions (target 20). "
+            "Add more in review if needed."
+        )
+        self.lecture.status = "ready"
+        self.lecture.notice = notice
+        self.lecture.save()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.data["notice"], notice)
+
+    def test_status_notice_empty_unless_ready(self):
+        self.authenticate(self.professor)
+
+        self.lecture.status = "failed"
+        self.lecture.notice = "x"
+        self.lecture.save()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.data["notice"], "")
+
+    @patch("quizzes.views.enqueue_lecture_processing")
+    def test_retry_clears_notice(self, mock_enqueue):
+        self.authenticate(self.professor)
+
+        self.lecture.status = "failed"
+        self.lecture.notice = "x"
+        self.lecture.save()
+
+        self.client.post(self.retry_url)
+
+        self.lecture.refresh_from_db()
+
+        self.assertEqual(self.lecture.notice, "")
+
     @patch("quizzes.views.enqueue_lecture_processing")
     def test_retry_sets_last_progress_at(self, mock_enqueue):
         self.authenticate(self.professor)

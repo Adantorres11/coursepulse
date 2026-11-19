@@ -19,6 +19,11 @@ export function lectureCanBeReviewed(status: ProfessorLecture["status"]): boolea
   return status === "ready" || status === "published";
 }
 
+/** Edit, add, and delete are only for an unpublished lecture whose status is ready. */
+export function canEditLectureQuestions(status: ProfessorLecture["status"]): boolean {
+  return status === "ready";
+}
+
 export function validateQuestionDraft(draft: QuestionDraft): string | null {
   if (!draft.prompt.trim()) {
     return "Enter a question.";

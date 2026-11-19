@@ -1,0 +1,497 @@
+"""Pure rules for question generation: counts, sections, and concepts. No database, no network."""
+
+import difflib
+import math
+import random
+import re
+from dataclasses import dataclass, replace
+
+from django.conf import settings
+
+SECTION_WORDS = 1300
+CONCEPT_MATCH_RATIO = 0.95
+NEAR_DUPLICATE_RATIO = 0.8
+MAX_PROMPT_CHARS = 500
+MAX_CHOICE_CHARS = 200
+LOPSIDED_MARGIN_PERCENT = 5  # correct answer this much longer than the longest wrong choice is lopsided
+DIFFICULTIES = ("easy", "medium", "hard")
+DIFFICULTY_SHARES = {"easy": 3, "medium": 5, "hard": 2}  # tenths: a 30/50/20 mix
+
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+_WORD = re.compile(r"[^\W_]+")
+_NUMERALS = {"i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"}
+
+_HARD_DROP = re.compile(
+    r"\b(professor|instructor|lecturer|speaker)s?\b"
+    r"|\bwhat did\b.*\b(say|said|mention|mentioned)\b"
+    r"|\b(homework|due date|midterm|final exam|attendance|syllabus|office hours|extra credit|grading)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_SOFT_PHRASES = re.compile(
+    r"\b(said|mentioned|the lecture|this lecture|in class|this class)\b", re.IGNORECASE
+)
+_NONE_ABOVE = {"none of the above", "all of the above", "none of these", "all of these"}
+_CHOICE_REFERENCE = (
+    re.compile(r"\b(both|all|none|neither) of the above\b", re.IGNORECASE),
+    re.compile(r"\b(?i:options?|choices?|answers?)\s+(?:[A-D]|[1-4])\b"),
+    re.compile(r"\b(?i:both|either|neither)\s+[A-D]\s+(?i:and|or|nor)\s+[A-D]\b"),
+    re.compile(r"^\s*[A-D]\s*(?:(?i:and|or)|&|,)\s*[A-D]\s*$"),
+)
+
+
+@dataclass(frozen=True)
+class Section:
+    index: int
+    start: float | None
+    end: float | None
+    text: str
+
+    @property
+    def words(self) -> int:
+        return len(self.text.split())
+
+
+@dataclass(frozen=True)
+class Concept:
+    id: str  # "c1", "c2", ... in lecture order
+    name: str
+    section_index: int  # first section it appeared in
+    order: int  # global order of first appearance
+    data: dict  # the stage 1 fields
+
+
+def target_count(words: int) -> int:
+    wanted = round(words / settings.QUESTION_WORDS_PER_QUESTION)
+    return max(settings.QUESTION_MIN_COUNT, min(settings.QUESTION_MAX_COUNT, wanted))
+
+
+def _sections_from_chunks(raw: dict | None) -> list[Section]:
+    chunks = (raw or {}).get("chunks") or []
+    return [
+        Section(chunk["index"], chunk.get("start"), chunk.get("end"), chunk["text"].strip())
+        for chunk in chunks
+        if (chunk.get("text") or "").strip()
+    ]
+
+
+def _sentences(transcript: str) -> list[str]:
+    """Split at sentence ends. Cut a sentence longer than SECTION_WORDS into word runs."""
+    sentences = _SENTENCE_SPLIT.split(transcript.strip()) if transcript.strip() else []
+    result = []
+    for sentence in sentences:
+        words = sentence.split()
+        if len(words) <= SECTION_WORDS:
+            result.append(sentence)
+            continue
+        result += [
+            " ".join(words[i : i + SECTION_WORDS]) for i in range(0, len(words), SECTION_WORDS)
+        ]
+    return result
+
+
+def _sections_from_text(transcript: str) -> list[Section]:
+    sentences = _sentences(transcript)
+    pieces: list[list[str]] = []
+    current: list[str] = []
+    current_words = 0
+    for sentence in sentences:
+        current.append(sentence)
+        current_words += len(sentence.split())
+        if current_words >= SECTION_WORDS:
+            pieces.append(current)
+            current, current_words = [], 0
+    if current:
+        # A short tail joins the piece before it, so no section is tiny.
+        if pieces and current_words < SECTION_WORDS / 2:
+            pieces[-1].extend(current)
+        else:
+            pieces.append(current)
+    return [Section(i, None, None, " ".join(piece)) for i, piece in enumerate(pieces)]
+
+
+def split_sections(transcript: str, raw: dict | None) -> list[Section]:
+    """Use the saved Whisper chunks, or split the plain text at sentence ends (or word counts)."""
+    return _sections_from_chunks(raw) or _sections_from_text(transcript)
+
+
+def _concept_key(name: str) -> str:
+    key = name.strip().lower()
+    return key[:-1] if key.endswith("s") else key
+
+
+def _tokens(name: str) -> list[str]:
+    return _WORD.findall(name.lower())
+
+
+def _same_word(a: str, b: str) -> bool:
+    """Equal, or equal once one of them loses a plural "s" or "es"."""
+    return a == b or a in (b + "s", b + "es") or b in (a + "s", a + "es")
+
+
+def _is_marker(token: str) -> bool:
+    """A token that tells neighbor concepts apart: a number, a Roman numeral, or a short word."""
+    return any(ch.isdigit() for ch in token) or token in _NUMERALS or len(token) <= 2
+
+
+def _same_concept(a: str, b: str) -> bool:
+    """True when two concept names mean the same concept.
+
+    Split each name into words at spaces, hyphens, and other non-letters. The names match
+    when they have the same words in the same order, allowing a plural "s" or "es" on any
+    word ("Race condition" and "race conditions", "Mutex" and "mutexes"). Otherwise they match
+    only when their difflib ratio is at least CONCEPT_MATCH_RATIO and no word that is in one
+    name but not the other is a number, a Roman numeral, or 2 letters or fewer. So
+    "Type I error" and "Type II error", "Layer 2" and "Layer 3", "Big-O" and "Big-Omega",
+    and "Pre-order" and "Post-order" stay apart.
+    """
+    ta, tb = _tokens(a), _tokens(b)
+    if not ta or not tb:
+        return False
+    if len(ta) == len(tb) and all(_same_word(x, y) for x, y in zip(ta, tb)):
+        return True
+    if any(_is_marker(token) for token in set(ta) ^ set(tb)):
+        return False
+    return _ratio(a, b) >= CONCEPT_MATCH_RATIO
+
+
+def _ratio(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, _concept_key(a), _concept_key(b)).ratio()
+
+
+def merge_concepts(per_section: list[tuple[int, list[dict]]]) -> list[Concept]:
+    """Give concepts global ids in lecture order and merge repeats across sections.
+
+    A concept is compared only with concepts from earlier sections, never its own section.
+    See _same_concept for when two names match.
+    """
+    merged: list[Concept] = []
+    for section_index, concepts in sorted(per_section, key=lambda pair: pair[0]):
+        for data in concepts:
+            name = data["name"].strip()
+            if not _concept_key(name):
+                continue
+            if any(
+                seen.section_index < section_index and _same_concept(name, seen.name)
+                for seen in merged
+            ):
+                continue
+            order = len(merged)
+            merged.append(Concept(f"c{order + 1}", name, section_index, order, data))
+    return merged
+
+
+def concept_ids_for(names: list[str], concepts: list[Concept]) -> list[str]:
+    """Map one section's concept names to merged ids, with the matching merge_concepts uses.
+
+    An exact name match wins. Otherwise the matching concept with the best ratio wins.
+    """
+    ids: list[str] = []
+    for name in names:
+        key = _concept_key(name)
+        if not key:
+            continue
+        exact = [c for c in concepts if _concept_key(c.name) == key]
+        close = [c for c in concepts if _same_concept(name, c.name)]
+        if not exact and not close:
+            continue
+        concept = exact[0] if exact else max(close, key=lambda c: _ratio(name, c.name))
+        if concept.id not in ids:
+            ids.append(concept.id)
+    return ids
+
+
+@dataclass
+class Draft:
+    prompt: str
+    choices: list[str]
+    correct_index: int
+    difficulty: str
+    reason: str
+    concept_id: str
+    pattern: str
+    gotcha: bool
+    distractor_types: list[str | None]
+    section_index: int
+
+
+def _normalize(text: str) -> str:
+    return " ".join(text.lower().split()).rstrip(".,;:!? ")
+
+
+def _has_shape(raw: dict) -> bool:
+    if not isinstance(raw, dict):
+        return False
+    texts = ("prompt", "difficulty", "reason", "concept_id", "pattern")
+    if not all(isinstance(raw.get(key), str) for key in texts):
+        return False
+    choices = raw.get("choices")
+    types = raw.get("distractor_types")
+    return (
+        isinstance(choices, list)
+        and len(choices) == 4
+        and all(isinstance(choice, str) for choice in choices)
+        and isinstance(raw.get("correct_index"), int)
+        and not isinstance(raw["correct_index"], bool)
+        and isinstance(raw.get("gotcha"), bool)
+        and isinstance(types, list)
+        and len(types) == 4
+        and all(item is None or isinstance(item, str) for item in types)
+    )
+
+
+def _failure(raw: dict, concept_ids: set[str]) -> str:
+    if not _has_shape(raw):
+        return "shape"
+    prompt, choices = raw["prompt"], raw["choices"]
+    normalized = [_normalize(choice) for choice in choices]
+    if not _normalize(prompt) or not all(normalized):
+        return "blank_choice"
+    if len(set(normalized)) < 4:
+        return "duplicate_choices"
+    if not 0 <= raw["correct_index"] <= 3:
+        return "bad_index"
+    if raw["difficulty"] not in DIFFICULTIES:
+        return "bad_difficulty"
+    if len(prompt) > MAX_PROMPT_CHARS or any(len(choice) > MAX_CHOICE_CHARS for choice in choices):
+        return "too_long"
+    if any(text in _NONE_ABOVE for text in normalized):
+        return "all_none_above"
+    if any(rule.search(choice) for rule in _CHOICE_REFERENCE for choice in choices):
+        return "choice_reference"
+    if raw["concept_id"] not in concept_ids:
+        return "unknown_concept"
+    if any(_HARD_DROP.search(text) for text in (prompt, *choices)):
+        return "speaker_or_logistics"
+    return ""
+
+
+def check_draft(raw: dict, concept_ids: set[str], section_index: int) -> tuple[Draft | None, str]:
+    """Return (draft, "") for a usable question, or (None, reason) for the first failed rule."""
+    reason = _failure(raw, concept_ids)
+    if reason:
+        return None, reason
+    return (
+        Draft(
+            prompt=raw["prompt"],
+            choices=list(raw["choices"]),
+            correct_index=raw["correct_index"],
+            difficulty=raw["difficulty"],
+            reason=raw["reason"],
+            concept_id=raw["concept_id"],
+            pattern=raw["pattern"],
+            gotcha=raw["gotcha"],
+            distractor_types=list(raw["distractor_types"]),
+            section_index=section_index,
+        ),
+        "",
+    )
+
+
+def soft_flags(draft: Draft) -> list[str]:
+    """Softer phrases the prompt forbids but code keeps. For the debug log only."""
+    text = " ".join([draft.prompt, *draft.choices])
+    return sorted({match.group(0).lower() for match in _SOFT_PHRASES.finditer(text)})
+
+
+class QuestionSet:
+    """Accepted questions plus kept ones, so new questions do not repeat or crowd a grid cell."""
+
+    def __init__(self, kept: list[Draft]):
+        self._all: list[Draft] = list(kept)
+        self._cells: set[tuple[str, str, str]] = {
+            self._cell(draft) for draft in kept if draft.concept_id and not draft.gotcha
+        }
+        self._new: list[Draft] = []
+
+    @staticmethod
+    def _cell(draft: Draft) -> tuple[str, str, str]:
+        return (draft.concept_id, draft.pattern, draft.difficulty)
+
+    @staticmethod
+    def _answer(draft: Draft) -> str:
+        return _normalize(draft.choices[draft.correct_index])
+
+    def _is_near_duplicate(self, draft: Draft) -> bool:
+        answer, prompt = self._answer(draft), _normalize(draft.prompt)
+        for other in self._all:
+            if draft.concept_id and other.concept_id and draft.concept_id != other.concept_id:
+                continue
+            if self._answer(other) != answer:
+                continue
+            ratio = difflib.SequenceMatcher(None, prompt, _normalize(other.prompt)).ratio()
+            if ratio >= NEAR_DUPLICATE_RATIO:
+                return True
+        return False
+
+    def add(self, draft: Draft) -> str:
+        if self._is_near_duplicate(draft):
+            return "near_duplicate"
+        occupies = bool(draft.concept_id) and not draft.gotcha
+        if occupies and self._cell(draft) in self._cells:
+            return "grid_full"
+        if occupies:
+            self._cells.add(self._cell(draft))
+        self._all.append(draft)
+        self._new.append(draft)
+        return ""
+
+    @property
+    def new(self) -> list[Draft]:
+        return list(self._new)
+
+
+def section_quotas(needed: int, sections: list[Section], with_concepts: set[int]) -> dict[int, int]:
+    """Split needed questions across sections by word share, using the largest remainder method."""
+    quotas = {section.index: 0 for section in sections}
+    eligible = [s for s in sections if s.index in with_concepts]
+    total_words = sum(s.words for s in eligible)
+    if not eligible or needed <= 0:
+        return quotas
+    weights = {s.index: s.words if total_words else 1 for s in eligible}
+    total = sum(weights.values())
+    remainders = {}
+    for index, weight in weights.items():
+        quotas[index], remainders[index] = divmod(needed * weight, total)
+    left = needed - sum(quotas.values())
+    for index in sorted(remainders, key=lambda i: (-remainders[i], i))[:left]:
+        quotas[index] += 1
+    return quotas
+
+
+def trim(drafts: list[Draft], needed: int, quotas: dict[int, int]) -> list[Draft]:
+    """Drop extras from the section with the most surplus over its quota.
+
+    Ties between sections go to the higher section index. A section missing from quotas has a
+    quota of 0. Inside that section, drop the last draft of the difficulty with the largest
+    surplus over difficulty_split(quota), so the hard questions that come last are kept.
+    Ties between difficulties drop medium first, then easy, then hard. Returns a new list.
+    """
+    result = list(drafts)
+    while len(result) > max(needed, 0):
+        counts: dict[int, int] = {}
+        for draft in result:
+            counts[draft.section_index] = counts.get(draft.section_index, 0) + 1
+        section = max(counts, key=lambda index: (counts[index] - quotas.get(index, 0), index))
+        split = difficulty_split(quotas.get(section, 0))
+        by_level = {level: 0 for level in DIFFICULTIES}
+        for draft in result:
+            if draft.section_index == section:
+                by_level[draft.difficulty] += 1
+        level = max(
+            (l for l in DIFFICULTIES if by_level[l]),
+            key=lambda l: (by_level[l] - split[l], _TRIM_TIE_ORDER[l]),
+        )
+        last = max(
+            i for i, draft in enumerate(result)
+            if draft.section_index == section and draft.difficulty == level
+        )
+        del result[last]
+    return result
+
+
+_TRIM_TIE_ORDER = {"medium": 2, "easy": 1, "hard": 0}
+
+
+def balance_positions(drafts: list[Draft], seed: int) -> list[Draft]:
+    """Spread correct answers over positions 0 to 3 by swapping choices. Returns new drafts."""
+    targets = ([0, 1, 2, 3] * math.ceil(len(drafts) / 4))[: len(drafts)]
+    random.Random(seed).shuffle(targets)
+    result = []
+    for draft, target in zip(drafts, targets):
+        choices = list(draft.choices)
+        types = list(draft.distractor_types)
+        current = draft.correct_index
+        choices[current], choices[target] = choices[target], choices[current]
+        types[current], types[target] = types[target], types[current]
+        result.append(replace(draft, choices=choices, distractor_types=types, correct_index=target))
+    return result
+
+
+def order_drafts(drafts: list[Draft], concepts: list[Concept]) -> list[Draft]:
+    """Sort by the concept's first appearance, then easy, medium, hard. Unknown concepts go last."""
+    order = {concept.id: concept.order for concept in concepts}
+    return sorted(
+        drafts,
+        key=lambda d: (order.get(d.concept_id, len(order)), DIFFICULTIES.index(d.difficulty)),
+    )
+
+
+def difficulty_split(count: int) -> dict[str, int]:
+    """Split count questions into easy, medium, and hard counts that sum to count.
+
+    1. Give each level its 30/50/20 share of count, rounded down.
+    2. Hand out the questions left over one at a time, largest remainder first. A tie goes
+       to the level with the larger share (medium, then easy, then hard).
+    3. Each level that must have a question but has none takes one from the level with
+       the most questions. From 3 questions every level needs one. With 2, medium needs one.
+    So 1 is 0/1/0, 2 is 1/1/0, 3 is 1/1/1, 5 is 1/3/1, 6 is 2/3/1, 7 is 2/4/1, 10 is 3/5/2.
+    """
+    total = sum(DIFFICULTY_SHARES.values())
+    split, remainders = {}, {}
+    for level, share in DIFFICULTY_SHARES.items():
+        split[level], remainders[level] = divmod(count * share, total)
+    left = count - sum(split.values())
+    by_remainder = sorted(DIFFICULTIES, key=lambda l: (-remainders[l], -DIFFICULTY_SHARES[l]))
+    for level in by_remainder[:left]:
+        split[level] += 1
+    required = DIFFICULTIES if count >= 3 else ("medium",) if count == 2 else ()
+    for level in required:
+        if split[level] == 0:
+            split[max(DIFFICULTIES, key=lambda l: split[l])] -= 1
+            split[level] += 1
+    return split
+
+
+def longest_correct_count(drafts: list[Draft]) -> int:
+    """How many drafts have a correct answer strictly longer than every wrong choice."""
+    return sum(
+        1
+        for d in drafts
+        if all(
+            len(d.choices[d.correct_index]) > len(choice)
+            for i, choice in enumerate(d.choices)
+            if i != d.correct_index
+        )
+    )
+
+
+def is_lopsided(draft: Draft) -> bool:
+    """True when the correct answer is longer than every wrong choice by at least 5% of its length."""
+    correct = len(draft.choices[draft.correct_index].strip())
+    longest_wrong = max(
+        len(choice.strip())
+        for i, choice in enumerate(draft.choices)
+        if i != draft.correct_index
+    )
+    # Exact integer form of: correct - longest_wrong >= correct * margin / 100.
+    return 100 * (correct - longest_wrong) >= LOPSIDED_MARGIN_PERCENT * correct
+
+
+def mix_warnings(drafts: list[Draft]) -> list[str]:
+    if not drafts:
+        return []
+    warnings = []
+    longest = longest_correct_count(drafts)
+    if longest / len(drafts) > 0.4:
+        warnings.append("longest_correct")
+    present = {d.difficulty for d in drafts}
+    warnings.extend(f"missing_{level}" for level in DIFFICULTIES if level not in present)
+    return warnings
+
+
+def original_of(prompt: str, choices: list[str], correct_index: int, difficulty: str) -> dict:
+    return {
+        "prompt": prompt,
+        "choices": list(choices),
+        "correct_index": correct_index,
+        "difficulty": difficulty,
+    }
+
+
+def is_untouched(
+    prompt: str, choices: list, correct_index: int, difficulty: str, generation: dict | None
+) -> bool:
+    original = (generation or {}).get("original")
+    if not original:
+        return False
+    return original == original_of(prompt, choices, correct_index, difficulty)

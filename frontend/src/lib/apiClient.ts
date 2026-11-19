@@ -10,6 +10,7 @@ import type {
   HealthResponse,
   LeaderboardEntry,
   Lecture,
+  LectureProcessingStatus,
   LoginPayload,
   ProfessorClass,
   ProfessorLecture,
@@ -451,6 +452,14 @@ export async function getProfessorClassLectures(
 ): Promise<ApiResult<ProfessorLecture[]>> {
   return request<ProfessorLecture[]>(
     `/professor/classes/${encodeURIComponent(String(classId))}/lectures/`
+  );
+}
+
+export async function getLectureStatus(
+  lectureId: number | string
+): Promise<ApiResult<LectureProcessingStatus>> {
+  return request<LectureProcessingStatus>(
+    `/lectures/${encodeURIComponent(String(lectureId))}/status/`
   );
 }
 

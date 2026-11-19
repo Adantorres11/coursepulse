@@ -4,7 +4,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from classrooms.models import Classroom
-from .models import Lecture, TranscriptChunk
+from .models import Lecture, Question, TranscriptChunk
 
 
 class TranscriptFieldTests(TestCase):
@@ -58,6 +58,44 @@ class TranscriptFieldTests(TestCase):
         self.assertEqual(
             [c.index for c in lecture.transcript_chunks.all()], [0, 1, 2]
         )
+
+    def test_lecture_notice_defaults_to_empty(self):
+        lecture = Lecture.objects.create(classroom=self.classroom, title="L")
+        self.assertEqual(lecture.notice, "")
+
+    def test_question_generation_is_optional(self):
+        lecture = Lecture.objects.create(classroom=self.classroom, title="L")
+        q = Question.objects.create(
+            lecture=lecture,
+            prompt="P",
+            choices=["a", "b", "c", "d"],
+            correct_index=0,
+            difficulty="easy",
+        )
+        self.assertIsNone(q.generation)
+
+    def test_question_generation_round_trips(self):
+        lecture = Lecture.objects.create(classroom=self.classroom, title="L")
+        data = {
+            "concept": "Race condition",
+            "gotcha": False,
+            "original": {
+                "prompt": "P",
+                "choices": ["a", "b", "c", "d"],
+                "correct_index": 0,
+                "difficulty": "easy",
+            },
+        }
+        q = Question.objects.create(
+            lecture=lecture,
+            prompt="P",
+            choices=["a", "b", "c", "d"],
+            correct_index=0,
+            difficulty="easy",
+            generation=data,
+        )
+        q.refresh_from_db()
+        self.assertEqual(q.generation, data)
 
     def test_migration_0013_sits_on_0012(self):
         module = import_module("quizzes.migrations.0013_lecture_transcription_fields")

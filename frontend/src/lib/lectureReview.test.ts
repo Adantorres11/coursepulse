@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canEditLectureQuestions,
   lectureCanBeReviewed,
   lectureReviewPath,
   questionInputFromDraft,
@@ -25,6 +26,14 @@ describe("lecture review links", () => {
     expect(lectureCanBeReviewed("processing")).toBe(false);
     expect(lectureCanBeReviewed("failed")).toBe(false);
     expect(lectureReviewPath(4, 9)).toBe("/professor/class/4/lectures/9");
+  });
+
+  it("allows edits only while the lecture is ready", () => {
+    expect(canEditLectureQuestions("ready")).toBe(true);
+    expect(canEditLectureQuestions("published")).toBe(false);
+    expect(canEditLectureQuestions("pending")).toBe(false);
+    expect(canEditLectureQuestions("processing")).toBe(false);
+    expect(canEditLectureQuestions("failed")).toBe(false);
   });
 });
 

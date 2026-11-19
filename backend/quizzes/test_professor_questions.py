@@ -351,20 +351,38 @@ class QuestionReviewGapTests(TestCase):
         )
 
     def test_new_question_is_appended_and_ignores_client_position(self):
-        self._question("Second", position=2)
+        self.question.position = 0
+        self.question.save(update_fields=["position"])
+        self._question("Second", position=1)
 
         response = self.client.post(
             self._questions_url(),
-            self._payload(position=99),
+            self._payload(position=99, generation={"model": "gpt-6-luna"}),
             format="json",
         )
 
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data["position"], 3)
+        self.assertEqual(response.data["position"], 2)
+        self.assertNotIn("generation", response.data)
         created = Question.objects.get(pk=response.data["id"])
-        self.assertEqual(created.position, 3)
+        self.assertEqual(created.position, 2)
+        self.assertIsNone(created.generation)
+
+    def test_first_question_starts_at_zero(self):
+        Question.objects.filter(lecture=self.lecture).delete()
+
+        response = self.client.post(
+            self._questions_url(),
+            self._payload(),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["position"], 0)
 
     def test_delete_keeps_positions_contiguous(self):
+        self.question.position = 0
+        self.question.save(update_fields=["position"])
         second = self._question("Second", position=5)
         third = self._question("Third", position=9)
 
@@ -373,8 +391,89 @@ class QuestionReviewGapTests(TestCase):
         self.assertEqual(response.status_code, 204)
         self.question.refresh_from_db()
         third.refresh_from_db()
-        self.assertEqual(self.question.position, 1)
-        self.assertEqual(third.position, 2)
+        self.assertEqual(
+            [self.question.position, third.position],
+            [0, 1],
+        )
+
+    def test_add_and_delete_match_generation_positions(self):
+        self.question.position = 0
+        self.question.save(update_fields=["position"])
+        second = self._question("Second", position=1)
+        self._question("Third", position=2)
+
+        deleted = self.client.delete(self._detail_url(second))
+        self.assertEqual(deleted.status_code, 204)
+        created = self.client.post(
+            self._questions_url(),
+            self._payload(),
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+
+        positions = list(
+            Question.objects.filter(lecture=self.lecture)
+            .order_by("position", "id")
+            .values_list("position", flat=True)
+        )
+        self.assertEqual(positions, list(range(len(positions))))
+
+    def test_patch_leaves_generation_in_place(self):
+        original = {
+            "prompt": self.question.prompt,
+            "choices": list(self.question.choices),
+            "correct_index": self.question.correct_index,
+            "difficulty": self.question.difficulty,
+        }
+        self.question.generation = {
+            "original": original,
+            "model": "gpt-6-luna",
+        }
+        self.question.save(update_fields=["generation"])
+
+        response = self.client.patch(
+            self._detail_url(self.question),
+            {"prompt": "Edited by the professor"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("generation", response.data)
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.prompt, "Edited by the professor")
+        self.assertEqual(self.question.generation["model"], "gpt-6-luna")
+        self.assertEqual(self.question.generation["original"], original)
+
+    def test_changes_require_a_ready_unpublished_lecture(self):
+        for lecture_status in ("pending", "processing", "failed"):
+            with self.subTest(status=lecture_status):
+                self.lecture.status = lecture_status
+                self.lecture.published_at = None
+                self.lecture.save(update_fields=["status", "published_at"])
+
+                listed = self.client.get(self._questions_url())
+                self.assertEqual(listed.status_code, 200)
+                self.assertEqual(listed.data[0]["prompt"], "What is Python?")
+                self.assertNotIn("generation", listed.data[0])
+
+                created = self.client.post(
+                    self._questions_url(),
+                    self._payload(),
+                    format="json",
+                )
+                patched = self.client.patch(
+                    self._detail_url(self.question),
+                    {"prompt": "Nope"},
+                    format="json",
+                )
+                deleted = self.client.delete(self._detail_url(self.question))
+
+                self.assertEqual(created.status_code, 400)
+                self.assertEqual(patched.status_code, 400)
+                self.assertEqual(deleted.status_code, 400)
+                self.question.refresh_from_db()
+                self.assertEqual(self.question.prompt, "What is Python?")
+                self.assertEqual(self.lecture.questions.count(), 1)
 
     def test_delete_with_student_answers_keeps_scores(self):
         attempt = Attempt.objects.create(

@@ -183,15 +183,24 @@ export interface ClassRosterStudent {
   joined_at: string;
 }
 
+export interface LectureProcessingStatus {
+  id: number;
+  status: "pending" | "processing" | "ready" | "failed";
+  progress_message: string;
+  error_message: string;
+  notice?: string;
+}
+
 export interface ProfessorLecture {
   id: number;
   title: string;
-  status: "pending" | "processing" | "ready" | "failed" | "published";
+  status: LectureProcessingStatus["status"] | "published";
   published_at: string | null;
 }
 
 // GET/POST/PATCH /api/lectures/{id}/questions/ for the owning professor.
 // Students never receive this shape. correct_index stays off the student quiz.
+// The stored generation record is never part of this response.
 export interface ProfessorQuestion {
   id: number;
   prompt: string;

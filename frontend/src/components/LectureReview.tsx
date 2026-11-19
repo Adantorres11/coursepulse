@@ -4,6 +4,7 @@ import {
   createLectureQuestion,
   deleteLectureQuestion,
   getLectureQuestions,
+  getLectureStatus,
   getProfessorClasses,
   getProfessorClassLectures,
   publishLecture,
@@ -11,6 +12,7 @@ import {
   updateLectureQuestion,
 } from "../lib/apiClient";
 import {
+  canEditLectureQuestions,
   questionInputFromDraft,
   validateQuestionDraft,
   type QuestionDraft,
@@ -48,6 +50,7 @@ export function LectureReview() {
   const [classInfo, setClassInfo] = useState<ProfessorClass | null>(null);
   const [lecture, setLecture] = useState<ProfessorLecture | null>(null);
   const [questions, setQuestions] = useState<ProfessorQuestion[]>([]);
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -70,10 +73,11 @@ export function LectureReview() {
       setLoading(true);
       setError(null);
 
-      const [classesResult, lecturesResult, questionsResult] = await Promise.all([
+      const [classesResult, lecturesResult, questionsResult, statusResult] = await Promise.all([
         getProfessorClasses(),
         getProfessorClassLectures(classId),
         getLectureQuestions(lectureId),
+        getLectureStatus(lectureId),
       ]);
 
       if (!active) return;
@@ -109,6 +113,7 @@ export function LectureReview() {
       setClassInfo(selectedClass);
       setLecture(selectedLecture);
       setQuestions(ordered);
+      setNotice(statusResult.data?.notice?.trim() ?? "");
       setLoading(false);
     }
 
@@ -119,7 +124,7 @@ export function LectureReview() {
   }, [classId, lectureId, reloadKey]);
 
   const published = lecture?.status === "published" || Boolean(lecture?.published_at);
-  const canEdit = Boolean(lecture) && !published;
+  const canEdit = lecture != null && canEditLectureQuestions(lecture.status);
   const canPublish = lecture?.status === "ready" && !published;
 
   async function runAction(action: () => Promise<string | null>) {
@@ -211,6 +216,11 @@ export function LectureReview() {
                 Status: {lecture.status}
                 {published ? " · Students can take this quiz" : " · Hidden from students"}
               </p>
+              {notice && (
+                <p className="mt-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+                  {notice}
+                </p>
+              )}
             </header>
 
             <div className="mt-4 flex flex-wrap gap-3">

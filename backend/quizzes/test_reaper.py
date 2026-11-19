@@ -55,7 +55,12 @@ class ReaperTests(TestCase):
             functools.partial(jobs.release_stale_lock, client_factory=factory),
         ):
             tasks.reap_stuck_lectures()
-        client.eval.assert_called_once_with(RELEASE_LUA, 1, f"lock:lecture:{lecture.id}", "dead")
+        client.eval.assert_has_calls(
+            [
+                mock.call(RELEASE_LUA, 1, f"lock:lecture:{lecture.id}", "dead"),
+                mock.call(RELEASE_LUA, 1, f"lock:lecture:{lecture.id}:questions", "dead"),
+            ]
+        )
         lecture = self.reload(lecture)
         self.assertEqual(lecture.status, "failed")
         self.assertEqual(lecture.error_message, INTERRUPTED)
@@ -63,7 +68,7 @@ class ReaperTests(TestCase):
     def test_reaper_does_not_overwrite_a_job_that_took_over(self):
         lecture = self.make(status="processing", job_token="old", last_progress_at=minutes_ago(16))
 
-        def take_over(lecture_id, token):
+        def take_over(lecture_id, token, stage=""):
             Lecture.objects.filter(pk=lecture_id).update(
                 job_token="new", last_progress_at=timezone.now()
             )
@@ -77,7 +82,7 @@ class ReaperTests(TestCase):
     def test_reaper_leaves_a_job_that_reports_progress_before_it_is_failed(self):
         lecture = self.make(status="processing", job_token="t", last_progress_at=minutes_ago(16))
 
-        def heartbeat_now(lecture_id, token):
+        def heartbeat_now(lecture_id, token, stage=""):
             Lecture.objects.filter(pk=lecture_id).update(last_progress_at=timezone.now())
 
         self.release_stale_lock.side_effect = heartbeat_now
@@ -89,7 +94,9 @@ class ReaperTests(TestCase):
     def test_reaper_then_retry_can_take_the_lock(self):
         lecture = self.make(status="processing", job_token="t", last_progress_at=minutes_ago(16))
         tasks.reap_stuck_lectures()
-        self.release_stale_lock.assert_called_once_with(lecture.id, "t")
+        self.release_stale_lock.assert_has_calls(
+            [mock.call(lecture.id, "t"), mock.call(lecture.id, "t", stage="questions")]
+        )
         Lecture.objects.filter(pk=lecture.id).update(status="pending")
         self.assertTrue(claim_transcription(lecture.id, "t2"))
 
@@ -119,7 +126,7 @@ class ReaperTests(TestCase):
         tasks.reap_stuck_lectures()
         self.hand_off.assert_not_called()
 
-    def test_reaper_leaves_questions_stage(self):
+    def test_reaper_fails_stuck_question_generation(self):
         lecture = self.make(
             status="processing",
             transcript="some words",
@@ -128,10 +135,25 @@ class ReaperTests(TestCase):
         )
         tasks.reap_stuck_lectures()
         lecture = self.reload(lecture)
+        self.assertEqual(lecture.status, "failed")
+        self.assertEqual(lecture.error_message, INTERRUPTED)
+        self.assertEqual(lecture.job_token, "")
+        self.assertEqual(lecture.transcript, "some words")
+        self.hand_off.assert_not_called()
+        self.release_stale_lock.assert_any_call(lecture.id, "g1")
+        self.release_stale_lock.assert_any_call(lecture.id, "g1", stage="questions")
+
+    def test_reaper_leaves_recent_question_generation(self):
+        lecture = self.make(
+            status="processing",
+            transcript="some words",
+            job_token="g1",
+            last_progress_at=minutes_ago(5),
+        )
+        tasks.reap_stuck_lectures()
+        lecture = self.reload(lecture)
         self.assertEqual(lecture.status, "processing")
         self.assertEqual(lecture.job_token, "g1")
-        self.hand_off.assert_not_called()
-        self.release_stale_lock.assert_not_called()
 
     def make_pending_with_recording(self, minutes):
         lecture = self.make(status="pending", last_progress_at=minutes_ago(minutes))

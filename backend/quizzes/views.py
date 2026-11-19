@@ -162,6 +162,11 @@ class LectureStatusView(APIView):
                 if lecture.status == "processing"
                 else ""
             ),
+            "notice": (
+                lecture.notice
+                if lecture.status == "ready"
+                else ""
+            ),
         })
 
 
@@ -197,6 +202,7 @@ class LectureRetryView(APIView):
         ).update(
             status="pending",
             error_message="",
+            notice="",
             last_progress_at=timezone.now(),
         )
 
@@ -252,10 +258,19 @@ def get_professor_lecture(user, lecture_id):
 
 
 def resequence_question_positions(lecture):
+    # Same 0-based order question generation uses when it saves a set.
     questions = Question.objects.filter(lecture=lecture).order_by("position", "id")
-    for index, question in enumerate(questions, start=1):
+    for index, question in enumerate(questions):
         if question.position != index:
             Question.objects.filter(pk=question.pk).update(position=index)
+
+
+def draft_edit_error(lecture, published_detail):
+    if lecture.published_at is not None:
+        return published_detail
+    if lecture.status != "ready":
+        return "Only a ready lecture can be changed."
+    return None
 
 
 def answered_question_is_replaced(question, validated_data):
@@ -294,9 +309,12 @@ class ProfessorLectureQuestionsView(APIView):
     def post(self, request, pk):
         lecture = get_professor_lecture(request.user, pk)
 
-        if lecture.published_at is not None:
+        edit_error = draft_edit_error(
+            lecture, "Cannot edit a published quiz."
+        )
+        if edit_error:
             return Response(
-                {"detail": "Cannot edit a published quiz."},
+                {"detail": edit_error},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -315,9 +333,12 @@ class ProfessorQuestionDetailView(APIView):
     def patch(self, request, pk, question_id):
         lecture = get_professor_lecture(request.user, pk)
 
-        if lecture.published_at is not None:
+        edit_error = draft_edit_error(
+            lecture, "Cannot edit a published quiz."
+        )
+        if edit_error:
             return Response(
-                {"detail": "Cannot edit a published quiz."},
+                {"detail": edit_error},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -350,9 +371,12 @@ class ProfessorQuestionDetailView(APIView):
     def delete(self, request, pk, question_id):
         lecture = get_professor_lecture(request.user, pk)
 
-        if lecture.published_at is not None:
+        edit_error = draft_edit_error(
+            lecture, "Cannot delete questions from a published quiz."
+        )
+        if edit_error:
             return Response(
-                {"detail": "Cannot delete questions from a published quiz."},
+                {"detail": edit_error},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

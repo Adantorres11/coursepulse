@@ -91,7 +91,10 @@ class ProfessorQuestionSerializer(serializers.ModelSerializer):
             .values_list("position", flat=True)
             .first()
         )
-        validated_data["position"] = (last_position or 0) + 1
+        # Question generation numbers from 0. A hand-written question continues that.
+        validated_data["position"] = 0 if last_position is None else last_position + 1
+        # Null generation marks a professor-written question. Regeneration keeps it.
+        validated_data["generation"] = None
         return super().create(validated_data)
 
 

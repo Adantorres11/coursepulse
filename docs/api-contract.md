@@ -713,15 +713,16 @@ Success: 200 OK
   "id": 1,
   "status": "processing",
   "progress_message": "Transcribing part 3 of 7",
-  "error_message": ""
+  "error_message": "",
+  "notice": ""
 }
 ```
 
 Possible statuses:
 
 - pending: Lecture is waiting to be processed.
-- processing: Lecture is being transcribed or questions are being generated.
-- ready: Processing is complete and questions are ready for review.
+- processing: The lecture is being transcribed or questions are being generated.
+- ready: The server generated the questions and saved them as unpublished drafts for the professor to review. Students see nothing until the professor publishes the lecture.
 - failed: Processing failed.
 
 For a failed lecture:
@@ -731,7 +732,8 @@ For a failed lecture:
   "id": 1,
   "status": "failed",
   "progress_message": "",
-  "error_message": "Something went wrong. Try again."
+  "error_message": "Something went wrong. Try again.",
+  "notice": ""
 }
 ```
 
@@ -739,6 +741,7 @@ Rules:
 - Only the professor who owns the lecture's classroom can access its status.
 - The error message is empty unless the lecture status is failed.
 - The progress message is empty unless the lecture status is processing.
+- The notice is empty unless the lecture status is ready and the server has something to tell the professor.
 - Every error message is one of the strings in the next list.
 
 Possible error messages:
@@ -761,7 +764,22 @@ Possible error messages:
 - "The server ran out of space. Try again later."
 - "Couldn't start processing, try again."
 - "Couldn't start question generation, retry."
+- "Server isn't set up for question generation."
+- "The question generation key was rejected. Ask the site admin to check it."
+- "Question generation credits ran out."
+- "This lecture is over the question generation cost limit."
+- "Question generation service is busy. Try again later."
+- "Couldn't read the generated questions. Try again."
+- "No course content was found in this transcript."
+- "Only {count} usable questions were made. Try again." ({count} is below the floor, 10 by default.)
+- "This quiz is published or has student activity, so its questions were not changed."
 - "Something went wrong. Try again."
+
+Every notice is one of the strings in the next list.
+
+Possible notices:
+- "Generated {count} questions (target {target}). Add more in review if needed."
+- "Kept your {count} questions. No new questions were needed."
 
 Errors:
 - 401: Missing or invalid authentication.
@@ -790,11 +808,13 @@ Rules:
 - Only failed lectures can be retried.
 - The lecture status is reset to pending.
 - The previous error message is cleared.
+- A retry clears the notice.
 - The lecture is submitted to the Celery processing pipeline.
 - If the pipeline is unavailable, the failed status and previous error message are restored.
 - A retry keeps the uploaded file.
 - If a transcript for the same recording is already saved, the retry skips transcription and goes straight to question generation.
 - A retry continues from the transcript parts that were already finished.
+- A retry after failed question generation reuses the saved transcript and keeps questions the professor wrote or edited.
 
 Errors:
 - 400: Lecture is not failed or is already being retried.
@@ -812,7 +832,9 @@ Authentication: Required. Only the professor who owns the lecture's classroom ca
 
 These endpoints are how a professor reviews the draft questions, edits them, and publishes the quiz. Students never receive unpublished questions. GET /api/lectures/ and GET /api/lectures/{id}/quiz/ stay limited to published quizzes, and they still omit correct_index.
 
-Questions are ordered by position, then id. Positions are 1, 2, 3, and so on, with no gaps after a delete.
+The generation record stored on a question is never returned by these endpoints, by the student quiz, or by the lecture list. A question the professor adds has a null generation record, so a later question-generation run keeps it. Editing a question does not change or remove the generation record already stored for it. The stored original text is what marks that edit.
+
+Questions are ordered by position, then id. Positions start at 0, the same numbering question generation uses. After a delete they are 0, 1, 2, and so on, with no gaps.
 
 ### GET /api/lectures/{id}/questions/
 
@@ -828,14 +850,14 @@ Success: 200 OK
     "choices": ["Language", "Database", "Browser", "OS"],
     "correct_index": 0,
     "difficulty": "easy",
-    "position": 1
+    "position": 0
   }
 ]
 ```
 
 ### POST /api/lectures/{id}/questions/
 
-Adds one question to an unpublished lecture. The server assigns position. A position in the request is ignored. The new question is placed after the current last question.
+Adds one question to a ready, unpublished lecture. The server assigns position. A position in the request is ignored. The first question is position 0. Each later question is placed after the current last question. The new question's generation record is null.
 
 Request:
 
@@ -860,7 +882,7 @@ Choice rules:
 
 ### PATCH /api/lectures/{id}/questions/{question_id}/
 
-Updates one question on an unpublished lecture. Send only the fields that change. position cannot be changed here.
+Updates one question on a ready, unpublished lecture. Send only the fields that change. position cannot be changed here. The generation record is left as it was.
 
 Success: 200 OK. Returns the updated question.
 
@@ -868,9 +890,9 @@ A question that already has a student answer cannot be replaced. Changing its pr
 
 ### DELETE /api/lectures/{id}/questions/{question_id}/
 
-Deletes one question from an unpublished lecture.
+Deletes one question from a ready, unpublished lecture.
 
-Success: 204 No Content. The remaining questions keep their order and their positions become 1, 2, 3, with no gaps.
+Success: 204 No Content. The remaining questions keep their order and their positions become 0, 1, 2, with no gaps.
 
 A question that already has a student answer is not deleted. The answer and the attempt score stay. The response is 400:
 
@@ -899,8 +921,9 @@ Rules:
 - The lecture must have at least one question.
 - Every question must have exactly four unique non-blank choices, a correct_index from 0 to 3, and a difficulty of easy, medium, or hard.
 - A lecture that already has published_at set cannot be published again. Unpublish it first with POST /api/lectures/{id}/unpublish/, then publish it again once it is ready.
-- While the quiz is published, questions cannot be added, edited, or deleted through these endpoints. Unpublish first.
+- While the quiz is published, or while the lecture status is not "ready", questions cannot be added, edited, or deleted through these endpoints. GET still returns the questions. Unpublish a published quiz before editing it, and wait until status is "ready".
 - Unpublishing does not delete attempts or answers.
+- No response from these endpoints includes generation.
 
 Errors:
 - 400: The lecture is not ready, has no questions, has an invalid question, is already published, or the edit would change a published quiz or a question that has student answers. The message is in detail.
