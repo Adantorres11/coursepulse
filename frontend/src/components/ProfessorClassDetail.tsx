@@ -12,6 +12,7 @@ import type {
   ClassRosterStudent,
 } from "../types/api";
 import { ProfessorNav } from "./ProfessorNav";
+import { UploadLecturePage } from "./LectureUpload";
 
 export function ProfessorClassDetail() {
   const { classId } = useParams();
@@ -22,59 +23,52 @@ export function ProfessorClassDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
 
-  useEffect(() => {
+  const loadClass = async () => {
     if (!classId) {
       setError("Invalid class ID.");
       setLoading(false);
       return;
     }
 
-    let active = true;
+    setLoading(true);
+    setError(null);
 
-    async function loadClass() {
-      setLoading(true);
-      setError(null);
+    const [classesResult, lecturesResult, rosterResult] =
+      await Promise.all([
+        getProfessorClasses(),
+        getProfessorClassLectures(classId),
+        getClassRoster(classId),
+      ]);
 
-      const [classesResult, lecturesResult, rosterResult] =
-        await Promise.all([
-          getProfessorClasses(),
-          getProfessorClassLectures(classId!),
-          getClassRoster(classId!),
-        ]);
+    const selectedClass = classesResult.data?.find(
+      (item) => String(item.id) === classId
+    );
 
-      if (!active) return;
-
-      const selectedClass = classesResult.data?.find(
-        (item) => String(item.id) === classId
-      );
-
-      if (
+    if (
+      classesResult.error ||
+      lecturesResult.error ||
+      rosterResult.error ||
+      !selectedClass
+    ) {
+      setError(
         classesResult.error ||
         lecturesResult.error ||
         rosterResult.error ||
-        !selectedClass
-      ) {
-        setError(
-          classesResult.error ||
-          lecturesResult.error ||
-          rosterResult.error ||
-          "Class not found."
-        );
-      } else {
-        setClassInfo(selectedClass);
-        setLectures(lecturesResult.data ?? []);
-        setStudents(rosterResult.data ?? []);
-      }
-
-      setLoading(false);
+        "Class not found."
+      );
+    } else {
+      setClassInfo(selectedClass);
+      setLectures(lecturesResult.data ?? []);
+      setStudents(rosterResult.data ?? []);
     }
 
-    void loadClass();
+    setLoading(false);
+  };
 
-    return () => {
-      active = false;
-    };
+  useEffect(() => {
+    void loadClass();
   }, [classId]);
 
   async function copyCode() {
@@ -145,15 +139,27 @@ export function ProfessorClassDetail() {
                 <h2 className="text-xl font-bold">Lectures</h2>
                 <button
                   type="button"
-                  disabled
-                  title="Lecture upload screen is being developed."
-                  className="px-4 py-2 rounded-lg bg-slate-700 text-slate-300 cursor-not-allowed"
+                  onClick={() => setShowUpload((prev) => !prev)}
+                  className="px-4 py-2 rounded-xl bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-xs sm:text-sm transition cursor-pointer shadow-md shadow-sky-500/20"
                 >
-                  + Upload Lecture
+                  {showUpload ? "✕ Close Upload" : "+ Upload Lecture"}
                 </button>
               </div>
 
-              {lectures.length === 0 ? (
+              {/* Collapsible Lecture Upload Form */}
+              {showUpload && (
+                <div className="mt-4 mb-6 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                  <UploadLecturePage
+                    overrideClassId={classInfo.id}
+                    onSuccess={() => {
+                      setShowUpload(false);
+                      void loadClass();
+                    }}
+                  />
+                </div>
+              )}
+
+              {lectures.length === 0 && !showUpload ? (
                 <p className="text-slate-400 mt-4">
                   No lectures uploaded yet.
                 </p>
