@@ -42,6 +42,8 @@ from .question_client import ask, cost_of, estimate_cost
 from .question_prompts import (
     CONCEPT_INSTRUCTIONS,
     CONCEPT_SCHEMA,
+    DISTRACTOR_INSTRUCTIONS,
+    DISTRACTOR_SCHEMA,
     GOTCHA_INSTRUCTIONS,
     QUESTION_INSTRUCTIONS,
     QUESTION_SCHEMA,
@@ -55,6 +57,7 @@ from .question_rules import (
     check_draft,
     concept_ids_for,
     difficulty_split,
+    is_lopsided,
     is_untouched,
     longest_correct_count,
     merge_concepts,
@@ -73,6 +76,7 @@ STAGE2_EFFORT = "medium"
 STAGE1_MAX_OUTPUT = 6000
 STAGE2_MAX_OUTPUT = 12000
 GOTCHA_MAX_OUTPUT = 12000
+DISTRACTOR_MAX_OUTPUT = 8000
 
 
 @dataclass
@@ -93,10 +97,13 @@ class _Run:
     kept: int = 0
     gotchas: int = 0
     longest_correct: int = 0
+    rebalanced: int = 0
+    still_lopsided: int = 0
     drops: Counter = field(default_factory=Counter)
 
     def summary(self, generated: int) -> str:
         drops = ",".join(f"{reason}:{count}" for reason, count in sorted(self.drops.items()))
+        longest_pct = round(100 * self.longest_correct / generated) if generated else 0
         return (
             f"questions done model={settings.QUESTION_MODEL} "
             f"effort={STAGE1_EFFORT}/{STAGE2_EFFORT} sections={self.sections} "
@@ -105,6 +112,8 @@ class _Run:
             f"cost_usd={self.cost:.4f} seconds={time.monotonic() - self.started:.1f} "
             f"kept={self.kept} generated={generated} gotchas={self.gotchas} "
             f"longest_correct={self.longest_correct}/{generated} "
+            f"rebalanced={self.rebalanced} still_lopsided={self.still_lopsided} "
+            f"longest_correct_pct={longest_pct} "
             f"drops={drops or 'none'}"
         )
 
@@ -417,6 +426,7 @@ def _generate(run: _Run) -> bool:
 
     heartbeat(lecture_id, token, "Checking questions")
     drafts = trim(accepted.new, needed, quotas)
+    drafts = _rewrite_lopsided(run, drafts, concepts)
     drafts = balance_positions(drafts, seed=lecture_id)
     drafts = order_drafts(drafts, concepts)
     run.longest_correct = longest_correct_count(drafts)
@@ -424,6 +434,99 @@ def _generate(run: _Run) -> bool:
         log.warning("question mix warning=%s", warning)
 
     return _save(run, drafts, concepts, sections, target)
+
+
+def _rewrite_input(lopsided: list[Draft], concepts: dict[str, Concept]) -> str:
+    rows = []
+    for index, draft in enumerate(lopsided, start=1):
+        concept = concepts.get(draft.concept_id)
+        rows.append({
+            "index": index,
+            "concept": concept.name if concept else "",
+            "concept_summary": concept.data.get("summary", "") if concept else "",
+            "prompt": draft.prompt,
+            "correct_answer": draft.choices[draft.correct_index],
+            "wrong_choices": [
+                c for i, c in enumerate(draft.choices) if i != draft.correct_index
+            ],
+        })
+    return json.dumps(rows, indent=1, ensure_ascii=False)
+
+
+def _with_distractors(draft: Draft, item: dict) -> dict:
+    """The draft as a raw question with the item's wrong choices; the correct answer stays put."""
+    choices = item.get("distractors")
+    types = item.get("distractor_types")
+    if not (isinstance(choices, list) and isinstance(types, list) and len(choices) == len(types) == 3):
+        choices, types = [None] * 3, [None] * 3  # fails the shape check
+    choices, types = list(choices), list(types)
+    choices.insert(draft.correct_index, draft.choices[draft.correct_index])
+    types.insert(draft.correct_index, None)
+    return {
+        "prompt": draft.prompt,
+        "choices": choices,
+        "correct_index": draft.correct_index,
+        "difficulty": draft.difficulty,
+        "reason": draft.reason,
+        "concept_id": draft.concept_id,
+        "pattern": draft.pattern,
+        "gotcha": draft.gotcha,
+        "distractor_types": types,
+    }
+
+
+def _rewrite_lopsided(run: _Run, drafts: list[Draft], concepts: list[Concept]) -> list[Draft]:
+    """One call per lecture to rewrite the wrong choices of new drafts whose answer stands out.
+
+    This is optional polish: a bad reply or the cost cap keeps the drafts as they are.
+    """
+    positions = [i for i, d in enumerate(drafts) if is_lopsided(d)]
+    lopsided = [drafts[i] for i in positions]
+    if not lopsided:
+        return drafts
+    heartbeat(run.lecture_id, run.token, "Balancing answer choices")
+    by_concept = {c.id: c for c in concepts}
+    try:
+        data = _call(
+            run,
+            schema_name="distractors",
+            schema=DISTRACTOR_SCHEMA,
+            instructions=DISTRACTOR_INSTRUCTIONS,
+            user_input=_rewrite_input(lopsided, by_concept),
+            effort=STAGE2_EFFORT,
+            max_output_tokens=DISTRACTOR_MAX_OUTPUT,
+        )
+    except PermanentError as exc:
+        if exc.message not in (BAD_OUTPUT, QUESTIONS_TOO_EXPENSIVE):
+            raise
+        run.log.warning("rewrite skipped lopsided=%d: %s", len(lopsided), exc.message)
+        run.still_lopsided = len(lopsided)
+        return drafts
+
+    drafts = list(drafts)
+    seen: set[int] = set()
+    for item in data["distractors"]:
+        index = item.get("index") if isinstance(item, dict) else None
+        if isinstance(index, bool) or not isinstance(index, int):
+            continue
+        if not 1 <= index <= len(lopsided) or index in seen:
+            continue  # unknown or duplicate index
+        seen.add(index)
+        original = lopsided[index - 1]
+        draft, reason = check_draft(
+            _with_distractors(original, item), set(by_concept), original.section_index
+        )
+        if draft is None:
+            run.log.info("rewrite rejected reason=%s concept=%s", reason, original.concept_id)
+            continue
+        drafts[positions[index - 1]] = draft
+        run.rebalanced += 1
+    run.still_lopsided = sum(is_lopsided(d) for d in drafts)
+    run.log.info(
+        "rewrite done lopsided=%d rebalanced=%d still_lopsided=%d",
+        len(lopsided), run.rebalanced, run.still_lopsided,
+    )
+    return drafts
 
 
 def _accept(run: _Run, accepted: QuestionSet, raw, concept_ids: set[str], section_index: int):

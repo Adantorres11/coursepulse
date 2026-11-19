@@ -115,6 +115,7 @@ How it runs:
    - Stage 1 reads each section of the transcript. It lists the course concepts in that section.
    - Stage 2 writes questions for each section. It sees the whole concept list.
    - The code checks every question and drops the bad ones. It may ask the model again once. It may run one round of replacement questions. It may run one pass for gotcha questions (questions that test a common mistake).
+   - If a correct answer is much longer than all its wrong choices, the task makes one more call per lecture to rewrite those wrong choices to about the same length.
    - The task saves the drafts in one transaction. A lecture gets 20 to 40 questions in total, counting questions the professor wrote or edited. Then the status becomes `ready`.
    - A draft stays hidden. `published_at` stays null until the professor publishes the lecture.
    - If the professor already has enough questions, the task makes no model calls. It sets the notice "Kept your {count} questions. No new questions were needed."

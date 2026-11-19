@@ -3,6 +3,8 @@ from django.test import SimpleTestCase, override_settings
 from .question_prompts import (
     CONCEPT_INSTRUCTIONS,
     CONCEPT_SCHEMA,
+    DISTRACTOR_INSTRUCTIONS,
+    DISTRACTOR_SCHEMA,
     GOTCHA_INSTRUCTIONS,
     QUESTION_INSTRUCTIONS,
     QUESTION_SCHEMA,
@@ -16,6 +18,7 @@ from .question_rules import (
     check_draft,
     concept_ids_for,
     difficulty_split,
+    is_lopsided,
     is_untouched,
     merge_concepts,
     mix_warnings,
@@ -46,7 +49,7 @@ def _question_item():
 
 class SchemaTests(SimpleTestCase):
     def test_schemas_are_strict(self):
-        for schema in (CONCEPT_SCHEMA, QUESTION_SCHEMA):
+        for schema in (CONCEPT_SCHEMA, QUESTION_SCHEMA, DISTRACTOR_SCHEMA):
             nodes = list(_object_nodes(schema))
             self.assertGreaterEqual(len(nodes), 2)
             for node in nodes:
@@ -86,6 +89,18 @@ class SchemaTests(SimpleTestCase):
         self.assertEqual(item["choices"]["maxItems"], 4)
 
 
+    def test_distractor_schema(self):
+        item = DISTRACTOR_SCHEMA["properties"]["distractors"]["items"]["properties"]
+        self.assertEqual(item["index"]["type"], "integer")
+        for key in ("distractors", "distractor_types"):
+            self.assertEqual(item[key]["minItems"], 3)
+            self.assertEqual(item[key]["maxItems"], 3)
+        self.assertEqual(
+            set(item["distractor_types"]["items"]["enum"]),
+            {"wrong_mechanism", "opposite_effect", "generic_benefit", "overly_absolute", "neighbor_step"},
+        )
+
+
 class InstructionTests(SimpleTestCase):
     def test_instructions_carry_the_rules(self):
         self.assertIn("never mention the professor", QUESTION_INSTRUCTIONS)
@@ -105,6 +120,21 @@ class InstructionTests(SimpleTestCase):
                 self.assertIn("'described', 'stated'", instructions)
                 self.assertIn("'covered'", instructions)
                 self.assertIn("connecting two or more ideas", instructions)
+
+    def test_question_instructions_forbid_hedge_only_in_correct_answer(self):
+        for instructions in (QUESTION_INSTRUCTIONS, GOTCHA_INSTRUCTIONS, DISTRACTOR_INSTRUCTIONS):
+            with self.subTest(instructions=instructions[:30]):
+                self.assertIn("Never put a hedge or balancing qualifier", instructions)
+                self.assertIn("'neither alone is right'", instructions)
+                self.assertIn("'seek balance'", instructions)
+                self.assertIn("only in the correct answer", instructions)
+
+    def test_distractor_instructions_keep_the_answer(self):
+        self.assertIn("rewrite only the three wrong choices", DISTRACTOR_INSTRUCTIONS)
+        self.assertIn("same length, detail, and grammatical form", DISTRACTOR_INSTRUCTIONS)
+        self.assertIn("all of the above", DISTRACTOR_INSTRUCTIONS)
+        for name in ("wrong_mechanism", "opposite_effect", "generic_benefit", "overly_absolute", "neighbor_step"):
+            self.assertIn(name, DISTRACTOR_INSTRUCTIONS)
 
     def test_question_instructions_ask_for_exact_counts_and_no_repeats(self):
         self.assertIn("exact counts", QUESTION_INSTRUCTIONS)
@@ -577,6 +607,26 @@ class MixWarningTests(SimpleTestCase):
 
     def test_mix_warnings_empty(self):
         self.assertEqual(mix_warnings([]), [])
+
+
+class LopsidedTests(SimpleTestCase):
+    def lopsided(self, correct, longest_wrong):
+        return is_lopsided(make_draft(choices=[correct, longest_wrong, "x", "y"]))
+
+    def test_boundary(self):
+        correct = "c" * 20  # 20% of 20 is 4
+        self.assertFalse(self.lopsided(correct, "w" * 16))  # exactly 20% longer
+        self.assertFalse(self.lopsided(correct, "w" * 17))  # under
+        self.assertTrue(self.lopsided(correct, "w" * 15))  # over
+
+    def test_uses_stripped_text_and_any_position(self):
+        draft = make_draft(choices=["w" * 17, "  " + "c" * 20 + "  ", "x", "y"], correct_index=1)
+        self.assertFalse(is_lopsided(draft))
+        draft = make_draft(choices=["w" * 15 + "     ", "c" * 20, "x", "y"], correct_index=1)
+        self.assertTrue(is_lopsided(draft))
+
+    def test_short_correct_answer_is_not_lopsided(self):
+        self.assertFalse(self.lopsided("short", "a much longer wrong choice"))
 
 
 class DifficultySplitTests(SimpleTestCase):

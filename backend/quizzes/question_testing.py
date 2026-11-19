@@ -72,14 +72,18 @@ def bad(problem: str = "bad_json") -> Reply:
 class FakeModel:
     """Scripted stand-in for question_client.ask, patched at quizzes.question_generation.ask."""
 
-    def __init__(self, concepts: list[Reply], questions: list[Reply]):
+    def __init__(self, concepts: list[Reply], questions: list[Reply], distractors=()):
         self.concepts = list(concepts)
         self.questions = list(questions)
+        self.distractors = list(distractors)  # empty by default: no rewrite call expected
         self.calls: list[dict] = []
 
     def __call__(self, **kwargs) -> Reply:
         self.calls.append(kwargs)
-        script = self.concepts if kwargs["schema_name"] == "concepts" else self.questions
+        script = {
+            "concepts": self.concepts,
+            "distractors": self.distractors,
+        }.get(kwargs["schema_name"], self.questions)
         if not script:
             raise AssertionError(f"unexpected {kwargs['schema_name']} call")
         return script.pop(0)

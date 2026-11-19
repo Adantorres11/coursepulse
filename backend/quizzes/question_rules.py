@@ -454,6 +454,17 @@ def longest_correct_count(drafts: list[Draft]) -> int:
     )
 
 
+def is_lopsided(draft: Draft) -> bool:
+    """True when the correct answer is longer than every wrong choice by over 20% of its length."""
+    correct = len(draft.choices[draft.correct_index].strip())
+    longest_wrong = max(
+        len(choice.strip())
+        for i, choice in enumerate(draft.choices)
+        if i != draft.correct_index
+    )
+    return correct - longest_wrong > 0.2 * correct
+
+
 def mix_warnings(drafts: list[Draft]) -> list[str]:
     if not drafts:
         return []

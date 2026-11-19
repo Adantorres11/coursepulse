@@ -1,4 +1,6 @@
 import contextlib
+import copy
+import json
 import re
 from unittest import mock
 
@@ -24,7 +26,13 @@ from quizzes.jobs import heartbeat as real_heartbeat
 from quizzes.jobs import job_logger
 from quizzes.models import Attempt, Lecture, Question
 from quizzes.question_client import Reply, Usage
-from quizzes.question_prompts import GOTCHA_INSTRUCTIONS, QUESTION_INSTRUCTIONS
+from quizzes.question_prompts import (
+    DISTRACTOR_INSTRUCTIONS,
+    DISTRACTOR_SCHEMA,
+    GOTCHA_INSTRUCTIONS,
+    QUESTION_INSTRUCTIONS,
+)
+from quizzes.question_rules import balance_positions as real_balance
 from quizzes.question_rules import original_of
 from quizzes.question_testing import (
     TOKEN,
@@ -426,6 +434,8 @@ class RunQuestionGenerationTests(QuestionJobMixin, TestCase):
                 ok(question_payload(*[long_first(n) for n in range(4)])),
                 questions_reply("c2", range(4, 8)),
             ],
+            # The rewrite call returns nothing, so the long answers stay.
+            [ok({"distractors": []})],
         )
         lecture = self.make_lecture()
 
@@ -830,3 +840,315 @@ class RecoveryAndErrorTests(QuestionJobMixin, TestCase):
                 self.run_job(lecture)
 
         self.assertEqual(self.model.calls, [])
+
+
+def lopsided_question(concept_id, n, **over):
+    """A valid question whose correct answer is far longer than every wrong choice."""
+    return make_question(
+        concept_id,
+        n,
+        choices=[f"A much longer and fuller true claim {n}", f"No {n}a", f"No {n}b", f"No {n}c"],
+        **over,
+    )
+
+
+def distractor_reply(*items):
+    return ok({"distractors": list(items)})
+
+
+def rewrite(index, n, texts=None, types=None):
+    return {
+        "index": index,
+        "distractors": texts or [
+            f"A much longer and fuller false claim {n}a",
+            f"A much longer and fuller false claim {n}b",
+            f"A much longer and fuller false claim {n}c",
+        ],
+        "distractor_types": types or ["neighbor_step", "overly_absolute", "opposite_effect"],
+    }
+
+
+@override_settings(
+    QUESTION_WORDS_PER_QUESTION=100,
+    QUESTION_MIN_COUNT=4,
+    QUESTION_MAX_COUNT=8,
+    QUESTION_FLOOR_COUNT=2,
+    QUESTION_MAX_COST_USD=0.25,
+    QUESTION_MODEL="gpt-6-luna",
+)
+class LopsidedRewriteTests(QuestionJobMixin, TestCase):
+    """Target is 6 and each section is asked for 3, so 3 per reply means nothing is trimmed."""
+
+    def model_with(self, c1_questions, distractors=()):
+        return FakeModel(
+            two_concepts(),
+            [ok(question_payload(*c1_questions)), questions_reply("c2", range(4, 7))],
+            distractors,
+        )
+
+    def distractor_calls(self):
+        return [call for call in self.model.calls if call["schema_name"] == "distractors"]
+
+    def listed(self, call):
+        return json.loads(call["user_input"])
+
+    def saved(self, lecture, n):
+        prompt = make_question("c1", n)["prompt"]
+        return lecture.questions.get(prompt=prompt)
+
+    def run_and_capture(self, lecture):
+        """Run the job and return the drafts as they reached balance_positions."""
+        seen = []
+
+        def capture(drafts, seed):
+            seen.extend(copy.deepcopy(drafts))
+            return real_balance(drafts, seed)
+
+        with mock.patch("quizzes.question_generation.balance_positions", side_effect=capture):
+            with self.assertLogs("quizzes", "INFO") as logs:
+                self.assertTrue(self.run_job(lecture))
+        return seen, logs.output
+
+    def summary(self, logs):
+        return [line for line in logs if "cost_usd=" in line][0]
+
+    def test_no_lopsided_drafts_make_no_call(self):
+        self.model = self.model_with([make_question("c1", n) for n in range(3)])
+        lecture = self.make_lecture()
+
+        with self.assertLogs("quizzes", "INFO") as logs:
+            self.assertTrue(self.run_job(lecture))
+
+        self.assertEqual(self.distractor_calls(), [])
+        summary = self.summary(logs.output)
+        self.assertIn("rebalanced=0 still_lopsided=0 longest_correct_pct=0", summary)
+
+    def test_lopsided_drafts_get_one_call_listing_only_them(self):
+        self.model = self.model_with(
+            [lopsided_question("c1", 0), make_question("c1", 1), lopsided_question("c1", 2)],
+            [distractor_reply()],
+        )
+        lecture = self.make_lecture()
+
+        with mock.patch("quizzes.question_generation.heartbeat", wraps=real_heartbeat) as beat:
+            self.assertTrue(self.run_job(lecture))
+
+        calls = self.distractor_calls()
+        self.assertEqual(len(calls), 1)
+        call = calls[0]
+        self.assertEqual(call["schema"], DISTRACTOR_SCHEMA)
+        self.assertEqual(call["instructions"], DISTRACTOR_INSTRUCTIONS)
+        self.assertEqual(call["effort"], "medium")
+        self.assertEqual(call["max_output_tokens"], 8000)
+        listed = self.listed(call)
+        self.assertEqual(
+            [item["prompt"] for item in listed],
+            [make_question("c1", 0)["prompt"], make_question("c1", 2)["prompt"]],
+        )
+        self.assertEqual([item["index"] for item in listed], [1, 2])
+        first = listed[0]
+        self.assertEqual(first["correct_answer"], "A much longer and fuller true claim 0")
+        self.assertEqual(first["wrong_choices"], ["No 0a", "No 0b", "No 0c"])
+        self.assertEqual(first["concept"], "Alpha")
+        self.assertEqual(first["concept_summary"], "What Alpha is.")
+        messages = [c.args[2] for c in beat.call_args_list]
+        self.assertIn("Balancing answer choices", messages)
+        self.assertLess(
+            messages.index("Balancing answer choices"), messages.index("Saving questions")
+        )
+
+    def test_valid_rewrite_replaces_distractors_before_balancing(self):
+        self.model = self.model_with(
+            [make_question("c1", 0), lopsided_question("c1", 1, correct_index=0), make_question("c1", 2)],
+            [distractor_reply(rewrite(1, 1))],
+        )
+        lecture = self.make_lecture()
+
+        seen, logs = self.run_and_capture(lecture)
+
+        draft = [d for d in seen if d.prompt == make_question("c1", 1)["prompt"]][0]
+        self.assertEqual(draft.correct_index, 0)
+        self.assertEqual(
+            draft.choices,
+            [
+                "A much longer and fuller true claim 1",
+                "A much longer and fuller false claim 1a",
+                "A much longer and fuller false claim 1b",
+                "A much longer and fuller false claim 1c",
+            ],
+        )
+        self.assertEqual(
+            draft.distractor_types, [None, "neighbor_step", "overly_absolute", "opposite_effect"]
+        )
+        question = self.saved(lecture, 1)
+        self.assertEqual(question.choices[question.correct_index], "A much longer and fuller true claim 1")
+        self.assertIn("A much longer and fuller false claim 1b", question.choices)
+        self.assertIsNone(question.generation["distractor_types"][question.correct_index])
+        self.assertEqual(question.generation["original"]["choices"], question.choices)
+        self.assertIn("rebalanced=1 still_lopsided=0", self.summary(logs))
+
+    def test_rewrite_keeps_correct_answer_at_its_index(self):
+        self.model = self.model_with(
+            [make_question(
+                "c1", 0, correct_index=2,
+                choices=["No 0a", "No 0b", "A much longer and fuller true claim 0", "No 0c"],
+                distractor_types=["wrong_mechanism", "opposite_effect", None, "generic_benefit"],
+            ), make_question("c1", 1), make_question("c1", 2)],
+            [distractor_reply(rewrite(1, 0))],
+        )
+        lecture = self.make_lecture()
+
+        seen, _ = self.run_and_capture(lecture)
+
+        draft = [d for d in seen if d.prompt == make_question("c1", 0)["prompt"]][0]
+        self.assertEqual(draft.correct_index, 2)
+        self.assertEqual(draft.choices[2], "A much longer and fuller true claim 0")
+        self.assertEqual(draft.choices[0], "A much longer and fuller false claim 0a")
+        self.assertEqual(draft.choices[3], "A much longer and fuller false claim 0c")
+        self.assertEqual(
+            draft.distractor_types, ["neighbor_step", "overly_absolute", None, "opposite_effect"]
+        )
+
+    def test_rewrite_that_fails_checks_keeps_original(self):
+        bad_texts = ["A much longer and fuller true claim 0", "Other wrong 0b", "Other wrong 0c"]
+        self.model = self.model_with(
+            [lopsided_question("c1", 0), make_question("c1", 1), make_question("c1", 2)],
+            [distractor_reply(rewrite(1, 0, texts=bad_texts))],
+        )
+        lecture = self.make_lecture()
+
+        seen, logs = self.run_and_capture(lecture)
+
+        draft = [d for d in seen if d.prompt == make_question("c1", 0)["prompt"]][0]
+        self.assertEqual(
+            sorted(draft.choices),
+            sorted(["A much longer and fuller true claim 0", "No 0a", "No 0b", "No 0c"]),
+        )
+        self.assertTrue(any("rewrite rejected reason=duplicate_choices" in line for line in logs))
+        self.assertIn("rebalanced=0 still_lopsided=1", self.summary(logs))
+
+    def test_still_lopsided_rewrite_is_kept_and_counted(self):
+        short = ["Nope 0a", "Nope 0b", "Nope 0c"]
+        self.model = self.model_with(
+            [lopsided_question("c1", 0), make_question("c1", 1), make_question("c1", 2)],
+            [distractor_reply(rewrite(1, 0, texts=short))],
+        )
+        lecture = self.make_lecture()
+
+        seen, logs = self.run_and_capture(lecture)
+
+        draft = [d for d in seen if d.prompt == make_question("c1", 0)["prompt"]][0]
+        self.assertEqual(draft.choices[1:], short)
+        self.assertTrue(any("still_lopsided=1" in line and "cost_usd=" not in line for line in logs))
+        self.assertIn("rebalanced=1 still_lopsided=1", self.summary(logs))
+        self.assertEqual(lecture.questions.count(), 6)
+
+    def test_unknown_and_duplicate_indexes_are_ignored(self):
+        self.model = self.model_with(
+            [lopsided_question("c1", 0), make_question("c1", 1), make_question("c1", 2)],
+            [distractor_reply(rewrite(7, 0), rewrite(1, 0), rewrite(1, 9))],
+        )
+        lecture = self.make_lecture()
+
+        seen, logs = self.run_and_capture(lecture)
+
+        draft = [d for d in seen if d.prompt == make_question("c1", 0)["prompt"]][0]
+        self.assertEqual(draft.choices[1], "A much longer and fuller false claim 0a")
+        self.assertIn("rebalanced=1 still_lopsided=0", self.summary(logs))
+
+    def test_two_bad_replies_keep_originals_and_save(self):
+        self.model = self.model_with(
+            [lopsided_question("c1", 0), make_question("c1", 1), make_question("c1", 2)],
+            [bad("bad_json"), bad("incomplete")],
+        )
+        lecture = self.make_lecture()
+
+        seen, logs = self.run_and_capture(lecture)
+
+        self.assertEqual(lecture.status, "ready")
+        self.assertEqual(len(self.distractor_calls()), 2)
+        question = self.saved(lecture, 0)
+        self.assertEqual(
+            sorted(question.choices),
+            sorted(["A much longer and fuller true claim 0", "No 0a", "No 0b", "No 0c"]),
+        )
+        self.assertTrue(any("WARNING" in line and "rewrite skipped" in line for line in logs))
+        self.assertIn("rebalanced=0 still_lopsided=1", self.summary(logs))
+
+    def test_cost_cap_on_rewrite_keeps_originals_and_saves(self):
+        self.model = self.model_with(
+            [lopsided_question("c1", 0), make_question("c1", 1), make_question("c1", 2)],
+        )
+        lecture = self.make_lecture()
+
+        def estimate(chars, max_output_tokens, model):
+            return 1.0 if max_output_tokens == 8000 else 0.0
+
+        with mock.patch("quizzes.question_generation.estimate_cost", side_effect=estimate):
+            seen, logs = self.run_and_capture(lecture)
+
+        self.assertEqual(lecture.status, "ready")
+        self.assertEqual(self.distractor_calls(), [])
+        self.assertEqual(lecture.questions.count(), 6)
+        self.assertTrue(any("rewrite skipped" in line for line in logs))
+        self.assertIn("rebalanced=0 still_lopsided=1", self.summary(logs))
+
+    def test_other_errors_on_rewrite_fail_the_lecture(self):
+        script = self.model_with(
+            [lopsided_question("c1", 0), make_question("c1", 1), make_question("c1", 2)],
+        )
+
+        def model(**kwargs):
+            if kwargs["schema_name"] == "distractors":
+                raise PermanentError(QUESTIONS_BAD_KEY)
+            return script(**kwargs)
+
+        self.model = model
+        lecture = self.make_lecture()
+
+        self.assertFalse(self.run_job(lecture))
+
+        self.assertEqual(lecture.status, "failed")
+        self.assertEqual(lecture.error_message, QUESTIONS_BAD_KEY)
+
+    def test_kept_questions_are_never_sent(self):
+        Question.objects.create(
+            lecture=self.make_lecture(),
+            position=0,
+            prompt="Kept lopsided question?",
+            choices=["A much longer and fuller kept answer", "No a", "No b", "No c"],
+            correct_index=0,
+            difficulty="easy",
+        )
+        lecture = Lecture.objects.get()
+        self.model = FakeModel(
+            two_concepts(),
+            [
+                ok(question_payload(*[lopsided_question("c1", n) for n in range(3)])),
+                questions_reply("c2", range(4, 7)),
+            ],
+            [distractor_reply()],
+        )
+
+        self.assertTrue(self.run_job(lecture))
+
+        calls = self.distractor_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("Kept lopsided question?", calls[0]["user_input"])
+        self.assertNotIn("kept answer", calls[0]["user_input"])
+        self.assertTrue(lecture.questions.filter(prompt="Kept lopsided question?").exists())
+
+    def test_summary_reports_longest_correct_percent(self):
+        self.model = self.model_with(
+            [lopsided_question("c1", 0), make_question("c1", 1), make_question("c1", 2)],
+            [distractor_reply()],
+        )
+        lecture = self.make_lecture()
+
+        with self.assertLogs("quizzes", "INFO") as logs:
+            self.assertTrue(self.run_job(lecture))
+
+        summary = self.summary(logs.output)
+        self.assertIn("longest_correct=1/6", summary)
+        self.assertIn("longest_correct_pct=17", summary)
+        self.assertIn("rebalanced=0 still_lopsided=1", summary)

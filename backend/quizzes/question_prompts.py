@@ -106,6 +106,34 @@ QUESTION_SCHEMA = {
     "additionalProperties": False,
 }
 
+_THREE_STRINGS = {"type": "array", "items": {"type": "string"}, "minItems": 3, "maxItems": 3}
+
+DISTRACTOR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "distractors": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer"},
+                    "distractors": _THREE_STRINGS,
+                    "distractor_types": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": list(DISTRACTOR_TYPES)},
+                        "minItems": 3,
+                        "maxItems": 3,
+                    },
+                },
+                "required": ["index", "distractors", "distractor_types"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["distractors"],
+    "additionalProperties": False,
+}
+
 CONCEPT_INSTRUCTIONS = """\
 You read one section of a university lecture transcript and list the course concepts it teaches. A later step writes quiz questions from your list, so list only what a student should learn and be tested on.
 
@@ -153,6 +181,7 @@ Choices:
 - Never use "all of the above" or "none of the above".
 - A choice never refers to other choices by letter or position. Do not write "A and B", "both of the above", "options 1 and 3", or "choice C". The choices are shuffled later.
 - Write the correct answer and the wrong choices in the same style and about the same length. In most questions at least one wrong choice must be as long and as specific as the correct answer. Never make the correct answer the only long, detailed, or hedged choice.
+- Never put a hedge or balancing qualifier, such as 'neither alone is right' or 'seek balance', only in the correct answer. If a hedge belongs in the answer, give the wrong choices similar qualifiers.
 - Keep the prompt under 500 characters and each choice under 200 characters. All 4 choices must be different.
 - Every wrong choice must be plausible to a student who half understands the concept. Build each wrong choice from one of these distractor types:
   - wrong_mechanism: a plausible but wrong explanation of how or why it works.
@@ -221,3 +250,26 @@ Set gotcha to true on every variant.
 """
     + _QUESTION_RULES
 )
+
+DISTRACTOR_INSTRUCTIONS = """\
+You improve the wrong choices of multiple-choice quiz questions. In each listed question, the correct answer is much longer or more detailed than the wrong choices, so a student can guess it without understanding the concept.
+
+The input lists each question with an index, its prompt, its correct answer, its current wrong choices, and the concept it tests (name and summary). For each listed question, rewrite only the three wrong choices. Keep the question and the correct answer unchanged. They are given only so you can match them. Return the same index, the three new wrong choices, and the type of each one.
+
+Each new wrong choice must:
+- Be about the same length, detail, and grammatical form as the correct answer.
+- Be a plausible mistake for a student who half understands the concept. Build it from one of these distractor types, and set its type in distractor_types in the same order:
+  - wrong_mechanism: a plausible but wrong explanation of how or why it works.
+  - opposite_effect: the reverse of the real effect or result.
+  - generic_benefit: a vague, true-sounding benefit that does not answer this question.
+  - overly_absolute: the right idea stated too strongly, with "always", "never", "only", or "all".
+  - neighbor_step: a nearby step, method, or concept from the same topic that does not fit here.
+- Still be clearly wrong for a student who understands the concept. Exactly one choice stays correct.
+- Be different from the correct answer and from the other wrong choices.
+- Never refer to other choices by letter or position. The choices are shuffled later.
+- Never say "all of the above" or "none of the above".
+- Never mention the professor, the lecture, or the class.
+- Stay under 200 characters.
+
+Never put a hedge or balancing qualifier, such as 'neither alone is right', 'seek balance', 'it depends', or 'in most cases', only in the correct answer. If the correct answer has a hedge, give the wrong choices similar qualifiers.
+"""
