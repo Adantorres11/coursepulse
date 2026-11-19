@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../context/AuthContext";
 import {
   getClassRoster,
+  getLectureStatus,
   getProfessorClasses,
   getProfessorClassLectures,
 } from "../lib/apiClient";
@@ -29,6 +30,8 @@ vi.mock("../lib/apiClient", async () => {
     getProfessorClasses: vi.fn(),
     getProfessorClassLectures: vi.fn(),
     getClassRoster: vi.fn(),
+    getLectureStatus: vi.fn(),
+    retryLecture: vi.fn(),
   };
 });
 
@@ -75,7 +78,18 @@ describe("ProfessorClassDetail", () => {
     vi.mocked(getProfessorClasses).mockReset();
     vi.mocked(getProfessorClassLectures).mockReset();
     vi.mocked(getClassRoster).mockReset();
+    vi.mocked(getLectureStatus).mockReset();
     vi.mocked(getClassRoster).mockResolvedValue({ data: [], error: null });
+    vi.mocked(getLectureStatus).mockResolvedValue({
+      data: {
+        id: 1,
+        status: "processing",
+        progress_message: "Checking the recording",
+        error_message: "",
+        notice: "",
+      },
+      error: null,
+    });
   });
 
   it("refreshes after an upload without flashing the loading screen", async () => {

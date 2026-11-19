@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
 import { ProfessorClassDetail } from "./components/ProfessorClassDetail";
 import { LectureReview } from "./components/LectureReview";
+import { LectureProcessingPage } from "./components/LectureProcessing";
 
 function AppContent() {
   const location = useLocation();
@@ -169,6 +170,14 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRole="professor">
                 <ProfessorClassDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/professor/class/:classId/lectures/:lectureId/status"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <LectureProcessingPage />
               </ProtectedRoute>
             }
           />
