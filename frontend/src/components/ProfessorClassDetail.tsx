@@ -242,6 +242,7 @@ export function ProfessorClassDetail() {
                             lectureId={lecture.id}
                             classId={classId}
                             framed={false}
+                            showReviewLink={false}
                             onSettled={(status) => handleSettled(lecture.id, status)}
                           />
                         ) : null}

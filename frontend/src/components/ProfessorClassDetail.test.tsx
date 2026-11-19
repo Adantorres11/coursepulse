@@ -203,6 +203,41 @@ describe("ProfessorClassDetail", () => {
     expect(screen.getByText("processing")).toBeTruthy();
   });
 
+  it("keeps one Review link after a lecture becomes ready and still shows the notice", async () => {
+    let lectureCalls = 0;
+    vi.mocked(getProfessorClasses).mockResolvedValue({
+      data: [classes[0]],
+      error: null,
+    });
+    vi.mocked(getProfessorClassLectures).mockImplementation(async () => {
+      lectureCalls += 1;
+      return {
+        data: [lecture(8, "Pipelining", lectureCalls > 1 ? "ready" : "processing")],
+        error: null,
+      };
+    });
+    vi.mocked(getLectureStatus).mockResolvedValue({
+      data: {
+        id: 8,
+        status: "ready",
+        progress_message: "",
+        error_message: "",
+        notice: "Generated 12 questions (target 15). Add more in review if needed.",
+      },
+      error: null,
+    });
+
+    renderDetail();
+
+    expect(
+      await screen.findByText("Generated 12 questions (target 15). Add more in review if needed.")
+    ).toBeTruthy();
+    expect(await screen.findByText("ready")).toBeTruthy();
+    const reviews = screen.getAllByRole("link", { name: "Review" });
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0].getAttribute("href")).toBe("/professor/class/1/lectures/8");
+  });
+
   it("shows upload date, question count, players, average, and a results link", async () => {
     vi.mocked(getProfessorClasses).mockResolvedValue({
       data: [classes[0]],

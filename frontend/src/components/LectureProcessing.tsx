@@ -175,6 +175,8 @@ interface LectureProcessingProps {
   classId: string | number;
   title?: string;
   framed?: boolean;
+  /** The class-page row already links to review once the lecture is ready. */
+  showReviewLink?: boolean;
   onSettled?: (status: LectureProcessingStatus) => void;
 }
 
@@ -183,6 +185,7 @@ export function LectureProcessing({
   classId,
   title,
   framed = true,
+  showReviewLink = true,
   onSettled,
 }: LectureProcessingProps) {
   const [snapshot, setSnapshot] = useState<LectureProcessingStatus | null>(null);
@@ -283,7 +286,9 @@ export function LectureProcessing({
       message={message}
       percent={percent}
       notice={notice}
-      reviewHref={stage === "ready" ? lectureReviewPath(classId, lectureId) : null}
+      reviewHref={
+        stage === "ready" && showReviewLink ? lectureReviewPath(classId, lectureId) : null
+      }
       onRetry={stage === "failed" ? () => void handleRetry() : undefined}
       retrying={retrying}
       retryError={retryError}
