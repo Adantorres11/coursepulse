@@ -12,7 +12,10 @@ import {
   type ProfessorClass,
 } from "../lib/apiClient";
 import { lectureCanBeReviewed, lectureReviewPath } from "../lib/lectureReview";
+import { displayUsername } from "../lib/displayUsername";
 import type { ProfessorLecture } from "../types/api";
+import { LectureParts } from "./LectureParts";
+import { showMoreLecturesHeader } from "../lib/lectureParts";
 import { LeaderboardModal } from "./LeaderboardModal";
 import { ProfessorNav } from "./ProfessorNav";
 import { StudentNav } from "./StudentNav";
@@ -122,9 +125,13 @@ export function ClassHub() {
   const stats = state.status === "ready" ? state.stats : null;
   const moreLectures = stats ? stats.lectures.filter((l) => l.id !== stats.up_next?.id) : [];
 
-  const handleStartQuiz = (lectureId: number) => {
+  const handleStartPart = (lectureId: number, part: number) => {
     // Remember where the student came from so the quiz can link back here.
-    navigate(`/quiz/${lectureId}`, { state: { from: `/class/${classId}` } });
+    navigate(`/quiz/${lectureId}?part=${part}`, { state: { from: `/class/${classId}` } });
+  };
+
+  const handleReviewPart = (lectureId: number, part: number) => {
+    navigate(`/quiz/${lectureId}/review?part=${part}`, { state: { from: `/class/${classId}` } });
   };
 
   const handleCopyCode = (code: string) => {
@@ -181,7 +188,7 @@ export function ClassHub() {
               : state.status === "professor"
               ? `Join code: ${state.classInfo.access_code} · ${state.classInfo.student_count} students · ${state.classInfo.lecture_count} lectures`
               : classInfo
-              ? `${classInfo.course_code} · ${classInfo.professor?.name ?? "Professor not assigned"}`
+              ? `${classInfo.course_code} · ${displayUsername(classInfo.professor) || "Professor not assigned"}`
               : ""}
           </p>
         </div>
@@ -563,128 +570,32 @@ export function ClassHub() {
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
                   Up Next
                 </h3>
-
-                <div className="bg-[#101B33] border border-sky-500/40 rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  {/* Background ripple design */}
-                  <div className="absolute right-0 top-0 bottom-0 w-64 pointer-events-none opacity-20">
-                    <svg
-                      viewBox="0 0 200 200"
-                      className="w-full h-full"
-                      fill="none"
-                      stroke="#38BDF8"
-                      strokeWidth="1.5"
-                    >
-                      <circle cx="160" cy="100" r="40" />
-                      <circle cx="160" cy="100" r="70" />
-                      <circle cx="160" cy="100" r="100" />
-                    </svg>
-                  </div>
-
-                  {/* Left content */}
-                  <div className="relative z-10">
-                    <h4 className="text-xl sm:text-2xl font-bold text-white mb-2.5">
-                      {stats.up_next.title}
-                    </h4>
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="bg-[#18294D] border border-slate-700/80 text-slate-300 px-3 py-1 rounded-full font-medium">
-                        {stats.up_next.question_count} questions
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Right Action Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleStartQuiz(stats.up_next!.id)}
-                    className="relative z-10 inline-flex items-center justify-center gap-2 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#0A101D] font-bold text-sm px-6 py-3 rounded-xl transition cursor-pointer shadow-lg shadow-sky-500/20 active:scale-95 shrink-0 self-start sm:self-auto"
-                  >
-                    <span>Start quiz</span>
-                    <span>→</span>
-                  </button>
-                </div>
+                <LectureParts
+                  lecture={stats.up_next}
+                  variant="next"
+                  onStart={handleStartPart}
+                  onReview={handleReviewPart}
+                />
               </div>
             )}
 
-            {/* 3. More Lectures List (Acceptance Criterion 3). The Up Next quiz is shown above, so skip it here. */}
+            {/* Played and later lectures. The Up Next quiz is shown above, so skip it here. */}
             {moreLectures.length > 0 && (
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-                More Lectures
-              </h3>
+              {showMoreLecturesHeader(stats.up_next, moreLectures.length) && (
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
+                  More Lectures
+                </h3>
+              )}
 
               <div className="space-y-3">
                 {moreLectures.map((lecture) => (
-                  <div
+                  <LectureParts
                     key={lecture.id}
-                    onClick={() => handleStartQuiz(lecture.id)}
-                    className="group bg-[#111A30] hover:bg-[#14203D] border border-slate-800/90 hover:border-slate-700 rounded-2xl p-4 sm:p-5 flex items-center justify-between transition-all duration-150 shadow-md cursor-pointer"
-                  >
-                    {/* Left: Check / Play Icon + Title + Progress */}
-                    <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
-                      {!lecture.is_new ? (
-                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#162547] flex items-center justify-center text-[#38BDF8] shrink-0 shadow-sm font-bold">
-                          ✓
-                        </div>
-                      ) : (
-                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#16223D] flex items-center justify-center text-slate-400 group-hover:text-white shrink-0 shadow-sm text-sm">
-                          ▶
-                        </div>
-                      )}
-
-                      <div className="min-w-0">
-                        <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-sky-300 transition-colors truncate">
-                          {lecture.title}
-                        </h4>
-
-                        {!lecture.is_new ? (
-                          /* Score Dots Indicator matching Mockup */
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <div className="flex items-center gap-1">
-                              {Array.from({ length: lecture.question_count }).map((_, i) => (
-                                <span
-                                  key={i}
-                                  className={`w-1.5 h-1.5 rounded-full ${
-                                    i < lecture.correct_count
-                                      ? "bg-[#38BDF8]"
-                                      : "bg-slate-700"
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                            <span className="text-xs text-slate-400 font-medium ml-1">
-                              {lecture.correct_count} of {lecture.question_count} correct
-                            </span>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {lecture.question_count} questions
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right: Best Points / New Badge + Arrow Button */}
-                    <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-                      {!lecture.is_new ? (
-                        <div className="text-right">
-                          <span className="block text-[10px] uppercase font-bold text-slate-400">
-                            Best
-                          </span>
-                          <span className="text-xs sm:text-sm font-bold text-[#38BDF8]">
-                            {lecture.best_score} pts
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="bg-[#162547] border border-sky-500/30 text-sky-400 text-xs font-bold px-2.5 py-0.5 rounded-full shadow-sm">
-                          New
-                        </span>
-                      )}
-
-                      <div className="w-8 h-8 rounded-xl bg-[#18233C] group-hover:bg-[#1D305A] flex items-center justify-center text-slate-400 group-hover:text-white transition text-xs font-bold shadow-sm">
-                        →
-                      </div>
-                    </div>
-                  </div>
+                    lecture={lecture}
+                    onStart={handleStartPart}
+                    onReview={handleReviewPart}
+                  />
                 ))}
               </div>
             </div>

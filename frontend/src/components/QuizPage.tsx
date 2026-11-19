@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useLocation, Link } from "react-router-dom";
+import { useParams, useLocation, useSearchParams, Link } from "react-router-dom";
 import { getClassesRoute, getQuiz, isProfessor, request, type Quiz, type Lecture } from "../lib/apiClient";
 import QuizGame from "./quiz";
 
@@ -13,6 +13,9 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
   const lectureId = propLectureId ?? routeLectureId ?? "";
 
   // The Class Hub passes the page it came from; otherwise go to the Student Hub.
+  const [searchParams] = useSearchParams();
+  const partParam = Number(searchParams.get("part"));
+  const part = Number.isInteger(partParam) && partParam > 0 ? partParam : undefined;
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from;
   const backTo = from ?? getClassesRoute();
@@ -70,7 +73,7 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
       return;
     }
 
-    getQuiz(lectureId).then((result) => {
+    getQuiz(lectureId, part).then((result) => {
       if (!isMounted) return;
       if (result.error || !result.data) {
         // A 404 normally has server text; only an empty 200 body has none, and the Not Found card then shows its own message.
@@ -86,7 +89,7 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
     return () => {
       isMounted = false;
     };
-  }, [lectureId, reloadKey]);
+  }, [lectureId, reloadKey, part]);
 
   // Any failure except 404 can be retried. No lecture ID and empty data keep the Not Found card.
   const loadFailed = Boolean(lectureId) && Boolean(error) && errorStatus !== 404;
@@ -99,12 +102,12 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden px-4 py-2 sm:px-5">
       {/* Back link to Hub */}
       <Link
         to={backTo}
         onClick={handleBackClick}
-        className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-6 cursor-pointer"
+        className="mb-2 inline-flex shrink-0 items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors cursor-pointer"
       >
         <span>←</span>
         <span>Back to {backLabel}</span>
@@ -154,25 +157,33 @@ export function QuizPage({ lectureId: propLectureId, onBackToHub }: QuizPageProp
         </div>
       ) : (
         /* Quiz Placeholder Screen */
-        <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-6 sm:p-8 shadow-xl">
-          <div className="border-b border-slate-700/70 pb-4 mb-6">
-            <span className="text-xs uppercase font-semibold text-indigo-400 tracking-wider">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800/80 p-3 shadow-xl sm:p-4">
+          <div className="mb-2 shrink-0 border-b border-slate-700/70 pb-2">
+            <span className="text-[11px] uppercase font-semibold text-indigo-400 tracking-wider">
               Lecture Quiz
             </span>
-            <h2 className="text-xl sm:text-2xl font-bold text-white mt-1">{quiz.title}</h2>
-            <p className="text-slate-400 text-sm mt-1">
-              {quiz.questions.length} questions loaded and ready to play.
-            </p>
+            <h2 className="truncate text-lg font-bold text-white">{quiz.title}</h2>
+            {part !== undefined && (
+              <p className="text-xs text-sky-300">
+                Part {quiz.part ?? part}
+                {quiz.part_count ? ` of ${quiz.part_count}` : ""}
+              </p>
+            )}
           </div>
 
           {/* Interactive Gameplay Component */}
-          <QuizGame
-            questions={quiz.questions}
-            lectureId={lectureId}
-            initialAnsweredIds={quiz.answered_question_ids ?? []}
-            initialScore={quiz.total_points ?? 0}
-            classroomId={classroomId}
-          />
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <QuizGame
+              questions={quiz.questions}
+              lectureId={lectureId}
+              initialAnsweredIds={quiz.answered_question_ids ?? []}
+              initialAnswers={quiz.answered_questions ?? []}
+              initialScore={quiz.total_points ?? 0}
+              classroomId={classroomId}
+              part={part}
+              onReplay={() => setReloadKey((n) => n + 1)}
+            />
+          </div>
         </div>
       )}
     </div>

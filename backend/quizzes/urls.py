@@ -25,6 +25,11 @@ urlpatterns = [
         name="lecture-answers",
     ),
     path(
+        "lectures/<int:pk>/parts/<int:part>/review/",
+        views.LecturePartReviewView.as_view(),
+        name="lecture-part-review",
+    ),
+    path(
         "lectures/<int:pk>/status/",
         views.LectureStatusView.as_view(),
         name="lecture-status",

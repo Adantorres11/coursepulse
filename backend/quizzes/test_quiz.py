@@ -45,9 +45,15 @@ class LectureQuizTests(TestCase):
                 "title",
                 "questions",
                 "answered_question_ids",
+                "answered_questions",
                 "total_points",
+                "part",
+                "part_count",
             },
         )
+        self.assertEqual(body["answered_questions"], [])
+        self.assertIsNone(body["part"])
+        self.assertEqual(body["part_count"], 1)
         self.assertEqual(body["lecture_id"], lecture.id)
         self.assertEqual(body["title"], "A Lecture")
         question = body["questions"][0]
@@ -149,10 +155,44 @@ class QuizProgressTests(APITestCase):
         )
         self.assertEqual(body["total_points"], 200)
 
+    def test_quiz_reports_points_for_questions_answered_earlier(self):
+        self.client.force_authenticate(self.student)
+        first = self.answer(self.questions[0])
+        second = self.client.post(
+            f"/api/lectures/{self.lecture.id}/questions/{self.questions[1].id}/start/"
+        )
+        self.assertEqual(second.status_code, 201)
+        wrong = self.client.post(
+            f"/api/lectures/{self.lecture.id}/answers/",
+            {"question_id": self.questions[1].id, "chosen_index": 1},
+            format="json",
+        )
+
+        body = self.get_quiz()
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(wrong.status_code, 201)
+        self.assertEqual(
+            body["answered_questions"],
+            [
+                {
+                    "question_id": self.questions[0].id,
+                    "is_correct": True,
+                    "points_awarded": first.json()["points_awarded"],
+                },
+                {
+                    "question_id": self.questions[1].id,
+                    "is_correct": False,
+                    "points_awarded": 0,
+                },
+            ],
+        )
+
     def test_quiz_progress_is_empty_when_logged_out(self):
         body = self.get_quiz()
 
         self.assertEqual(body["answered_question_ids"], [])
+        self.assertEqual(body["answered_questions"], [])
         self.assertEqual(body["total_points"], 0)
 
     def test_quiz_progress_resets_after_completion(self):

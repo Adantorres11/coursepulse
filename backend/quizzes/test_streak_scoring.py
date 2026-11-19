@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from classrooms.models import Classroom
+from .grading import QUESTION_TIME_LIMIT_MS, TIME_GRACE_MS
 from .models import Attempt, DayStreak, Lecture, QuestionStart
 from .test_lectures import add_questions
 from .testing import answer, make_student, start
@@ -86,7 +87,8 @@ class StreakScoringTests(APITestCase):
         question = self.lecture.questions.get(position=1)
         start(self.client, self.lecture, question)
         QuestionStart.objects.filter(question=question).update(
-            started_at=timezone.now() - timedelta(milliseconds=16500)
+            started_at=timezone.now()
+            - timedelta(milliseconds=QUESTION_TIME_LIMIT_MS + TIME_GRACE_MS + 500)
         )
         response = self.answer(1)
         self.assertEqual(response.json()["points_awarded"], 0)

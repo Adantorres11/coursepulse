@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .grading import get_open_attempt
 from .models import Lecture, Question
+from .parts import part_sizes
 
 class LectureSerializer(serializers.ModelSerializer):
     classroom = serializers.CharField(
@@ -102,7 +103,10 @@ class QuizSerializer(serializers.ModelSerializer):
     lecture_id = serializers.IntegerField(source="id", read_only=True)
     questions = QuestionSerializer(many=True, read_only=True)
     answered_question_ids = serializers.SerializerMethodField()
+    answered_questions = serializers.SerializerMethodField()
     total_points = serializers.SerializerMethodField()
+    part = serializers.SerializerMethodField()
+    part_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Lecture
@@ -111,8 +115,17 @@ class QuizSerializer(serializers.ModelSerializer):
             "title",
             "questions",
             "answered_question_ids",
+            "answered_questions",
             "total_points",
+            "part",
+            "part_count",
         ]
+
+    def get_part(self, lecture):
+        return None
+
+    def get_part_count(self, lecture):
+        return len(part_sizes(len(lecture.questions.all())))
 
     def _open_attempt(self, lecture):
         request = self.context.get("request")
@@ -122,12 +135,28 @@ class QuizSerializer(serializers.ModelSerializer):
 
     def to_representation(self, lecture):
         self._attempt = self._open_attempt(lecture)
+        if self._attempt is None:
+            self._answered_rows = []
+        else:
+            self._answered_rows = list(
+                self._attempt.answers.order_by("id").values(
+                    "question_id", "is_correct", "points_awarded"
+                )
+            )
         return super().to_representation(lecture)
 
     def get_answered_question_ids(self, lecture):
-        if self._attempt is None:
-            return []
-        return list(self._attempt.answers.values_list("question_id", flat=True))
+        return [row["question_id"] for row in self._answered_rows]
+
+    def get_answered_questions(self, lecture):
+        return [
+            {
+                "question_id": row["question_id"],
+                "is_correct": row["is_correct"],
+                "points_awarded": row["points_awarded"],
+            }
+            for row in self._answered_rows
+        ]
 
     def get_total_points(self, lecture):
         return self._attempt.total_points if self._attempt else 0
@@ -139,3 +168,5 @@ class AnswerRequestSerializer(serializers.Serializer):
         max_value=3,
         allow_null=True,
     )
+    # 1-based part. Omit it to play a one-part lecture in the original order.
+    part = serializers.IntegerField(required=False, min_value=1)

@@ -10,6 +10,7 @@ import {
 import { LeaderboardModal } from "./LeaderboardModal";
 import { ClassRankCard } from "./ClassRankCard";
 import { StudentNav } from "./StudentNav";
+import { displayUsername } from "../lib/displayUsername";
 
 interface ClassroomResponse {
   id: number;
@@ -18,6 +19,7 @@ interface ClassroomResponse {
   professor: {
     id: number;
     name: string;
+    username?: string;
   } | null;
   quiz_count: number;
   new_quiz_count: number;
@@ -87,7 +89,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
           classroomId: classroom.id,
           name: classroom.name,
           code: classroom.course_code,
-          instructor: classroom.professor?.name || "Professor not assigned",
+          instructor: displayUsername(classroom.professor) || "Professor not assigned",
           quizCount: classroom.quiz_count,
           newQuizCount: classroom.new_quiz_count,
           lectureId: lectures.find(
@@ -320,6 +322,12 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
                         {cls.newQuizCount} new
                       </span>
                     )}
+                    {cls.classroomId !== undefined && (
+                      <ClassRankCard
+                        classroomId={cls.classroomId}
+                        onOpen={setLeaderboardClassId}
+                      />
+                    )}
                     <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#1B294B] group-hover:bg-[#233560] flex items-center justify-center text-[#38BDF8] group-hover:translate-x-0.5 transition-all">
                       <svg
                         className="w-4 h-4"
@@ -336,13 +344,6 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
                     </div>
                   </div>
                                 </div>
-
-                {cls.classroomId !== undefined && (
-                  <ClassRankCard
-                    classroomId={cls.classroomId}
-                    onOpen={setLeaderboardClassId}
-                  />
-                )}
               </div>
             ))}
             </div>
