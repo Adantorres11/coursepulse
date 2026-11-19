@@ -6,6 +6,7 @@ import {
   getLectureQuestions,
   getQuiz,
   publishLecture,
+  register,
   retryLecture,
   updateLectureQuestion,
 } from "./apiClient";
@@ -257,5 +258,62 @@ describe("lecture questions", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(String(url)).toMatch(/\/lectures\/4\/retry\/$/);
     expect(init.method).toBe("POST");
+  });
+});
+
+describe("register", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    const store = new Map<string, string>();
+    const mockStorage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+      clear: () => store.clear(),
+    };
+    vi.stubGlobal("sessionStorage", mockStorage);
+    vi.stubGlobal("localStorage", mockStorage);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the chosen username and keeps login on email", async () => {
+    fetchMock.mockResolvedValue(
+      json(
+        {
+          token: "token-1",
+          user: {
+            id: 1,
+            email: "student@example.com",
+            username: "torres11",
+            role: "student",
+          },
+        },
+        201
+      )
+    );
+
+    const result = await register({
+      email: " Student@Example.com ",
+      username: " torres11 ",
+      password: "Maple!River82",
+      role: "student",
+    });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(body).toEqual({
+      email: "student@example.com",
+      username: "torres11",
+      password: "Maple!River82",
+      role: "student",
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/auth\/register\/$/);
+    expect(result.data?.user.username).toBe("torres11");
+    expect(result.error).toBeNull();
   });
 });

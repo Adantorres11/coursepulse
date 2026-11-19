@@ -18,9 +18,14 @@ vi.mock("../lib/apiClient", async () => {
     ...actual,
     isProfessor: () => true,
     getStoredToken: () => "token",
-    getStoredUser: () => ({ id: 1, email: "p@example.com", role: "professor" as const }),
+    getStoredUser: () => ({
+      id: 1,
+      email: "p@example.com",
+      username: "professor",
+      role: "professor" as const,
+    }),
     getCurrentUser: vi.fn(async () => ({
-      data: { id: 1, email: "p@example.com", role: "professor" },
+      data: { id: 1, email: "p@example.com", username: "professor", role: "professor" },
       error: null,
     })),
     clearSession: vi.fn(),

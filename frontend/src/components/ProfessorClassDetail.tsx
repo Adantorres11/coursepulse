@@ -6,14 +6,16 @@ import {
   getClassRoster,
   getProfessorClassLectures,
 } from "../lib/apiClient";
-import { lectureCanBeReviewed, lectureReviewPath } from "../lib/lectureReview";
+import { professorResultsPath } from "../lib/lectureReview";
 import { lectureNeedsLiveProgress } from "../lib/lectureProgress";
+import { displayUsername } from "../lib/displayUsername";
 import type {
   ProfessorClass,
   ProfessorLecture,
   ClassRosterStudent,
   LectureProcessingStatus,
 } from "../types/api";
+import { ProfessorLectureRow } from "./ProfessorLectureRow";
 import { ProfessorNav } from "./ProfessorNav";
 import { UploadLecturePage, type UploadedLecture } from "./LectureUpload";
 import { LectureProcessing } from "./LectureProcessing";
@@ -145,9 +147,17 @@ export function ProfessorClassDetail() {
         ) : classInfo ? (
           <>
             <section className="mt-6 bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <h1 className="text-3xl font-bold">
-                {classInfo.name}
-              </h1>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <h1 className="text-3xl font-bold">
+                  {classInfo.name}
+                </h1>
+                <Link
+                  to={professorResultsPath(classInfo.id)}
+                  className="inline-flex items-center px-4 py-2 rounded-xl border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-sm font-semibold"
+                >
+                  View results
+                </Link>
+              </div>
 
               <div className="flex flex-wrap items-center gap-3 mt-4">
                 <span className="text-slate-400">
@@ -222,37 +232,20 @@ export function ProfessorClassDetail() {
                       (lectureNeedsLiveProgress(lecture.status) ||
                         (lecture.status === "ready" && readyIds.includes(lecture.id)));
                     return (
-                      <div
+                      <ProfessorLectureRow
                         key={lecture.id}
-                        className="bg-slate-900 border border-slate-800 rounded-xl p-4"
+                        lecture={lecture}
+                        classId={classId ?? ""}
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-medium min-w-0">{lecture.title}</p>
-                          <div className="flex items-center gap-3 shrink-0">
-                            <span className="text-xs font-semibold capitalize px-3 py-1 rounded-full bg-slate-800 text-sky-300">
-                              {lecture.status}
-                            </span>
-                            {lectureCanBeReviewed(lecture.status) && classId && (
-                              <Link
-                                to={lectureReviewPath(classId, lecture.id)}
-                                className="text-sm font-semibold text-sky-400 hover:text-sky-300"
-                              >
-                                Review
-                              </Link>
-                            )}
-                          </div>
-                        </div>
-                        {showProgress && classId && (
-                          <div className="mt-4 border-t border-slate-800 pt-4">
-                            <LectureProcessing
-                              lectureId={lecture.id}
-                              classId={classId}
-                              framed={false}
-                              onSettled={(status) => handleSettled(lecture.id, status)}
-                            />
-                          </div>
-                        )}
-                      </div>
+                        {showProgress && classId ? (
+                          <LectureProcessing
+                            lectureId={lecture.id}
+                            classId={classId}
+                            framed={false}
+                            onSettled={(status) => handleSettled(lecture.id, status)}
+                          />
+                        ) : null}
+                      </ProfessorLectureRow>
                     );
                   })}
                 </div>
@@ -273,7 +266,7 @@ export function ProfessorClassDetail() {
                       key={`${student.name}-${index}`}
                       className="flex justify-between gap-4 p-4"
                     >
-                      <span>{student.name}</span>
+                      <span>{displayUsername(student)}</span>
                       <span className="text-sm text-slate-400">
                         Joined{" "}
                         {new Date(student.joined_at).toLocaleDateString()}

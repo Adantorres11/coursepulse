@@ -578,6 +578,7 @@ export async function register(payload: RegisterPayload): Promise<ApiResult<Auth
     method: "POST",
     body: JSON.stringify({
       email: payload.email.trim().toLowerCase(),
+      username: payload.username.trim(),
       password: payload.password,
       role: payload.role || "student",
     }),

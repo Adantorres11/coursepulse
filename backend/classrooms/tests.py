@@ -85,7 +85,8 @@ class StudentClassListTests(APITestCase):
             "course_code": "CS 3398",
             "professor": {
                 "id": self.professor.id,
-                "name": "Alex Smith",
+                "name": "professor",
+                "username": "professor",
             },
             "quiz_count": 0,
             "new_quiz_count": 0,

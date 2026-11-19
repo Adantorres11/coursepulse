@@ -19,6 +19,7 @@ interface AuthContextType {
   signup: (
     email: string,
     password: string,
+    username: string,
     role?: UserRole
   ) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
@@ -83,8 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
-  const signup = async (email: string, password: string, role: UserRole = "student") => {
-    const result = await apiRegister({ email, password, role });
+  const signup = async (
+    email: string,
+    password: string,
+    username: string,
+    role: UserRole = "student"
+  ) => {
+    const result = await apiRegister({ email, password, username, role });
     if (result.error || !result.data) {
       return { success: false, error: result.error || "Failed to create account." };
     }

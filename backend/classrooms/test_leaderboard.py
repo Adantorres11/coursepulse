@@ -84,7 +84,8 @@ class ClassLeaderboardTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data[0], {
             "rank": 1,
-            "display_name": "Bharat K.",
+            "display_name": "bharat",
+            "username": "bharat",
             "points": 300,
             "is_current_user": True,
         })
@@ -100,10 +101,10 @@ class ClassLeaderboardTests(APITestCase):
         self.add_attempt(self.alex, 500, lecture=self.second_lecture)
 
         rows = {row["display_name"]: row for row in self.client.get(self.url).data}
-        self.assertEqual(rows["Bharat K."]["points"], 100)
-        self.assertEqual(rows["Alex S."]["points"], 0)
-        self.assertEqual(rows["Alex S."]["rank"], 2)
-        self.assertEqual(rows["Zero P."]["rank"], 2)
+        self.assertEqual(rows["bharat"]["points"], 100)
+        self.assertEqual(rows["alex"]["points"], 0)
+        self.assertEqual(rows["alex"]["rank"], 2)
+        self.assertEqual(rows["zero"]["rank"], 2)
 
     def test_replay_does_not_change_points(self):
         self.add_attempt(self.bharat, 300)
@@ -138,7 +139,7 @@ class ClassLeaderboardTests(APITestCase):
         )
         self.assertEqual(
             [entry["display_name"] for entry in response.data[:2]],
-            ["Bharat K.", "Alex S."],
+            ["bharat", "alex"],
         )
 
     def test_zero_point_students_are_last_and_tied(self):
@@ -168,7 +169,7 @@ class ClassLeaderboardTests(APITestCase):
             if entry["is_current_user"]
         ]
         self.assertEqual(len(flagged), 1)
-        self.assertEqual(flagged[0]["display_name"], "Alex S.")
+        self.assertEqual(flagged[0]["display_name"], "alex")
 
     def test_other_classes_and_incomplete_attempts_are_excluded(self):
         self.add_attempt(self.bharat, 100)
@@ -203,20 +204,23 @@ class ClassLeaderboardTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             {entry["display_name"] for entry in response.data},
-            {"Bharat K.", "Alex S.", "Sam R.", "Zero P."},
+            {"bharat", "alex", "sam", "zero"},
         )
 
-    def test_name_fallbacks(self):
+    def test_display_name_is_the_username(self):
+        self.bharat.first_name = ""
         self.bharat.last_name = ""
-        self.bharat.save(update_fields=["last_name"])
-        self.alex.first_name = ""
-        self.alex.save(update_fields=["first_name"])
+        self.bharat.save(update_fields=["first_name", "last_name"])
+        self.alex.username = "alex@school.edu"
+        self.alex.save(update_fields=["username"])
 
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data[0]["display_name"], "Bharat")
-        self.assertEqual(response.data[1]["display_name"], "Student")
+        self.assertEqual(response.data[0]["display_name"], "bharat")
+        self.assertEqual(response.data[0]["username"], "bharat")
+        self.assertEqual(response.data[1]["display_name"], "alex")
+        self.assertNotIn("@", response.data[1]["username"])
 
     def test_unenrolled_student_gets_403(self):
         self.client.force_authenticate(user=self.outsider)

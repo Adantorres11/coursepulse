@@ -12,6 +12,7 @@ import {
   type ProfessorClass,
 } from "../lib/apiClient";
 import { lectureCanBeReviewed, lectureReviewPath } from "../lib/lectureReview";
+import { displayUsername } from "../lib/displayUsername";
 import type { ProfessorLecture } from "../types/api";
 import { LeaderboardModal } from "./LeaderboardModal";
 import { ProfessorNav } from "./ProfessorNav";
@@ -181,7 +182,7 @@ export function ClassHub() {
               : state.status === "professor"
               ? `Join code: ${state.classInfo.access_code} · ${state.classInfo.student_count} students · ${state.classInfo.lecture_count} lectures`
               : classInfo
-              ? `${classInfo.course_code} · ${classInfo.professor?.name ?? "Professor not assigned"}`
+              ? `${classInfo.course_code} · ${displayUsername(classInfo.professor) || "Professor not assigned"}`
               : ""}
           </p>
         </div>
