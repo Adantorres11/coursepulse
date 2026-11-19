@@ -13,6 +13,7 @@ CONCEPT_MATCH_RATIO = 0.95
 NEAR_DUPLICATE_RATIO = 0.8
 MAX_PROMPT_CHARS = 500
 MAX_CHOICE_CHARS = 200
+LOPSIDED_MARGIN_PERCENT = 5  # correct answer this much longer than the longest wrong choice is lopsided
 DIFFICULTIES = ("easy", "medium", "hard")
 DIFFICULTY_SHARES = {"easy": 3, "medium": 5, "hard": 2}  # tenths: a 30/50/20 mix
 
@@ -455,14 +456,15 @@ def longest_correct_count(drafts: list[Draft]) -> int:
 
 
 def is_lopsided(draft: Draft) -> bool:
-    """True when the correct answer is longer than every wrong choice by over 20% of its length."""
+    """True when the correct answer is longer than every wrong choice by at least 5% of its length."""
     correct = len(draft.choices[draft.correct_index].strip())
     longest_wrong = max(
         len(choice.strip())
         for i, choice in enumerate(draft.choices)
         if i != draft.correct_index
     )
-    return 5 * (correct - longest_wrong) > correct  # over 20%, in exact integers
+    # Exact integer form of: correct - longest_wrong >= correct * margin / 100.
+    return 100 * (correct - longest_wrong) >= LOPSIDED_MARGIN_PERCENT * correct
 
 
 def mix_warnings(drafts: list[Draft]) -> list[str]:

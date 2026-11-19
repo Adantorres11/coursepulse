@@ -18,6 +18,7 @@ from .question_rules import (
     check_draft,
     concept_ids_for,
     difficulty_split,
+    LOPSIDED_MARGIN_PERCENT,
     is_lopsided,
     is_untouched,
     merge_concepts,
@@ -613,24 +614,29 @@ class LopsidedTests(SimpleTestCase):
     def lopsided(self, correct, longest_wrong):
         return is_lopsided(make_draft(choices=[correct, longest_wrong, "x", "y"]))
 
+    def test_margin_constant_is_five_percent(self):
+        self.assertEqual(LOPSIDED_MARGIN_PERCENT, 5)
+
     def test_boundary(self):
-        correct = "c" * 20  # 20% of 20 is 4
-        self.assertFalse(self.lopsided(correct, "w" * 16))  # exactly 20% longer
-        self.assertFalse(self.lopsided(correct, "w" * 17))  # under
-        self.assertTrue(self.lopsided(correct, "w" * 15))  # over
+        correct = "c" * 100  # 5% of 100 is 5
+        self.assertTrue(self.lopsided(correct, "w" * 95))  # exactly 5% longer
+        self.assertFalse(self.lopsided(correct, "w" * 96))  # under
+        self.assertTrue(self.lopsided(correct, "w" * 94))  # over
+
+    def test_equal_lengths_are_not_lopsided(self):
+        self.assertFalse(self.lopsided("c" * 100, "w" * 100))
 
     def test_uses_stripped_text_and_any_position(self):
-        draft = make_draft(choices=["w" * 17, "  " + "c" * 20 + "  ", "x", "y"], correct_index=1)
+        draft = make_draft(choices=["w" * 96, "  " + "c" * 100 + "  ", "x", "y"], correct_index=1)
         self.assertFalse(is_lopsided(draft))
-        draft = make_draft(choices=["w" * 15 + "     ", "c" * 20, "x", "y"], correct_index=1)
+        draft = make_draft(choices=["w" * 95 + "     ", "c" * 100, "x", "y"], correct_index=1)
         self.assertTrue(is_lopsided(draft))
 
     def test_boundary_needs_no_float_rounding(self):
-        # 20% of 15 is exactly 3, which a float compare can get wrong.
-        self.assertFalse(self.lopsided("c" * 15, "w" * 12))
-        self.assertTrue(self.lopsided("c" * 15, "w" * 11))
-        self.assertFalse(self.lopsided("c" * 35, "w" * 28))
-        self.assertTrue(self.lopsided("c" * 35, "w" * 27))
+        # 5% of 20 is exactly 1, which a float compare can get wrong.
+        self.assertTrue(self.lopsided("c" * 20, "w" * 19))
+        self.assertFalse(self.lopsided("c" * 21, "w" * 20))  # 1 is under 5% of 21
+        self.assertTrue(self.lopsided("c" * 19, "w" * 18))  # 1 is over 5% of 19
 
     def test_short_correct_answer_is_not_lopsided(self):
         self.assertFalse(self.lopsided("short", "a much longer wrong choice"))
