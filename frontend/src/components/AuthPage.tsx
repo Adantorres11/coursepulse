@@ -47,6 +47,7 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
 
   // Form states
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("student");
   const [showPassword, setShowPassword] = useState(false);
@@ -98,6 +99,24 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!username.trim()) {
+      setErrorMessage({
+        title: "Enter a username.",
+        subtitle: "Choose a username people in class will see.",
+      });
+      setHasLoginError(true);
+      return;
+    }
+
+    if (!/^[A-Za-z0-9_-]+$/.test(username.trim())) {
+      setErrorMessage({
+        title: "Use letters, numbers, underscores, or hyphens.",
+        subtitle: "A username cannot be an email address.",
+      });
+      setHasLoginError(true);
+      return;
+    }
+
     if (!email.trim() || !password.trim()) {
       setErrorMessage({
         title: "Missing required fields.",
@@ -119,7 +138,7 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
     setIsSubmitting(true);
     setHasLoginError(false);
 
-    const result = await signup(email, password, role);
+    const result = await signup(email, password, username, role);
     setIsSubmitting(false);
 
     if (!result.success) {
@@ -267,6 +286,33 @@ export function AuthPage({ initialTab = "login" }: AuthPageProps) {
                   }`}
                 />
               </div>
+
+              {activeTab === "signup" && (
+                <div className="mb-4">
+                  <label
+                    htmlFor="username-input"
+                    className="block text-xs font-semibold text-slate-300 mb-1.5"
+                  >
+                    Username
+                  </label>
+                  <input
+                    id="username-input"
+                    type="text"
+                    value={username}
+                    autoComplete="username"
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      if (hasLoginError) setHasLoginError(false);
+                    }}
+                    placeholder="torres11"
+                    className={`w-full bg-[#0A101F] text-white rounded-xl px-3.5 py-2.5 text-sm placeholder:text-slate-500 focus:outline-none transition ${
+                      hasLoginError
+                        ? "border border-rose-500 ring-1 ring-rose-500/50"
+                        : "border border-slate-800 focus:border-[#38BDF8] focus:ring-1 focus:ring-[#38BDF8]"
+                    }`}
+                  />
+                </div>
+              )}
 
               {/* Password Field */}
               <div className="mb-5">

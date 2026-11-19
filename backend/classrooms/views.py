@@ -13,6 +13,8 @@ from rest_framework.views import APIView
 from quizzes.models import QuizCompletion, Lecture
 from quizzes.pipeline import start_lecture_processing
 
+from accounts.usernames import display_username
+
 from .models import Classroom, Enrollment
 from .serializers import (
     LectureUploadSerializer,
@@ -197,19 +199,12 @@ class ClassLeaderboardView(APIView):
 
         for standing in class_standings(classroom):
             student = standing["user"]
-            first_name = student.first_name.strip()
-            last_name = student.last_name.strip()
-
-            if not first_name:
-                display_name = "Student"
-            elif last_name:
-                display_name = f"{first_name} {last_name[0].upper()}."
-            else:
-                display_name = first_name
+            public_name = display_username(student)
 
             entries.append({
                 "rank": standing["rank"],
-                "display_name": display_name,
+                "display_name": public_name,
+                "username": public_name,
                 "points": standing["points"],
                 "is_current_user": student.pk == request.user.pk,
             })

@@ -133,6 +133,7 @@ class ClassResultsTests(APITestCase):
         self.assertEqual(len(students), 2)
 
         self.assertEqual(students[0]["name"], "student")
+        self.assertEqual(students[0]["username"], "student")
         self.assertEqual(students[0]["total_points"], 100)
         self.assertEqual(students[0]["quizzes_played"], 1)
 
