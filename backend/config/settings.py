@@ -144,13 +144,20 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# OpenAI (Whisper transcription).
+# OpenAI (Whisper transcription and question generation).
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 if sys.argv[1:2] == ["test"]:
     # Tests must never spend real credits.
     OPENAI_API_KEY = ""
 TRANSCRIPTION_MAX_COST_USD = float(os.environ.get("TRANSCRIPTION_MAX_COST_USD", "2.00"))
 TRANSCRIPTION_MAX_SECONDS = int(os.environ.get("TRANSCRIPTION_MAX_SECONDS", "14400"))
+QUESTION_MODEL = os.environ.get("QUESTION_MODEL", "gpt-6-luna")
+QUESTION_MAX_COST_USD = float(os.environ.get("QUESTION_MAX_COST_USD", "0.25"))
+QUESTION_WORDS_PER_QUESTION = int(os.environ.get("QUESTION_WORDS_PER_QUESTION", "300"))
+QUESTION_MIN_COUNT = int(os.environ.get("QUESTION_MIN_COUNT", "20"))
+QUESTION_MAX_COUNT = int(os.environ.get("QUESTION_MAX_COUNT", "40"))
+QUESTION_FLOOR_COUNT = int(os.environ.get("QUESTION_FLOOR_COUNT", "10"))
+QUESTION_TIMEOUT_SECONDS = int(os.environ.get("QUESTION_TIMEOUT_SECONDS", "180"))
 LECTURE_UPLOAD_MAX_BYTES = int(os.environ.get("LECTURE_UPLOAD_MAX_BYTES", str(2 * 1024 ** 3)))
 
 STATIC_URL = "static/"

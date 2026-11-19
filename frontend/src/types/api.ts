@@ -187,3 +187,11 @@ export interface ProfessorLecture {
   status: "pending" | "processing" | "ready" | "failed" | "published";
   published_at: string | null;
 }
+
+export interface LectureProcessingStatus {
+  id: number;
+  status: "pending" | "processing" | "ready" | "failed";
+  progress_message: string;
+  error_message: string;
+  notice?: string;
+}

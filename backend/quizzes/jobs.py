@@ -49,9 +49,15 @@ def claim_transcription(lecture_id: int, token: str) -> bool:
     return updated == 1
 
 
-def claim_questions(lecture_id: int, token: str) -> bool:
+def claim_questions(lecture_id: int, token: str, allow_own: bool = False) -> bool:
+    """Claim a lecture with a free token. With allow_own, also re-claim this job's own token.
+
+    Only a Celery retry passes allow_own. A redelivered first message has the same task id,
+    and it must not claim again.
+    """
+    owners = Q(job_token="") | Q(job_token=token) if allow_own else Q(job_token="")
     updated = (
-        Lecture.objects.filter(pk=lecture_id, status="processing", job_token="")
+        Lecture.objects.filter(owners, pk=lecture_id, status="processing")
         .exclude(transcript="")
         .update(job_token=token, last_progress_at=timezone.now())
     )
@@ -91,8 +97,9 @@ def fail(
     return updated == 1
 
 
-def _lock_key(lecture_id: int) -> str:
-    return f"lock:lecture:{lecture_id}"
+def _lock_key(lecture_id: int, stage: str = "") -> str:
+    base = f"lock:lecture:{lecture_id}"
+    return f"{base}:{stage}" if stage else base
 
 
 def _client(client_factory):
@@ -100,12 +107,14 @@ def _client(client_factory):
 
 
 @contextmanager
-def lecture_lock(lecture_id: int, token: str, client_factory=redis.Redis.from_url):
+def lecture_lock(
+    lecture_id: int, token: str, client_factory=redis.Redis.from_url, stage: str = ""
+):
     """Yield True when this call holds the lecture lock, False otherwise."""
     if settings.CELERY_TASK_ALWAYS_EAGER:
         yield True
         return
-    key = _lock_key(lecture_id)
+    key = _lock_key(lecture_id, stage)
     try:
         client = _client(client_factory)
         acquired = bool(client.set(key, token, nx=True, ex=settings.CELERY_TASK_TIME_LIMIT + 60))
@@ -122,12 +131,14 @@ def lecture_lock(lecture_id: int, token: str, client_factory=redis.Redis.from_ur
                 logger.warning("lock release failed for lecture %s", lecture_id, exc_info=True)
 
 
-def release_stale_lock(lecture_id: int, token: str, client_factory=redis.Redis.from_url) -> None:
+def release_stale_lock(
+    lecture_id: int, token: str, client_factory=redis.Redis.from_url, stage: str = ""
+) -> None:
     """Free the lock of a job that died without running its `finally`. Never raises."""
     if settings.CELERY_TASK_ALWAYS_EAGER or token == "":
         return
     try:
-        _client(client_factory).eval(RELEASE_LUA, 1, _lock_key(lecture_id), token)
+        _client(client_factory).eval(RELEASE_LUA, 1, _lock_key(lecture_id, stage), token)
     except Exception:
         logger.warning("stale lock release failed for lecture %s", lecture_id, exc_info=True)
 

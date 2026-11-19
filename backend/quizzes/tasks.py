@@ -8,9 +8,10 @@ from kombu.exceptions import OperationalError
 from redis.exceptions import RedisError
 
 from .job_errors import INTERRUPTED, TransientError
-from .jobs import LostOwnership, claim_questions, fail, heartbeat, job_logger, release_stale_lock
+from .jobs import LostOwnership, fail, heartbeat, job_logger, release_stale_lock
 from .models import Lecture
 from .pipeline import enqueue_lecture_processing
+from .question_generation import run_question_generation
 from .transcription import hand_off, run_transcription
 
 logger = logging.getLogger(__name__)
@@ -38,18 +39,23 @@ def transcribe_lecture(self, lecture_id):
         raise self.retry(exc=exc, countdown=countdown)
 
 
-@shared_task(bind=True, ignore_result=True)
+@shared_task(bind=True, ignore_result=True, max_retries=3)
 def generate_questions(self, lecture_id):
-    log = job_logger(lecture_id, self.request.id, self.request.retries)
-    if not claim_questions(lecture_id, self.request.id):
-        log.info("generate_questions skipped: lecture is not ready to claim")
-        return
-    heartbeat(
-        lecture_id,
-        self.request.id,
-        "Transcript ready. Question generation is not built yet.",
-    )
-    log.info("generate_questions is a placeholder until SCRUM-71")
+    retries = self.request.retries
+    log = job_logger(lecture_id, self.request.id, retries)
+    try:
+        run_question_generation(lecture_id, self.request.id, retries, log)
+    except TransientError as exc:
+        if retries >= self.max_retries:
+            fail(lecture_id, self.request.id, exc.message)
+            return
+        try:
+            heartbeat(lecture_id, self.request.id, "Waiting to retry")
+        except LostOwnership:
+            log.info("Lost ownership while waiting to retry; stopping")
+            return
+        countdown = random.uniform(0, min(300, 30 * 2**retries))
+        raise self.retry(exc=exc, countdown=countdown)
 
 
 @shared_task(ignore_result=True)
@@ -60,7 +66,7 @@ def reap_stuck_lectures():
 
     stuck = list(
         Lecture.objects.filter(
-            status="processing", transcript="", last_progress_at__lt=job_cutoff
+            status="processing", last_progress_at__lt=job_cutoff
         )
         .exclude(job_token="")
         .values_list("id", "job_token")
@@ -68,6 +74,7 @@ def reap_stuck_lectures():
     for lecture_id, stale in stuck:
         # Free the dead job's lock first, or a professor retry could not take it.
         release_stale_lock(lecture_id, stale)
+        release_stale_lock(lecture_id, stale, stage="questions")
         # The token protects a job that took over. The cutoff protects a job that
         # reported progress since the read above.
         fail(lecture_id, stale, INTERRUPTED, stale_before=job_cutoff)

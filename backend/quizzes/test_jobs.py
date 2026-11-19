@@ -12,6 +12,7 @@ from quizzes.job_errors import SERVICE_BUSY, TransientError
 from quizzes.jobs import (
     RELEASE_LUA,
     LostOwnership,
+    _lock_key,
     claim_questions,
     claim_transcription,
     fail,
@@ -84,6 +85,18 @@ class ClaimTests(JobsTestBase):
         lecture = self.reload()
         self.assertEqual(lecture.job_token, "q1")
         self.assertIsNotNone(lecture.last_progress_at)
+
+    def test_claim_questions_own_token_needs_allow_own(self):
+        Lecture.objects.filter(pk=self.lecture.id).update(
+            status="processing", transcript="Some words here.", job_token="q1"
+        )
+        self.assertFalse(claim_questions(self.lecture.id, "q1"))
+        self.assertTrue(claim_questions(self.lecture.id, "q1", allow_own=True))
+        self.assertFalse(claim_questions(self.lecture.id, "q2", allow_own=True))
+
+    def test_lock_key_by_stage(self):
+        self.assertEqual(_lock_key(5), "lock:lecture:5")
+        self.assertEqual(_lock_key(5, "questions"), "lock:lecture:5:questions")
 
 
 class HeartbeatAndFailTests(JobsTestBase):
