@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   formatClassAverage,
   formatLectureMeta,
@@ -8,19 +8,52 @@ import {
   formatUploadDate,
 } from "./lectureSummary";
 
+function localUploadDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 describe("lecture row summary", () => {
-  it("formats the upload date in UTC", () => {
-    expect(formatUploadDate("2026-11-18T15:00:00Z")).toBe("Nov 18, 2026");
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("formats the upload date in the viewer's local timezone", () => {
+    // 9:30pm in America/Chicago on Nov 18 is already Nov 19 in UTC.
+    const eveningInChicago = "2026-11-19T03:30:00Z";
+    const spy = vi.spyOn(Date.prototype, "toLocaleDateString");
+    const formatted = formatUploadDate(eveningInChicago);
+    const options = spy.mock.calls[0]?.[1] as Intl.DateTimeFormatOptions | undefined;
+
+    expect(formatted).toBe(localUploadDate(eveningInChicago));
+    expect(options?.timeZone).toBeUndefined();
     expect(formatUploadDate(null)).toBe("Upload date unavailable");
+    expect(formatUploadDate("not-a-date")).toBe("Upload date unavailable");
+    expect(new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "America/Chicago",
+    }).format(new Date(eveningInChicago))).toBe("Nov 18, 2026");
+    expect(new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(new Date(eveningInChicago))).toBe("Nov 19, 2026");
   });
 
   it("joins upload date, questions, players, and average", () => {
+    const uploadedAt = "2026-11-18T15:00:00Z";
     expect(formatLectureMeta({
-      uploaded_at: "2026-11-18T15:00:00Z",
+      uploaded_at: uploadedAt,
       question_count: 12,
       students_played: 8,
       class_average: 240,
-    })).toBe("Nov 18, 2026 · 12 questions · 8 students played · Avg 240");
+    })).toBe(`${localUploadDate(uploadedAt)} · 12 questions · 8 students played · Avg 240`);
   });
 
   it("says when nobody has a score yet", () => {

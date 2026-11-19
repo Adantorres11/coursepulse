@@ -10,6 +10,7 @@ import {
   getProfessorClassLectures,
 } from "../lib/apiClient";
 import type { ProfessorClass, ProfessorLecture } from "../types/api";
+import { formatUploadDate } from "../lib/lectureSummary";
 import { ProfessorClassDetail } from "./ProfessorClassDetail";
 
 vi.mock("./LectureUpload", () => ({
@@ -208,7 +209,7 @@ describe("ProfessorClassDetail", () => {
     renderDetail();
 
     expect(await screen.findByText(
-      "Nov 18, 2026 · 12 questions · 8 students played · Avg 240"
+      `${formatUploadDate("2026-11-18T15:00:00Z")} · 12 questions · 8 students played · Avg 240`
     )).toBeTruthy();
     const results = screen.getByRole("link", { name: "View results" });
     expect(results.getAttribute("href")).toBe("/professor/class/1/results");

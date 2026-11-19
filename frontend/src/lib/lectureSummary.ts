@@ -4,12 +4,11 @@ export function formatUploadDate(iso: string | null | undefined): string {
   if (!iso) return "Upload date unavailable";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Upload date unavailable";
-  return new Intl.DateTimeFormat("en-US", {
+  return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
+  });
 }
 
 export function formatQuestionCount(count: number): string {
