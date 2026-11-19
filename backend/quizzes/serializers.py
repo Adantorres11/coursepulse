@@ -26,6 +26,40 @@ class QuestionSerializer(serializers.ModelSerializer):
         model = Question
         fields = ["id", "prompt", "choices", "difficulty"]
 
+
+def normalize_choices(value):
+    if (
+        not isinstance(value, list)
+        or len(value) != 4
+        or not all(isinstance(choice, str) for choice in value)
+    ):
+        raise serializers.ValidationError(
+            "Provide exactly four choices, all strings."
+        )
+
+    stripped = [choice.strip() for choice in value]
+    if any(choice == "" for choice in stripped):
+        raise serializers.ValidationError("Choices cannot be blank.")
+
+    folded = [choice.casefold() for choice in stripped]
+    if len(set(folded)) != 4:
+        raise serializers.ValidationError("Choices must be unique.")
+
+    return stripped
+
+
+def question_is_publishable(question):
+    if question.correct_index not in (0, 1, 2, 3):
+        return False
+    if question.difficulty not in ("easy", "medium", "hard"):
+        return False
+    try:
+        normalize_choices(question.choices)
+    except serializers.ValidationError:
+        return False
+    return True
+
+
 class ProfessorQuestionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Question
@@ -37,18 +71,10 @@ class ProfessorQuestionSerializer(serializers.ModelSerializer):
             "difficulty",
             "position",
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["id", "position"]
 
     def validate_choices(self, value):
-        if (
-            not isinstance(value, list)
-            or len(value) != 4
-            or not all(isinstance(choice, str) for choice in value)
-        ):
-            raise serializers.ValidationError(
-                "Provide exactly four choices, all strings."
-            )
-        return value
+        return normalize_choices(value)
 
     def validate_correct_index(self, value):
         if value not in (0, 1, 2, 3):
@@ -56,6 +82,17 @@ class ProfessorQuestionSerializer(serializers.ModelSerializer):
                 "Correct answer index must be between 0 and 3."
             )
         return value
+
+    def create(self, validated_data):
+        lecture = validated_data["lecture"]
+        last_position = (
+            Question.objects.filter(lecture=lecture)
+            .order_by("-position")
+            .values_list("position", flat=True)
+            .first()
+        )
+        validated_data["position"] = (last_position or 0) + 1
+        return super().create(validated_data)
 
 
 class QuizSerializer(serializers.ModelSerializer):

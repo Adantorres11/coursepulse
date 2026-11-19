@@ -2,6 +2,7 @@ from rest_framework import status
 from kombu.exceptions import OperationalError
 from redis.exceptions import RedisError
 from .pipeline import enqueue_lecture_processing
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.db.models import Count
 from django.http import Http404
@@ -19,6 +20,7 @@ from .serializers import (
     LectureSerializer,
     QuizSerializer,
     ProfessorQuestionSerializer,
+    question_is_publishable,
 )
 
 def available_lectures():
@@ -248,6 +250,32 @@ def get_professor_lecture(user, lecture_id):
 
     return lecture
 
+
+def resequence_question_positions(lecture):
+    questions = Question.objects.filter(lecture=lecture).order_by("position", "id")
+    for index, question in enumerate(questions, start=1):
+        if question.position != index:
+            Question.objects.filter(pk=question.pk).update(position=index)
+
+
+def answered_question_is_replaced(question, validated_data):
+    if "prompt" in validated_data and validated_data["prompt"] != question.prompt:
+        return True
+    if (
+        "difficulty" in validated_data
+        and validated_data["difficulty"] != question.difficulty
+    ):
+        return True
+    if (
+        "correct_index" in validated_data
+        and validated_data["correct_index"] != question.correct_index
+    ):
+        return True
+    if "choices" in validated_data and validated_data["choices"] != list(question.choices):
+        return True
+    return False
+
+
 class ProfessorLectureQuestionsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -305,6 +333,17 @@ class ProfessorQuestionDetailView(APIView):
             partial=True,
         )
         serializer.is_valid(raise_exception=True)
+        if question.answers.exists() and answered_question_is_replaced(
+            question, serializer.validated_data
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "This question has student answers and cannot be changed."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer.save()
         return Response(serializer.data)
 
@@ -323,7 +362,19 @@ class ProfessorQuestionDetailView(APIView):
             lecture=lecture,
         )
 
-        question.delete()
+        if question.answers.exists():
+            return Response(
+                {
+                    "detail": (
+                        "This question has student answers and cannot be deleted."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            question.delete()
+            resequence_question_positions(lecture)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -340,24 +391,30 @@ class LecturePublishView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        questions = lecture.questions.all()
+        if lecture.status != "ready":
+            return Response(
+                {"detail": "Only a ready lecture can be published."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        if not questions.exists():
+        questions = list(lecture.questions.all())
+
+        if not questions:
             return Response(
                 {"detail": "Cannot publish a quiz without questions."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        for question in questions:
-            if (
-                question.correct_index not in range(4)
-                or not isinstance(question.choices, list)
-                or len(question.choices) != 4
-            ):
-                return Response(
-                    {"detail": "All questions must have a valid correct answer."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        if any(not question_is_publishable(question) for question in questions):
+            return Response(
+                {
+                    "detail": (
+                        "Every question needs four unique choices "
+                        "and one correct answer."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         lecture.published_at = timezone.now()
         lecture.save(update_fields=["published_at"])
