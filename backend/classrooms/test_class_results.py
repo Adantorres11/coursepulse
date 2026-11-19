@@ -133,6 +133,7 @@ class ClassResultsTests(APITestCase):
         self.assertEqual(len(students), 2)
 
         self.assertEqual(students[0]["name"], "student")
+        self.assertEqual(students[0]["username"], "student")
         self.assertEqual(students[0]["total_points"], 100)
         self.assertEqual(students[0]["quizzes_played"], 1)
 
@@ -144,11 +145,25 @@ class ClassResultsTests(APITestCase):
 
         question = lectures[0]["questions"][0]
 
-        self.assertEqual(question["answer_count"], 3)
-        self.assertEqual(question["correct_count"], 2)
-        self.assertEqual(
-            question["accuracy_percent"], 66.67
-        )
+        # Retakes count once. Accuracy is the share of students whose
+        # best completed attempt got the question right.
+        self.assertEqual(question["answer_count"], 1)
+        self.assertEqual(question["correct_count"], 1)
+        self.assertEqual(question["accuracy_percent"], 100)
+
+        played = students[0]["lectures"]
+        self.assertEqual(played[0]["lecture_id"], self.lecture.id)
+        self.assertTrue(played[0]["played"])
+        self.assertEqual(played[0]["score"], 100)
+        self.assertEqual(played[0]["correct_count"], 1)
+        self.assertEqual(played[1]["lecture_id"], second_lecture.id)
+        self.assertFalse(played[1]["played"])
+        self.assertIsNone(played[1]["score"])
+        self.assertIsNone(played[1]["correct_count"])
+
+        skipped = students[1]["lectures"]
+        self.assertFalse(skipped[0]["played"])
+        self.assertFalse(skipped[1]["played"])
 
         unanswered = lectures[1]["questions"][0]
         self.assertEqual(unanswered["answer_count"], 0)
@@ -238,7 +253,150 @@ class ClassResultsTests(APITestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_results_show_username_not_email_or_full_name(self):
+        hidden = User.objects.create_user(
+            username="torres11@gmail.com",
+            email="torres11@gmail.com",
+            password="testpass",
+            first_name="Ada",
+            last_name="Lovelace",
+        )
+        Profile.objects.create(user=hidden, role="student")
+        Enrollment.objects.create(user=hidden, classroom=self.classroom)
+
+        self.client.force_authenticate(user=self.professor)
+        response = self.client.get(self.url)
+
+        shown = next(
+            item for item in response.data["students"]
+            if item["student_id"] == hidden.id
+        )
+        self.assertEqual(shown["name"], "torres11")
+        self.assertEqual(shown["username"], "torres11")
+        body = str(response.data)
+        self.assertNotIn("@", body)
+        self.assertNotIn("Ada", body)
+        self.assertNotIn("Lovelace", body)
+        self.assertNotIn("gmail", body)
+
     def test_unauthenticated_user(self):
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 401)
+
+    def test_each_student_counts_once_toward_question_accuracy(self):
+        wrong = Question.objects.create(
+            lecture=self.lecture,
+            prompt="What is 1 + 1?",
+            choices=["2", "3", "4", "5"],
+            correct_index=0,
+            difficulty="easy",
+            position=2,
+        )
+        self.create_attempt(self.student, self.question, True)
+        Answer.objects.create(
+            attempt=Attempt.objects.get(user=self.student),
+            question=wrong,
+            chosen_index=1,
+            is_correct=False,
+            time_taken_ms=1000,
+            points_awarded=0,
+        )
+        missed = Attempt.objects.create(
+            user=self.second_student,
+            lecture=self.lecture,
+            total_points=0,
+            completed_at=timezone.now(),
+        )
+        Answer.objects.create(
+            attempt=missed,
+            question=self.question,
+            chosen_index=1,
+            is_correct=False,
+            time_taken_ms=1000,
+            points_awarded=0,
+        )
+        Answer.objects.create(
+            attempt=missed,
+            question=wrong,
+            chosen_index=0,
+            is_correct=True,
+            time_taken_ms=1000,
+            points_awarded=100,
+        )
+        missed.total_points = 100
+        missed.save(update_fields=["total_points"])
+
+        self.client.force_authenticate(user=self.professor)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        questions = {
+            item["question_id"]: item
+            for item in response.data["lectures"][0]["questions"]
+        }
+        self.assertEqual(questions[self.question.id]["answer_count"], 2)
+        self.assertEqual(questions[self.question.id]["correct_count"], 1)
+        self.assertEqual(
+            questions[self.question.id]["accuracy_percent"], 50
+        )
+        self.assertEqual(questions[wrong.id]["accuracy_percent"], 50)
+
+        rows = {
+            item["student_id"]: item for item in response.data["students"]
+        }
+        first = rows[self.student.id]["lectures"][0]
+        second = rows[self.second_student.id]["lectures"][0]
+        self.assertEqual(first["score"], 100)
+        self.assertEqual(first["correct_count"], 1)
+        self.assertEqual(second["score"], 100)
+        self.assertEqual(second["correct_count"], 1)
+
+    def test_best_attempt_is_the_lecture_score_and_first_attempt_is_the_total(self):
+        self.create_attempt(self.student, self.question, False)
+        retry = self.create_attempt(self.student, self.question, True)
+
+        self.client.force_authenticate(user=self.professor)
+        response = self.client.get(self.url)
+        student = response.data["students"][0]
+
+        self.assertEqual(student["total_points"], 0)
+        lecture = student["lectures"][0]
+        self.assertTrue(lecture["played"])
+        self.assertEqual(lecture["score"], retry.total_points)
+        self.assertEqual(lecture["correct_count"], 1)
+        self.assertEqual(
+            response.data["lectures"][0]["questions"][0]["accuracy_percent"],
+            100,
+        )
+
+    def test_unpublished_lecture_is_left_out_of_the_report(self):
+        draft = Lecture.objects.create(
+            classroom=self.classroom,
+            title="Draft",
+        )
+        draft_question = Question.objects.create(
+            lecture=draft,
+            prompt="Hidden?",
+            choices=["Yes", "No", "Maybe", "Later"],
+            correct_index=0,
+            difficulty="easy",
+            position=1,
+        )
+        self.create_attempt(self.student, draft_question, True)
+
+        self.client.force_authenticate(user=self.professor)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["lecture_id"] for item in response.data["lectures"]],
+            [self.lecture.id],
+        )
+        student = next(
+            item for item in response.data["students"]
+            if item["student_id"] == self.student.id
+        )
+        self.assertEqual(student["total_points"], 0)
+        self.assertEqual(len(student["lectures"]), 1)
+        self.assertFalse(student["lectures"][0]["played"])

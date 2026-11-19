@@ -1,4 +1,4 @@
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
 from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -7,6 +7,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import RegisterSerializer
+from .usernames import TAKEN_USERNAME_MESSAGE, display_username
+
+User = get_user_model()
 
 
 def account_data(user):
@@ -14,6 +17,7 @@ def account_data(user):
     return {
         "id": user.id,
         "email": user.email,
+        "username": display_username(user),
         "role": profile.role if profile else None,
     }
 
@@ -31,6 +35,12 @@ class RegisterView(APIView):
                 user = serializer.save()
                 token = Token.objects.create(user=user)
         except IntegrityError:
+            username = serializer.validated_data.get("username", "")
+            if User.objects.filter(username__iexact=username).exists():
+                return Response(
+                    {"username": [TAKEN_USERNAME_MESSAGE]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             return Response(
                 {"email": ["An account with this email already exists."]},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -59,11 +69,16 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user = authenticate(
-            request=request,
-            username=email.strip().lower(),
-            password=password,
-        )
+        account = User.objects.filter(
+            email__iexact=email.strip().lower()
+        ).first()
+        user = None
+        if account is not None:
+            user = authenticate(
+                request=request,
+                username=account.username,
+                password=password,
+            )
 
         if user is None:
             return Response(

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { API_BASE_URL, getClassesRoute, getStoredToken, isProfessor } from "../lib/apiClient";
+import { displayUsername } from "../lib/displayUsername";
 import { ProfessorNav } from "./ProfessorNav";
 import { StudentNav } from "./StudentNav";
 
@@ -11,6 +12,7 @@ interface Classroom {
   professor: {
     id: number;
     name: string;
+    username?: string;
   } | null;
   quiz_count: number;
   new_quiz_count: number;
@@ -196,7 +198,7 @@ const handleJoin = async () => {
       <p className="mt-1 text-sm text-slate-300">
         {[
           foundClass.course_code,
-          foundClass.professor?.name,
+          displayUsername(foundClass.professor),
           `${foundClass.quiz_count} ${
             foundClass.quiz_count === 1 ? "quiz" : "quizzes"
           }`,

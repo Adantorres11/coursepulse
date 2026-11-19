@@ -68,8 +68,12 @@ class ClassAccessCodeTests(APITestCase):
         self.assertEqual(response.data["name"], "Software Engineering")
         self.assertEqual(response.data["course_code"], "CS 3398")
         self.assertEqual(
-            response.data["professor"]["name"], "Alex Smith"
+            response.data["professor"]["name"], "professor"
         )
+        self.assertEqual(
+            response.data["professor"]["username"], "professor"
+        )
+        self.assertNotIn("@", response.data["professor"]["name"])
         self.assertEqual(response.data["quiz_count"], 1)
         self.assertFalse(Enrollment.objects.exists())
 

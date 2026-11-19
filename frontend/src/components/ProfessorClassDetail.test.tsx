@@ -10,6 +10,7 @@ import {
   getProfessorClassLectures,
 } from "../lib/apiClient";
 import type { ProfessorClass, ProfessorLecture } from "../types/api";
+import { formatUploadDate } from "../lib/lectureSummary";
 import { ProfessorClassDetail } from "./ProfessorClassDetail";
 
 vi.mock("./LectureUpload", () => ({
@@ -49,8 +50,23 @@ const classes: ProfessorClass[] = [
   },
 ];
 
-function lecture(id: number, title: string, status: ProfessorLecture["status"]): ProfessorLecture {
-  return { id, title, status, published_at: null };
+function lecture(
+  id: number,
+  title: string,
+  status: ProfessorLecture["status"],
+  extras: Partial<ProfessorLecture> = {}
+): ProfessorLecture {
+  return {
+    id,
+    title,
+    status,
+    published_at: null,
+    uploaded_at: "2026-11-18T15:00:00Z",
+    question_count: 4,
+    students_played: 0,
+    class_average: null,
+    ...extras,
+  };
 }
 
 function renderDetail() {
@@ -171,5 +187,65 @@ describe("ProfessorClassDetail", () => {
     expect(screen.getAllByRole("link", { name: "Review" })).toHaveLength(1);
     expect(screen.getByText("Processing lecture")).toBeTruthy();
     expect(screen.getByText("processing")).toBeTruthy();
+  });
+
+  it("shows upload date, question count, players, average, and a results link", async () => {
+    vi.mocked(getProfessorClasses).mockResolvedValue({
+      data: [classes[0]],
+      error: null,
+    });
+    vi.mocked(getProfessorClassLectures).mockResolvedValue({
+      data: [
+        lecture(7, "Week 1", "published", {
+          published_at: "2026-11-18T18:00:00Z",
+          question_count: 12,
+          students_played: 8,
+          class_average: 240,
+        }),
+      ],
+      error: null,
+    });
+
+    renderDetail();
+
+    expect(await screen.findByText(
+      `${formatUploadDate("2026-11-18T15:00:00Z")} · 12 questions · 8 students played · Avg 240`
+    )).toBeTruthy();
+    const results = screen.getByRole("link", { name: "View results" });
+    expect(results.getAttribute("href")).toBe("/professor/class/1/results");
+  });
+
+  it("shows roster usernames and hides email and full names", async () => {
+    vi.mocked(getProfessorClasses).mockResolvedValue({
+      data: [classes[0]],
+      error: null,
+    });
+    vi.mocked(getProfessorClassLectures).mockResolvedValue({
+      data: [lecture(7, "Week 1", "published")],
+      error: null,
+    });
+    vi.mocked(getClassRoster).mockResolvedValue({
+      data: [
+        {
+          name: "Ada Lovelace",
+          username: "ada",
+          joined_at: "2026-11-18T00:00:00Z",
+        },
+        {
+          name: "grace@school.edu",
+          username: "gben",
+          joined_at: "2026-11-18T00:00:00Z",
+        },
+      ],
+      error: null,
+    });
+
+    renderDetail();
+
+    expect(await screen.findByText("ada")).toBeTruthy();
+    expect(screen.getByText("gben")).toBeTruthy();
+    expect(screen.queryByText("Ada Lovelace")).toBeNull();
+    expect(screen.queryByText("grace@school.edu")).toBeNull();
+    expect(screen.queryByText(/@/)).toBeNull();
   });
 });
