@@ -49,6 +49,23 @@ describe("getQuiz", () => {
     expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/lectures\/7\/quiz\/$/);
   });
 
+  it("getQuiz asks for one part when a part number is passed", async () => {
+    fetchMock.mockResolvedValue(
+      json({
+        lecture_id: 7,
+        title: "T",
+        part: 2,
+        part_count: 3,
+        questions: [],
+        answered_question_ids: [],
+        total_points: 0,
+      })
+    );
+    const result = await getQuiz(7, 2);
+    expect(result.data?.part).toBe(2);
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/lectures\/7\/quiz\/\?part=2$/);
+  });
+
   it("getQuiz does not fall back to sample data on a server error", async () => {
     fetchMock.mockResolvedValue(json({}, 500));
     const result = await getQuiz(7);

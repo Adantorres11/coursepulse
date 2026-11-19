@@ -46,8 +46,12 @@ class LectureQuizTests(TestCase):
                 "questions",
                 "answered_question_ids",
                 "total_points",
+                "part",
+                "part_count",
             },
         )
+        self.assertIsNone(body["part"])
+        self.assertEqual(body["part_count"], 1)
         self.assertEqual(body["lecture_id"], lecture.id)
         self.assertEqual(body["title"], "A Lecture")
         question = body["questions"][0]

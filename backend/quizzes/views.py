@@ -13,8 +13,25 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .grading import AlreadyAnswered, NotStarted, start_question, submit_answer
-from .models import Lecture, Question
+from .grading import (
+    AlreadyAnswered,
+    ChoiceOrderMissing,
+    NotStarted,
+    QuestionNotInPart,
+    open_or_create_part_attempt,
+    start_question,
+    submit_answer,
+)
+from .models import Attempt, Lecture, Question
+from .parts import (
+    PartParseError,
+    display_choices,
+    is_choice_permutation,
+    order_questions,
+    parse_part_number,
+    part_sizes,
+    questions_for_part,
+)
 from .serializers import (
     AnswerRequestSerializer,
     LectureSerializer,
@@ -48,6 +65,81 @@ class LectureListView(ListAPIView):
         )
 
 
+def part_error_response(exc):
+    """Translate a part-number error into the HTTP response it should be."""
+    if exc.kind == "range":
+        raise NotFound()
+    if exc.kind == "required":
+        return Response({"detail": exc.message}, status=400)
+    return Response({"part": [exc.message]}, status=400)
+
+
+def resolve_part(lecture, raw_part):
+    """Return (part_index, part_questions, explicit, part_count)."""
+    questions = list(lecture.questions.order_by("position", "id"))
+    sizes = part_sizes(len(questions))
+    if not sizes:
+        raise NotFound()
+    try:
+        part_index, explicit = parse_part_number(raw_part, len(sizes))
+    except PartParseError as exc:
+        return exc
+    return part_index, questions_for_part(questions, part_index), explicit, len(sizes)
+
+
+def question_payload(question, permutation):
+    choices = (
+        display_choices(question.choices, permutation)
+        if is_choice_permutation(permutation)
+        else list(question.choices)
+    )
+    return {
+        "id": question.id,
+        "prompt": question.prompt,
+        "choices": choices,
+        "difficulty": question.difficulty,
+    }
+
+
+def build_part_quiz(request, lecture, part_index, part_questions, part_count):
+    """Quiz payload for one part. Logged-in students get their saved shuffle."""
+    attempt = None
+    if request.user.is_authenticated:
+        attempt = open_or_create_part_attempt(
+            request.user,
+            lecture,
+            part_index,
+            part_questions,
+            shuffle=True,
+        )
+    if attempt is not None and attempt.question_order:
+        ordered = order_questions(part_questions, attempt.question_order)
+    else:
+        ordered = list(part_questions)
+    questions = []
+    for question in ordered:
+        permutation = None
+        if attempt is not None:
+            permutation = (attempt.choice_orders or {}).get(str(question.id))
+        questions.append(question_payload(question, permutation))
+    answered_ids = []
+    total_points = 0
+    if attempt is not None:
+        answered_ids = list(
+            attempt.answers.values_list("question_id", flat=True)
+        )
+        total_points = attempt.total_points
+    return {
+        "lecture_id": lecture.id,
+        "title": lecture.title,
+        "part": part_index + 1,
+        "part_count": part_count,
+        "questions": questions,
+        "answered_question_ids": answered_ids,
+        "total_points": total_points,
+    }
+
+
 class LectureQuizView(RetrieveAPIView):
     permission_classes = [AllowAny]
     serializer_class = QuizSerializer
@@ -60,6 +152,22 @@ class LectureQuizView(RetrieveAPIView):
             return super().get_object()
         except Http404:
             raise NotFound()
+
+    def retrieve(self, request, *args, **kwargs):
+        lecture = self.get_object()
+        raw_part = request.query_params.get("part")
+        if raw_part is None:
+            serializer = self.get_serializer(lecture)
+            return Response(serializer.data)
+        resolved = resolve_part(lecture, raw_part)
+        if isinstance(resolved, PartParseError):
+            return part_error_response(resolved)
+        part_index, part_questions, _explicit, part_count = resolved
+        return Response(
+            build_part_quiz(
+                request, lecture, part_index, part_questions, part_count
+            )
+        )
 
 
 def check_can_answer(user, lecture):
@@ -80,8 +188,20 @@ class LectureQuestionStartView(APIView):
         except (Lecture.DoesNotExist, Question.DoesNotExist):
             raise NotFound()
         check_can_answer(request.user, lecture)
+        resolved = resolve_part(lecture, request.query_params.get("part"))
+        if isinstance(resolved, PartParseError):
+            return part_error_response(resolved)
+        part_index, _part_questions, explicit, _part_count = resolved
         try:
-            start, created = start_question(request.user, lecture, question)
+            start, created = start_question(
+                request.user,
+                lecture,
+                question,
+                part_index=part_index,
+                shuffle=explicit,
+            )
+        except QuestionNotInPart:
+            raise NotFound()
         except AlreadyAnswered:
             return Response(
                 {"detail": "This question was already answered in this attempt."},
@@ -109,12 +229,25 @@ class LectureAnswerView(APIView):
             question = lecture.questions.get(pk=data["question_id"])
         except Question.DoesNotExist:
             raise NotFound()
+        resolved = resolve_part(lecture, data.get("part"))
+        if isinstance(resolved, PartParseError):
+            return part_error_response(resolved)
+        part_index, _part_questions, explicit, _part_count = resolved
         try:
             result = submit_answer(
                 request.user,
                 lecture,
                 question,
                 data["chosen_index"],
+                part_index=part_index,
+                shuffle=explicit,
+            )
+        except QuestionNotInPart:
+            raise NotFound()
+        except ChoiceOrderMissing:
+            return Response(
+                {"detail": "Start this part before answering."},
+                status=400,
             )
         except NotStarted:
             return Response(
@@ -127,6 +260,72 @@ class LectureAnswerView(APIView):
                 status=400,
             )
         return Response(result, status=201)
+
+
+class LecturePartReviewView(APIView):
+    """The logged-in student's most recent completed attempt at one part."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk, part):
+        try:
+            lecture = available_lectures().prefetch_related("questions").get(pk=pk)
+        except Lecture.DoesNotExist:
+            raise NotFound()
+        check_can_answer(request.user, lecture)
+        resolved = resolve_part(lecture, part)
+        if isinstance(resolved, PartParseError):
+            return part_error_response(resolved)
+        part_index, part_questions, _explicit, part_count = resolved
+        attempt = (
+            Attempt.objects.filter(
+                user=request.user,
+                lecture=lecture,
+                part_index=part_index,
+                completed_at__isnull=False,
+            )
+            .order_by("-id")
+            .first()
+        )
+        if attempt is None:
+            raise NotFound("No completed attempt for this part.")
+        answers = {
+            answer.question_id: answer
+            for answer in attempt.answers.select_related("question")
+        }
+        ordered = order_questions(part_questions, attempt.question_order)
+        questions = []
+        correct_count = 0
+        for question in ordered:
+            answer = answers.get(question.id)
+            your_answer = None
+            is_correct = False
+            points_awarded = 0
+            if answer is not None:
+                is_correct = answer.is_correct
+                points_awarded = answer.points_awarded
+                if answer.chosen_index is not None:
+                    your_answer = question.choices[answer.chosen_index]
+            if is_correct:
+                correct_count += 1
+            questions.append({
+                "id": question.id,
+                "prompt": question.prompt,
+                "your_answer": your_answer,
+                "correct_answer": question.choices[question.correct_index],
+                "is_correct": is_correct,
+                "points_awarded": points_awarded,
+            })
+        return Response({
+            "lecture_id": lecture.id,
+            "title": lecture.title,
+            "part": part_index + 1,
+            "part_count": part_count,
+            "question_count": len(part_questions),
+            "total_points": attempt.total_points,
+            "correct_count": correct_count,
+            "questions": questions,
+        })
 
 
 class LectureStatusView(APIView):
