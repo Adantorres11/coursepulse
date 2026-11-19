@@ -479,6 +479,15 @@ export async function getLectureStatus(
   );
 }
 
+export async function retryLecture(
+  lectureId: number | string
+): Promise<ApiResult<Pick<LectureProcessingStatus, "id" | "status" | "error_message">>> {
+  return request<Pick<LectureProcessingStatus, "id" | "status" | "error_message">>(
+    `/lectures/${encodeURIComponent(String(lectureId))}/retry/`,
+    { method: "POST" }
+  );
+}
+
 export async function getLectureQuestions(
   lectureId: number | string
 ): Promise<ApiResult<ProfessorQuestion[]>> {

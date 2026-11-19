@@ -7,6 +7,7 @@ import {
   getQuiz,
   publishLecture,
   register,
+  retryLecture,
   updateLectureQuestion,
 } from "./apiClient";
 
@@ -262,6 +263,18 @@ describe("lecture questions", () => {
     expect(methods).toEqual(["POST", "PATCH", "POST", "DELETE"]);
     expect(String(fetchMock.mock.calls[2][0])).toMatch(/\/lectures\/8\/publish\/$/);
     expect(String(fetchMock.mock.calls[3][0])).toMatch(/\/lectures\/8\/questions\/4\/$/);
+  });
+
+  it("posts a retry for a failed lecture", async () => {
+    fetchMock.mockResolvedValue(json({ id: 4, status: "pending", error_message: "" }, 202));
+
+    const result = await retryLecture(4);
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({ id: 4, status: "pending", error_message: "" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toMatch(/\/lectures\/4\/retry\/$/);
+    expect(init.method).toBe("POST");
   });
 });
 

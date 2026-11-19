@@ -2,13 +2,19 @@ import { useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { API_BASE_URL, getStoredToken } from "../lib/apiClient";
 import { isAllowedRecording, RECORDING_ACCEPT, uploadErrorMessage } from "../lib/lectureUpload";
+import { LecturePipelineView } from "./LectureProcessing";
+
+export interface UploadedLecture {
+  id: number;
+  title: string;
+}
 
 const MAX_FILE_SIZE_MB = 2000;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 interface UploadLecturePageProps {
   overrideClassId?: string | number;
-  onSuccess?: () => void;
+  onSuccess?: (lecture: UploadedLecture) => void;
 }
 
 export function UploadLecturePage({ overrideClassId, onSuccess }: UploadLecturePageProps) {
@@ -98,14 +104,20 @@ export function UploadLecturePage({ overrideClassId, onSuccess }: UploadLectureP
       setUploading(false);
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          const data = JSON.parse(xhr.responseText);
+          const data = JSON.parse(xhr.responseText) as { id?: number; lecture_id?: number; title?: string };
           const lectureId = data.id ?? data.lecture_id;
           if (lectureId != null) {
+            setProgress(100);
+            const created: UploadedLecture = {
+              id: Number(lectureId),
+              title: typeof data.title === "string" && data.title ? data.title : title.trim(),
+            };
             if (onSuccess) {
-              onSuccess();
+              onSuccess(created);
             } else {
-              // TODO(SCRUM-84): go to the lecture processing status page once it exists.
-              navigate(`/professor/class/${classId}`);
+              navigate(
+                `/professor/class/${classId}/lectures/${created.id}/status`
+              );
             }
           } else {
             setUploadError("Upload completed, but no lecture ID was returned by the server.");
@@ -212,20 +224,12 @@ export function UploadLecturePage({ overrideClassId, onSuccess }: UploadLectureP
           </div>
         )}
 
-        {/* Upload Progress */}
         {uploading && (
-          <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-[#0A101F] p-4">
-            <div className="flex items-center justify-between text-xs sm:text-sm">
-              <span className="font-medium text-slate-200">Uploading recording…</span>
-              <span className="font-bold text-[#38BDF8]">{progress}%</span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
-              <div
-                className="h-full bg-[#38BDF8] transition-all duration-150"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
+          <LecturePipelineView
+            stage="uploading"
+            message="Uploading the recording"
+            percent={progress}
+          />
         )}
 
         {/* Upload Error + Retry */}

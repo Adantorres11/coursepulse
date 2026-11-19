@@ -7,15 +7,18 @@ import {
   getProfessorClassLectures,
 } from "../lib/apiClient";
 import { professorResultsPath } from "../lib/lectureReview";
+import { lectureNeedsLiveProgress } from "../lib/lectureProgress";
 import { displayUsername } from "../lib/displayUsername";
 import type {
   ProfessorClass,
   ProfessorLecture,
   ClassRosterStudent,
+  LectureProcessingStatus,
 } from "../types/api";
 import { ProfessorLectureRow } from "./ProfessorLectureRow";
 import { ProfessorNav } from "./ProfessorNav";
-import { UploadLecturePage } from "./LectureUpload";
+import { UploadLecturePage, type UploadedLecture } from "./LectureUpload";
+import { LectureProcessing } from "./LectureProcessing";
 
 export function ProfessorClassDetail() {
   const { classId } = useParams();
@@ -27,6 +30,8 @@ export function ProfessorClassDetail() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [spotlight, setSpotlight] = useState<UploadedLecture | null>(null);
+  const [readyIds, setReadyIds] = useState<number[]>([]);
   const requestSeq = useRef(0);
 
   const loadClass = useCallback(async (options?: { quiet?: boolean }) => {
@@ -85,6 +90,24 @@ export function ProfessorClassDetail() {
       requestSeq.current += 1;
     };
   }, [loadClass]);
+
+  useEffect(() => {
+    if (spotlight && lectures.some((lecture) => lecture.id === spotlight.id)) {
+      setSpotlight(null);
+    }
+  }, [lectures, spotlight]);
+
+  function handleSettled(lectureId: number, status: LectureProcessingStatus) {
+    if (status.status === "ready") {
+      setReadyIds((current) =>
+        current.includes(lectureId) ? current : [...current, lectureId]
+      );
+    }
+    void loadClass({ quiet: true });
+  }
+
+  const activeSpotlight =
+    spotlight && !lectures.some((lecture) => lecture.id === spotlight.id) ? spotlight : null;
 
   async function copyCode() {
     if (!classInfo) return;
@@ -174,7 +197,8 @@ export function ProfessorClassDetail() {
                 <div className="mt-4 mb-6 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
                   <UploadLecturePage
                     overrideClassId={classInfo.id}
-                    onSuccess={() => {
+                    onSuccess={(lecture) => {
+                      setSpotlight(lecture);
                       setShowUpload(false);
                       void loadClass({ quiet: true });
                     }}
@@ -182,19 +206,49 @@ export function ProfessorClassDetail() {
                 </div>
               )}
 
-              {lectures.length === 0 && !showUpload ? (
+              {activeSpotlight && classId && (
+                <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
+                  <p className="font-medium">{activeSpotlight.title}</p>
+                  <div className="mt-4 border-t border-slate-800 pt-4">
+                    <LectureProcessing
+                      lectureId={activeSpotlight.id}
+                      classId={classId}
+                      framed={false}
+                      onSettled={(status) => handleSettled(activeSpotlight.id, status)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {lectures.length === 0 && !showUpload && !activeSpotlight ? (
                 <p className="text-slate-400 mt-4">
                   No lectures uploaded yet.
                 </p>
               ) : (
                 <div className="mt-4 space-y-3">
-                  {lectures.map((lecture) => (
-                    <ProfessorLectureRow
-                      key={lecture.id}
-                      lecture={lecture}
-                      classId={classId ?? ""}
-                    />
-                  ))}
+                  {lectures.map((lecture) => {
+                    const showProgress =
+                      Boolean(classId) &&
+                      (lectureNeedsLiveProgress(lecture.status) ||
+                        (lecture.status === "ready" && readyIds.includes(lecture.id)));
+                    return (
+                      <ProfessorLectureRow
+                        key={lecture.id}
+                        lecture={lecture}
+                        classId={classId ?? ""}
+                      >
+                        {showProgress && classId ? (
+                          <LectureProcessing
+                            lectureId={lecture.id}
+                            classId={classId}
+                            framed={false}
+                            showReviewLink={false}
+                            onSettled={(status) => handleSettled(lecture.id, status)}
+                          />
+                        ) : null}
+                      </ProfessorLectureRow>
+                    );
+                  })}
                 </div>
               )}
             </section>

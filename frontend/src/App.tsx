@@ -13,6 +13,7 @@ import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
 import { ProfessorClassDetail } from "./components/ProfessorClassDetail";
 import { LectureReview } from "./components/LectureReview";
 import { PartReviewPage } from "./components/PartReviewPage";
+import { LectureProcessingPage } from "./components/LectureProcessing";
 
 function AppContent() {
   const location = useLocation();
@@ -186,6 +187,14 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRole="professor">
                 <ProfessorClassResults />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/professor/class/:classId/lectures/:lectureId/status"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <LectureProcessingPage />
               </ProtectedRoute>
             }
           />
