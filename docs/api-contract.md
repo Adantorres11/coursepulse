@@ -825,3 +825,108 @@ Errors:
 
 Dependency:
 - Transcription is built in SCRUM-70. Question generation is built in SCRUM-71.
+
+## Professor question review
+
+Authentication: Required. Only the professor who owns the lecture's classroom can use these endpoints. A student, another professor, or a user with no role receives 403. The response does not include the questions.
+
+These endpoints are how a professor reviews the draft questions, edits them, and publishes the quiz. Students never receive unpublished questions. GET /api/lectures/ and GET /api/lectures/{id}/quiz/ stay limited to published quizzes, and they still omit correct_index.
+
+The generation record stored on a question is never returned by these endpoints, by the student quiz, or by the lecture list. A question the professor adds has a null generation record, so a later question-generation run keeps it. Editing a question does not change or remove the generation record already stored for it. The stored original text is what marks that edit.
+
+Questions are ordered by position, then id. Positions start at 0, the same numbering question generation uses. After a delete they are 0, 1, 2, and so on, with no gaps.
+
+### GET /api/lectures/{id}/questions/
+
+Returns every question for the lecture, including the correct answer. Draft and published lectures both return 200.
+
+Success: 200 OK
+
+```json
+[
+  {
+    "id": 1,
+    "prompt": "What is Python?",
+    "choices": ["Language", "Database", "Browser", "OS"],
+    "correct_index": 0,
+    "difficulty": "easy",
+    "position": 0
+  }
+]
+```
+
+### POST /api/lectures/{id}/questions/
+
+Adds one question to a ready, unpublished lecture. The server assigns position. A position in the request is ignored. The first question is position 0. Each later question is placed after the current last question. The new question's generation record is null.
+
+Request:
+
+```json
+{
+  "prompt": "What is Django?",
+  "choices": ["Framework", "OS", "Browser", "Database"],
+  "correct_index": 0,
+  "difficulty": "easy"
+}
+```
+
+Success: 201 Created. Returns the created question, including its position.
+
+Choice rules:
+- choices is exactly four strings.
+- Each choice is trimmed. A choice that is empty after trimming is rejected.
+- Two choices that match after trimming and case-folding are rejected. "Yes" and " yes " are duplicates.
+- The stored choices are the trimmed strings.
+- correct_index is an integer from 0 to 3.
+- difficulty is "easy", "medium", or "hard".
+
+### PATCH /api/lectures/{id}/questions/{question_id}/
+
+Updates one question on a ready, unpublished lecture. Send only the fields that change. position cannot be changed here. The generation record is left as it was.
+
+Success: 200 OK. Returns the updated question.
+
+A question that already has a student answer cannot be replaced. Changing its prompt, choices, correct_index, or difficulty returns 400 and leaves the question, the answer, and the attempt score as they were. Sending the same values again is allowed.
+
+### DELETE /api/lectures/{id}/questions/{question_id}/
+
+Deletes one question from a ready, unpublished lecture.
+
+Success: 204 No Content. The remaining questions keep their order and their positions become 0, 1, 2, with no gaps.
+
+A question that already has a student answer is not deleted. The answer and the attempt score stay. The response is 400:
+
+```json
+{
+  "detail": "This question has student answers and cannot be deleted."
+}
+```
+
+### POST /api/lectures/{id}/publish/
+
+Publishes the lecture quiz. No body.
+
+Success: 200 OK
+
+```json
+{
+  "id": 1,
+  "published_at": "2026-11-16T18:00:00Z",
+  "message": "Quiz published successfully."
+}
+```
+
+Rules:
+- The lecture status must be "ready". Pending, processing, and failed lectures are rejected, and published_at stays empty.
+- The lecture must have at least one question.
+- Every question must have exactly four unique non-blank choices, a correct_index from 0 to 3, and a difficulty of easy, medium, or hard.
+- A lecture that already has published_at set cannot be published again. Unpublish it first with POST /api/lectures/{id}/unpublish/, then publish it again once it is ready.
+- While the quiz is published, or while the lecture status is not "ready", questions cannot be added, edited, or deleted through these endpoints. GET still returns the questions. Unpublish a published quiz before editing it, and wait until status is "ready".
+- Unpublishing does not delete attempts or answers.
+- No response from these endpoints includes generation.
+
+Errors:
+- 400: The lecture is not ready, has no questions, has an invalid question, is already published, or the edit would change a published quiz or a question that has student answers. The message is in detail.
+- 401: Missing or invalid authentication.
+- 403: The user is not the professor who owns the class.
+- 404: Unknown lecture, or a question that is not on that lecture.

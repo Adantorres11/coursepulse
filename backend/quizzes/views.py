@@ -2,6 +2,7 @@ from rest_framework import status
 from kombu.exceptions import OperationalError
 from redis.exceptions import RedisError
 from .pipeline import enqueue_lecture_processing
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.db.models import Count
 from django.http import Http404
@@ -18,8 +19,9 @@ from .serializers import (
     AnswerRequestSerializer,
     LectureSerializer,
     QuizSerializer,
+    ProfessorQuestionSerializer,
+    question_is_publishable,
 )
-
 
 def available_lectures():
     return (
@@ -234,3 +236,215 @@ class LectureRetryView(APIView):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+def get_professor_lecture(user, lecture_id):
+    lecture = get_object_or_404(
+        Lecture.objects.select_related("classroom"),
+        pk=lecture_id,
+    )
+
+    profile = getattr(user, "profile", None)
+
+    if (
+        profile is None
+        or profile.role != "professor"
+        or lecture.classroom.professor_id != user.id
+    ):
+        raise PermissionDenied(
+            "Only the class owner can manage questions."
+        )
+
+    return lecture
+
+
+def resequence_question_positions(lecture):
+    # Same 0-based order question generation uses when it saves a set.
+    questions = Question.objects.filter(lecture=lecture).order_by("position", "id")
+    for index, question in enumerate(questions):
+        if question.position != index:
+            Question.objects.filter(pk=question.pk).update(position=index)
+
+
+def draft_edit_error(lecture, published_detail):
+    if lecture.published_at is not None:
+        return published_detail
+    if lecture.status != "ready":
+        return "Only a ready lecture can be changed."
+    return None
+
+
+def answered_question_is_replaced(question, validated_data):
+    if "prompt" in validated_data and validated_data["prompt"] != question.prompt:
+        return True
+    if (
+        "difficulty" in validated_data
+        and validated_data["difficulty"] != question.difficulty
+    ):
+        return True
+    if (
+        "correct_index" in validated_data
+        and validated_data["correct_index"] != question.correct_index
+    ):
+        return True
+    if "choices" in validated_data and validated_data["choices"] != list(question.choices):
+        return True
+    return False
+
+
+class ProfessorLectureQuestionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        lecture = get_professor_lecture(request.user, pk)
+
+        questions = lecture.questions.all()
+
+        serializer = ProfessorQuestionSerializer(
+            questions,
+            many=True,
+        )
+
+        return Response(serializer.data)
+
+    def post(self, request, pk):
+        lecture = get_professor_lecture(request.user, pk)
+
+        edit_error = draft_edit_error(
+            lecture, "Cannot edit a published quiz."
+        )
+        if edit_error:
+            return Response(
+                {"detail": edit_error},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ProfessorQuestionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(lecture=lecture)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
+
+class ProfessorQuestionDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk, question_id):
+        lecture = get_professor_lecture(request.user, pk)
+
+        edit_error = draft_edit_error(
+            lecture, "Cannot edit a published quiz."
+        )
+        if edit_error:
+            return Response(
+                {"detail": edit_error},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        question = get_object_or_404(
+            Question,
+            pk=question_id,
+            lecture=lecture,
+        )
+
+        serializer = ProfessorQuestionSerializer(
+            question,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        if question.answers.exists() and answered_question_is_replaced(
+            question, serializer.validated_data
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "This question has student answers and cannot be changed."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, pk, question_id):
+        lecture = get_professor_lecture(request.user, pk)
+
+        edit_error = draft_edit_error(
+            lecture, "Cannot delete questions from a published quiz."
+        )
+        if edit_error:
+            return Response(
+                {"detail": edit_error},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        question = get_object_or_404(
+            Question,
+            pk=question_id,
+            lecture=lecture,
+        )
+
+        if question.answers.exists():
+            return Response(
+                {
+                    "detail": (
+                        "This question has student answers and cannot be deleted."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            question.delete()
+            resequence_question_positions(lecture)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class LecturePublishView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        lecture = get_professor_lecture(request.user, pk)
+
+        if lecture.published_at is not None:
+            return Response(
+                {"detail": "Quiz is already published."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if lecture.status != "ready":
+            return Response(
+                {"detail": "Only a ready lecture can be published."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        questions = list(lecture.questions.all())
+
+        if not questions:
+            return Response(
+                {"detail": "Cannot publish a quiz without questions."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if any(not question_is_publishable(question) for question in questions):
+            return Response(
+                {
+                    "detail": (
+                        "Every question needs four unique choices "
+                        "and one correct answer."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        lecture.published_at = timezone.now()
+        lecture.save(update_fields=["published_at"])
+
+        return Response({
+            "id": lecture.id,
+            "published_at": lecture.published_at,
+            "message": "Quiz published successfully.",
+        })

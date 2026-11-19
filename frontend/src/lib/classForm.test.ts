@@ -40,9 +40,48 @@ describe("formatCreateClassErrorMessage", () => {
     expect(formatCreateClassErrorMessage("")).toBe("Could not create class. Please try again.");
   });
 
-  it("normalizes blank or required field errors", () => {
-    expect(formatCreateClassErrorMessage("This field may not be blank.")).toBe("Class name is required.");
-    expect(formatCreateClassErrorMessage("name field is required")).toBe("Class name is required.");
+  it("rewrites blank and required errors that belong to the name field", () => {
+    expect(
+      formatCreateClassErrorMessage("This field may not be blank.", {
+        name: ["This field may not be blank."],
+      })
+    ).toBe("Class name is required.");
+    expect(
+      formatCreateClassErrorMessage("ignored", {
+        name: ["This field is required."],
+      })
+    ).toBe("Class name is required.");
+    expect(formatCreateClassErrorMessage("name: This field may not be blank.")).toBe(
+      "Class name is required."
+    );
+    expect(formatCreateClassErrorMessage("Class name is required.")).toBe(
+      "Class name is required."
+    );
+  });
+
+  it("leaves blank or required errors for other fields unchanged", () => {
+    expect(formatCreateClassErrorMessage("This field may not be blank.")).toBe(
+      "This field may not be blank."
+    );
+    expect(formatCreateClassErrorMessage("Password is required.")).toBe(
+      "Password is required."
+    );
+    expect(formatCreateClassErrorMessage("Recording file may not be blank.")).toBe(
+      "Recording file may not be blank."
+    );
+    expect(
+      formatCreateClassErrorMessage("This field is required.", {
+        recording: ["This field is required."],
+      })
+    ).toBe("This field is required.");
+  });
+
+  it("keeps a name-field error that is not a blank or required error", () => {
+    expect(
+      formatCreateClassErrorMessage("too long", {
+        name: ["Ensure this field has no more than 255 characters."],
+      })
+    ).toBe("Ensure this field has no more than 255 characters.");
   });
 
   it("passes through readable permission errors", () => {

@@ -8,6 +8,7 @@ import {
   type CreateClassResponse,
   type ProfessorClass,
 } from "../lib/apiClient";
+import { COPY_FAILED_MESSAGE, writeClipboard } from "../lib/clipboard";
 import { formatCreateClassErrorMessage, validateClassName } from "../lib/classForm";
 import { ProfessorNav } from "./ProfessorNav";
 
@@ -25,6 +26,7 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
 
   // Copy code feedback state
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   // Create class modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
@@ -33,6 +35,7 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
   const [createError, setCreateError] = useState<string | null>(null);
   const [createdClass, setCreatedClass] = useState<CreateClassResponse | null>(null);
   const [modalCopied, setModalCopied] = useState<boolean>(false);
+  const [modalCopyError, setModalCopyError] = useState<string | null>(null);
 
   const fetchClasses = async () => {
     setLoading(true);
@@ -75,9 +78,15 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
     }
   };
 
-  const handleCopyCode = (e: React.MouseEvent, code: string) => {
+  const handleCopyCode = async (e: React.MouseEvent, code: string) => {
     e.stopPropagation();
-    void navigator.clipboard.writeText(code);
+    const copied = await writeClipboard(code);
+    if (!copied) {
+      setCopiedCode(null);
+      setCopyError(COPY_FAILED_MESSAGE);
+      return;
+    }
+    setCopyError(null);
     setCopiedCode(code);
     setTimeout(() => {
       setCopiedCode((current) => (current === code ? null : current));
@@ -89,6 +98,7 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
     setCreateError(null);
     setCreatedClass(null);
     setModalCopied(false);
+    setModalCopyError(null);
     setIsCreateModalOpen(true);
   };
 
@@ -99,10 +109,17 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
     setCreateError(null);
     setCreatedClass(null);
     setModalCopied(false);
+    setModalCopyError(null);
   };
 
-  const handleCopyModalCode = (code: string) => {
-    void navigator.clipboard.writeText(code);
+  const handleCopyModalCode = async (code: string) => {
+    const copied = await writeClipboard(code);
+    if (!copied) {
+      setModalCopied(false);
+      setModalCopyError(COPY_FAILED_MESSAGE);
+      return;
+    }
+    setModalCopyError(null);
     setModalCopied(true);
     setTimeout(() => {
       setModalCopied(false);
@@ -124,7 +141,7 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
     const result = await createClass(trimmed);
 
     if (result.error || !result.data) {
-      setCreateError(formatCreateClassErrorMessage(result.error));
+      setCreateError(formatCreateClassErrorMessage(result.error, result.fields));
       setIsCreating(false);
       return;
     }
@@ -176,6 +193,12 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
             </div>
           )}
         </div>
+
+        {copyError && (
+          <p role="alert" className="mb-4 text-sm text-rose-300">
+            {copyError}
+          </p>
+        )}
 
         {/* ======================================================== */}
         {/* 1. LOADING SKELETON STATE                                */}
@@ -474,6 +497,12 @@ export function ProfessorDashboard({ onSelectClass }: ProfessorDashboardProps = 
                     )}
                   </button>
                 </div>
+
+                {modalCopyError && (
+                  <p role="alert" className="mb-4 text-sm text-rose-300">
+                    {modalCopyError}
+                  </p>
+                )}
 
                 {/* Action buttons: Done button and Link to the class */}
                 <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800/80">
