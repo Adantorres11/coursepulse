@@ -8,14 +8,17 @@ import { ClassHub } from "./components/ClassHub";
 import { JoinClassPage } from "./components/JoinClassPage";
 import { ProfessorDashboard } from "./components/ProfessorDashboard";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { displayUsername } from "./lib/displayUsername";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
 import { ProfessorClassDetail } from "./components/ProfessorClassDetail";
 import { LectureReview } from "./components/LectureReview";
+import { LectureProcessingPage } from "./components/LectureProcessing";
 
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
+  const username = displayUsername(user);
 
   const hasCustomHeader =
     location.pathname === "/" ||
@@ -50,9 +53,9 @@ function AppContent() {
             <div className="flex items-center gap-3">
               {isAuthenticated ? (
                 <>
-                  {user?.email && (
+                  {username && (
                     <span className="text-xs text-slate-400 hidden sm:inline">
-                      {user.email}
+                      {username}
                     </span>
                   )}
                   <button
@@ -169,6 +172,22 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRole="professor">
                 <ProfessorClassDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/professor/class/:classId/results"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <ProfessorClassResults />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/professor/class/:classId/lectures/:lectureId/status"
+            element={
+              <ProtectedRoute allowedRole="professor">
+                <LectureProcessingPage />
               </ProtectedRoute>
             }
           />

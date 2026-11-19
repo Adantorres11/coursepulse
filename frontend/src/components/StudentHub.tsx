@@ -10,6 +10,7 @@ import {
 import { LeaderboardModal } from "./LeaderboardModal";
 import { ClassRankCard } from "./ClassRankCard";
 import { StudentNav } from "./StudentNav";
+import { displayUsername } from "../lib/displayUsername";
 
 interface ClassroomResponse {
   id: number;
@@ -18,6 +19,7 @@ interface ClassroomResponse {
   professor: {
     id: number;
     name: string;
+    username?: string;
   } | null;
   quiz_count: number;
   new_quiz_count: number;
@@ -87,7 +89,7 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
           classroomId: classroom.id,
           name: classroom.name,
           code: classroom.course_code,
-          instructor: classroom.professor?.name || "Professor not assigned",
+          instructor: displayUsername(classroom.professor) || "Professor not assigned",
           quizCount: classroom.quiz_count,
           newQuizCount: classroom.new_quiz_count,
           lectureId: lectures.find(

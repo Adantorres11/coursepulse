@@ -3,6 +3,7 @@ import {
   canEditLectureQuestions,
   lectureCanBeReviewed,
   lectureReviewPath,
+  professorResultsPath,
   questionInputFromDraft,
   validateQuestionDraft,
   type QuestionDraft,
@@ -26,6 +27,7 @@ describe("lecture review links", () => {
     expect(lectureCanBeReviewed("processing")).toBe(false);
     expect(lectureCanBeReviewed("failed")).toBe(false);
     expect(lectureReviewPath(4, 9)).toBe("/professor/class/4/lectures/9");
+    expect(professorResultsPath(4)).toBe("/professor/class/4/results");
   });
 
   it("allows edits only while the lecture is ready", () => {

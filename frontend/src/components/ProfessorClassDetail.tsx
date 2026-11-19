@@ -6,14 +6,19 @@ import {
   getClassRoster,
   getProfessorClassLectures,
 } from "../lib/apiClient";
-import { lectureCanBeReviewed, lectureReviewPath } from "../lib/lectureReview";
+import { professorResultsPath } from "../lib/lectureReview";
+import { lectureNeedsLiveProgress } from "../lib/lectureProgress";
+import { displayUsername } from "../lib/displayUsername";
 import type {
   ProfessorClass,
   ProfessorLecture,
   ClassRosterStudent,
+  LectureProcessingStatus,
 } from "../types/api";
+import { ProfessorLectureRow } from "./ProfessorLectureRow";
 import { ProfessorNav } from "./ProfessorNav";
-import { UploadLecturePage } from "./LectureUpload";
+import { UploadLecturePage, type UploadedLecture } from "./LectureUpload";
+import { LectureProcessing } from "./LectureProcessing";
 
 export function ProfessorClassDetail() {
   const { classId } = useParams();
@@ -25,6 +30,8 @@ export function ProfessorClassDetail() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [spotlight, setSpotlight] = useState<UploadedLecture | null>(null);
+  const [readyIds, setReadyIds] = useState<number[]>([]);
   const requestSeq = useRef(0);
 
   const loadClass = useCallback(async (options?: { quiet?: boolean }) => {
@@ -84,6 +91,24 @@ export function ProfessorClassDetail() {
     };
   }, [loadClass]);
 
+  useEffect(() => {
+    if (spotlight && lectures.some((lecture) => lecture.id === spotlight.id)) {
+      setSpotlight(null);
+    }
+  }, [lectures, spotlight]);
+
+  function handleSettled(lectureId: number, status: LectureProcessingStatus) {
+    if (status.status === "ready") {
+      setReadyIds((current) =>
+        current.includes(lectureId) ? current : [...current, lectureId]
+      );
+    }
+    void loadClass({ quiet: true });
+  }
+
+  const activeSpotlight =
+    spotlight && !lectures.some((lecture) => lecture.id === spotlight.id) ? spotlight : null;
+
   async function copyCode() {
     if (!classInfo) return;
 
@@ -122,9 +147,17 @@ export function ProfessorClassDetail() {
         ) : classInfo ? (
           <>
             <section className="mt-6 bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <h1 className="text-3xl font-bold">
-                {classInfo.name}
-              </h1>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <h1 className="text-3xl font-bold">
+                  {classInfo.name}
+                </h1>
+                <Link
+                  to={professorResultsPath(classInfo.id)}
+                  className="inline-flex items-center px-4 py-2 rounded-xl border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-sm font-semibold"
+                >
+                  View results
+                </Link>
+              </div>
 
               <div className="flex flex-wrap items-center gap-3 mt-4">
                 <span className="text-slate-400">
@@ -164,7 +197,8 @@ export function ProfessorClassDetail() {
                 <div className="mt-4 mb-6 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
                   <UploadLecturePage
                     overrideClassId={classInfo.id}
-                    onSuccess={() => {
+                    onSuccess={(lecture) => {
+                      setSpotlight(lecture);
                       setShowUpload(false);
                       void loadClass({ quiet: true });
                     }}
@@ -172,33 +206,49 @@ export function ProfessorClassDetail() {
                 </div>
               )}
 
-              {lectures.length === 0 && !showUpload ? (
+              {activeSpotlight && classId && (
+                <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
+                  <p className="font-medium">{activeSpotlight.title}</p>
+                  <div className="mt-4 border-t border-slate-800 pt-4">
+                    <LectureProcessing
+                      lectureId={activeSpotlight.id}
+                      classId={classId}
+                      framed={false}
+                      onSettled={(status) => handleSettled(activeSpotlight.id, status)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {lectures.length === 0 && !showUpload && !activeSpotlight ? (
                 <p className="text-slate-400 mt-4">
                   No lectures uploaded yet.
                 </p>
               ) : (
                 <div className="mt-4 space-y-3">
-                  {lectures.map((lecture) => (
-                    <div
-                      key={lecture.id}
-                      className="flex items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-4"
-                    >
-                      <p className="font-medium min-w-0">{lecture.title}</p>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-xs font-semibold capitalize px-3 py-1 rounded-full bg-slate-800 text-sky-300">
-                          {lecture.status}
-                        </span>
-                        {lectureCanBeReviewed(lecture.status) && classId && (
-                          <Link
-                            to={lectureReviewPath(classId, lecture.id)}
-                            className="text-sm font-semibold text-sky-400 hover:text-sky-300"
-                          >
-                            Review
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                  {lectures.map((lecture) => {
+                    const showProgress =
+                      Boolean(classId) &&
+                      (lectureNeedsLiveProgress(lecture.status) ||
+                        (lecture.status === "ready" && readyIds.includes(lecture.id)));
+                    return (
+                      <ProfessorLectureRow
+                        key={lecture.id}
+                        lecture={lecture}
+                        classId={classId ?? ""}
+                      >
+                        {showProgress && classId ? (
+                          <LectureProcessing
+                            lectureId={lecture.id}
+                            classId={classId}
+                            framed={false}
+                            showReviewLink={false}
+                            onSettled={(status) => handleSettled(lecture.id, status)}
+                          />
+                        ) : null}
+                      </ProfessorLectureRow>
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -217,7 +267,7 @@ export function ProfessorClassDetail() {
                       key={`${student.name}-${index}`}
                       className="flex justify-between gap-4 p-4"
                     >
-                      <span>{student.name}</span>
+                      <span>{displayUsername(student)}</span>
                       <span className="text-sm text-slate-400">
                         Joined{" "}
                         {new Date(student.joined_at).toLocaleDateString()}

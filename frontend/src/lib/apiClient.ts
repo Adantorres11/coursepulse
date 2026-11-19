@@ -463,6 +463,15 @@ export async function getLectureStatus(
   );
 }
 
+export async function retryLecture(
+  lectureId: number | string
+): Promise<ApiResult<Pick<LectureProcessingStatus, "id" | "status" | "error_message">>> {
+  return request<Pick<LectureProcessingStatus, "id" | "status" | "error_message">>(
+    `/lectures/${encodeURIComponent(String(lectureId))}/retry/`,
+    { method: "POST" }
+  );
+}
+
 export async function getLectureQuestions(
   lectureId: number | string
 ): Promise<ApiResult<ProfessorQuestion[]>> {
@@ -569,6 +578,7 @@ export async function register(payload: RegisterPayload): Promise<ApiResult<Auth
     method: "POST",
     body: JSON.stringify({
       email: payload.email.trim().toLowerCase(),
+      username: payload.username.trim(),
       password: payload.password,
       role: payload.role || "student",
     }),

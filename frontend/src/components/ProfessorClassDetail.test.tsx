@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../context/AuthContext";
 import {
   getClassRoster,
+  getLectureStatus,
   getProfessorClasses,
   getProfessorClassLectures,
 } from "../lib/apiClient";
 import type { ProfessorClass, ProfessorLecture } from "../types/api";
+import { formatUploadDate } from "../lib/lectureSummary";
 import { ProfessorClassDetail } from "./ProfessorClassDetail";
 
 vi.mock("./LectureUpload", () => ({
@@ -29,6 +31,8 @@ vi.mock("../lib/apiClient", async () => {
     getProfessorClasses: vi.fn(),
     getProfessorClassLectures: vi.fn(),
     getClassRoster: vi.fn(),
+    getLectureStatus: vi.fn(),
+    retryLecture: vi.fn(),
   };
 });
 
@@ -49,8 +53,23 @@ const classes: ProfessorClass[] = [
   },
 ];
 
-function lecture(id: number, title: string, status: ProfessorLecture["status"]): ProfessorLecture {
-  return { id, title, status, published_at: null };
+function lecture(
+  id: number,
+  title: string,
+  status: ProfessorLecture["status"],
+  extras: Partial<ProfessorLecture> = {}
+): ProfessorLecture {
+  return {
+    id,
+    title,
+    status,
+    published_at: null,
+    uploaded_at: "2026-11-18T15:00:00Z",
+    question_count: 4,
+    students_played: 0,
+    class_average: null,
+    ...extras,
+  };
 }
 
 function renderDetail() {
@@ -75,7 +94,18 @@ describe("ProfessorClassDetail", () => {
     vi.mocked(getProfessorClasses).mockReset();
     vi.mocked(getProfessorClassLectures).mockReset();
     vi.mocked(getClassRoster).mockReset();
+    vi.mocked(getLectureStatus).mockReset();
     vi.mocked(getClassRoster).mockResolvedValue({ data: [], error: null });
+    vi.mocked(getLectureStatus).mockResolvedValue({
+      data: {
+        id: 1,
+        status: "processing",
+        progress_message: "Checking the recording",
+        error_message: "",
+        notice: "",
+      },
+      error: null,
+    });
   });
 
   it("refreshes after an upload without flashing the loading screen", async () => {
@@ -171,5 +201,100 @@ describe("ProfessorClassDetail", () => {
     expect(screen.getAllByRole("link", { name: "Review" })).toHaveLength(1);
     expect(screen.getByText("Processing lecture")).toBeTruthy();
     expect(screen.getByText("processing")).toBeTruthy();
+  });
+
+  it("keeps one Review link after a lecture becomes ready and still shows the notice", async () => {
+    let lectureCalls = 0;
+    vi.mocked(getProfessorClasses).mockResolvedValue({
+      data: [classes[0]],
+      error: null,
+    });
+    vi.mocked(getProfessorClassLectures).mockImplementation(async () => {
+      lectureCalls += 1;
+      return {
+        data: [lecture(8, "Pipelining", lectureCalls > 1 ? "ready" : "processing")],
+        error: null,
+      };
+    });
+    vi.mocked(getLectureStatus).mockResolvedValue({
+      data: {
+        id: 8,
+        status: "ready",
+        progress_message: "",
+        error_message: "",
+        notice: "Generated 12 questions (target 15). Add more in review if needed.",
+      },
+      error: null,
+    });
+
+    renderDetail();
+
+    expect(
+      await screen.findByText("Generated 12 questions (target 15). Add more in review if needed.")
+    ).toBeTruthy();
+    expect(await screen.findByText("ready")).toBeTruthy();
+    const reviews = screen.getAllByRole("link", { name: "Review" });
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0].getAttribute("href")).toBe("/professor/class/1/lectures/8");
+  });
+
+  it("shows upload date, question count, players, average, and a results link", async () => {
+    vi.mocked(getProfessorClasses).mockResolvedValue({
+      data: [classes[0]],
+      error: null,
+    });
+    vi.mocked(getProfessorClassLectures).mockResolvedValue({
+      data: [
+        lecture(7, "Week 1", "published", {
+          published_at: "2026-11-18T18:00:00Z",
+          question_count: 12,
+          students_played: 8,
+          class_average: 240,
+        }),
+      ],
+      error: null,
+    });
+
+    renderDetail();
+
+    expect(await screen.findByText(
+      `${formatUploadDate("2026-11-18T15:00:00Z")} · 12 questions · 8 students played · Avg 240`
+    )).toBeTruthy();
+    const results = screen.getByRole("link", { name: "View results" });
+    expect(results.getAttribute("href")).toBe("/professor/class/1/results");
+  });
+
+  it("shows roster usernames and hides email and full names", async () => {
+    vi.mocked(getProfessorClasses).mockResolvedValue({
+      data: [classes[0]],
+      error: null,
+    });
+    vi.mocked(getProfessorClassLectures).mockResolvedValue({
+      data: [lecture(7, "Week 1", "published")],
+      error: null,
+    });
+    vi.mocked(getClassRoster).mockResolvedValue({
+      data: [
+        {
+          name: "Ada Lovelace",
+          username: "ada",
+          joined_at: "2026-11-18T00:00:00Z",
+        },
+        {
+          name: "grace@school.edu",
+          username: "gben",
+          joined_at: "2026-11-18T00:00:00Z",
+        },
+      ],
+      error: null,
+    });
+
+    renderDetail();
+
+    expect(await screen.findByText("ada")).toBeTruthy();
+    expect(screen.getByText("gben")).toBeTruthy();
+    expect(screen.queryByText("Ada Lovelace")).toBeNull();
+    expect(screen.queryByText("grace@school.edu")).toBeNull();
+    expect(screen.queryByText(/@/)).toBeNull();
   });
 });
