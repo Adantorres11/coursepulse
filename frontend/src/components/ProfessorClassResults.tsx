@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getClassResults } from "../lib/apiClient";
+import { displayUsername } from "../lib/displayUsername";
 import type { ClassResults } from "../types/api";
 
 export function ProfessorClassResults() {
@@ -148,7 +149,7 @@ export function ProfessorClassResults() {
                           </td>
 
                           <td className="py-4 px-2 font-semibold">
-                            {student.name}
+                            {displayUsername(student)}
                           </td>
 
                           <td className="py-4 px-2">

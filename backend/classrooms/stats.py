@@ -2,9 +2,10 @@ from django.contrib.auth import get_user_model
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
+from accounts.usernames import display_username
 from quizzes.models import Answer, Attempt, DayStreak
 from quizzes.streaks import current_day_streak
-from quizzes.models import Answer, Attempt, DayStreak
+
 
 def class_standings(classroom):
     students = (
@@ -155,9 +156,11 @@ def build_class_results(classroom):
     for standing in standings:
         student = standing["user"]
 
+        public_name = display_username(student)
         students.append({
             "student_id": student.id,
-            "name": student.get_full_name() or student.username,
+            "name": public_name,
+            "username": public_name,
             "total_points": standing["points"],
             "quizzes_played": quiz_counts.get(student.id, 0),
         })

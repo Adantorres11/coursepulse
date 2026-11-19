@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { displayUsername } from "../lib/displayUsername";
 
 export interface CurrentClassInfo {
   id: number | string;
@@ -14,7 +15,8 @@ interface ProfessorNavProps {
 export function ProfessorNav({ currentClass, onCreateClass }: ProfessorNavProps = {}) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const username = displayUsername(user);
 
   const isDashboardActive =
     location.pathname === "/professor" ||
@@ -66,6 +68,11 @@ export function ProfessorNav({ currentClass, onCreateClass }: ProfessorNavProps 
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">
               Professor
             </span>
+            {username && (
+              <span className="text-sm font-semibold text-slate-300 truncate max-w-[8rem] sm:max-w-[12rem]">
+                {username}
+              </span>
+            )}
           </Link>
 
           {/* Mobile-only Logout button on the right */}
