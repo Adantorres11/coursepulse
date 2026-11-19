@@ -11,6 +11,7 @@ class AuthTests(APITestCase):
     def registration_data(self, **changes):
         data = {
             "email": "student@example.com",
+            "username": "student",
             "password": "Maple!River82",
             "role": "student",
         }
@@ -167,4 +168,90 @@ class AuthTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["email"], user.email)
+        self.assertEqual(response.data["username"], "student")
+        self.assertNotIn("@", response.data["username"])
         self.assertEqual(response.data["role"], "student")
+
+    def test_login_uses_email_when_username_is_different(self):
+        self.client.post(
+            "/api/auth/register/",
+            self.registration_data(username="torres11"),
+            format="json",
+        )
+
+        response = self.client.post(
+            "/api/auth/login/",
+            {
+                "email": "STUDENT@example.com",
+                "password": "Maple!River82",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["user"]["username"], "torres11")
+        self.assertEqual(
+            response.data["user"]["email"],
+            "student@example.com",
+        )
+
+    def test_email_shaped_username_is_rejected(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            self.registration_data(username="torres11@gmail.com"),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["username"],
+            ["Use letters, numbers, underscores, or hyphens."],
+        )
+        self.assertEqual(User.objects.count(), 0)
+
+    def test_register_stores_chosen_username(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            self.registration_data(username="torres11"),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        user = User.objects.get(email="student@example.com")
+        self.assertEqual(user.username, "torres11")
+        self.assertEqual(response.data["user"]["username"], "torres11")
+        self.assertNotEqual(user.username, user.email)
+
+    def test_blank_username_is_rejected(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            self.registration_data(username="   "),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["username"],
+            ["Enter a username."],
+        )
+        self.assertEqual(User.objects.count(), 0)
+
+    def test_taken_username_is_rejected(self):
+        User.objects.create_user(
+            username="torres11",
+            email="other@example.com",
+            password="Maple!River82",
+        )
+
+        response = self.client.post(
+            "/api/auth/register/",
+            self.registration_data(username="TORRES11"),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["username"],
+            ["That username is already taken."],
+        )
+        self.assertEqual(User.objects.count(), 1)

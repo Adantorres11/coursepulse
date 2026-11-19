@@ -5,12 +5,27 @@ from django.db import transaction
 from rest_framework import serializers
 
 from .models import Profile
+from .usernames import (
+    BLANK_USERNAME_MESSAGE,
+    INVALID_USERNAME_MESSAGE,
+    TAKEN_USERNAME_MESSAGE,
+    USERNAME_PATTERN,
+)
 
 User = get_user_model()
 
 
 class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField(max_length=150)
+    username = serializers.CharField(
+        max_length=150,
+        trim_whitespace=True,
+        allow_blank=False,
+        error_messages={
+            "blank": BLANK_USERNAME_MESSAGE,
+            "required": BLANK_USERNAME_MESSAGE,
+        },
+    )
     password = serializers.CharField(
         write_only=True,
         trim_whitespace=False,
@@ -31,9 +46,23 @@ class RegisterSerializer(serializers.Serializer):
 
         return email
 
+    def validate_username(self, value):
+        username = value.strip()
+
+        if not username:
+            raise serializers.ValidationError(BLANK_USERNAME_MESSAGE)
+
+        if USERNAME_PATTERN.fullmatch(username) is None:
+            raise serializers.ValidationError(INVALID_USERNAME_MESSAGE)
+
+        if User.objects.filter(username__iexact=username).exists():
+            raise serializers.ValidationError(TAKEN_USERNAME_MESSAGE)
+
+        return username
+
     def validate(self, attrs):
         user = User(
-            username=attrs["email"],
+            username=attrs["username"],
             email=attrs["email"],
         )
 
@@ -49,7 +78,7 @@ class RegisterSerializer(serializers.Serializer):
     @transaction.atomic
     def create(self, validated_data):
         user = User.objects.create_user(
-            username=validated_data["email"],
+            username=validated_data["username"],
             email=validated_data["email"],
             password=validated_data["password"],
         )

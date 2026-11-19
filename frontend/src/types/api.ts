@@ -42,7 +42,7 @@ export interface ClassSummary {
   id: number;
   name: string;
   course_code: string;
-  professor: { id: number; name: string } | null;
+  professor: { id: number; name: string; username?: string } | null;
   quiz_count: number;
   new_quiz_count: number;
 }
@@ -144,6 +144,7 @@ export type UserRole = "student" | "professor";
 export interface User {
   id: number;
   email: string;
+  username: string;
   role: UserRole | null;
 }
 
@@ -154,6 +155,7 @@ export interface AuthResponse {
 
 export interface RegisterPayload {
   email: string;
+  username: string;
   password: string;
   role?: UserRole;
 }
@@ -178,6 +180,7 @@ export interface ApiResult<T> {
 export interface LeaderboardEntry {
   rank: number;
   display_name: string;
+  username?: string;
   points: number;
   is_current_user: boolean;
 }
@@ -198,11 +201,22 @@ export interface CreateClassResponse {
   access_code: string;
 }
 
+export interface ClassResultLectureScore {
+  lecture_id: number;
+  played: boolean;
+  score: number | null;
+  correct_count: number | null;
+  parts_completed?: number;
+  parts_total?: number;
+}
+
 export interface ClassResultStudent {
   student_id: number;
   name: string;
+  username?: string | null;
   total_points: number;
   quizzes_played: number;
+  lectures: ClassResultLectureScore[];
 }
 
 export interface ClassResultQuestion {
@@ -220,12 +234,15 @@ export interface ClassResultLecture {
 }
 
 export interface ClassResults {
+  classroom_id: number;
+  classroom: string;
   students: ClassResultStudent[];
   lectures: ClassResultLecture[];
 }
 
 export interface ClassRosterStudent {
   name: string;
+  username?: string | null;
   joined_at: string;
 }
 
@@ -242,6 +259,10 @@ export interface ProfessorLecture {
   title: string;
   status: LectureProcessingStatus["status"] | "published";
   published_at: string | null;
+  uploaded_at: string;
+  question_count: number;
+  students_played: number;
+  class_average: number | null;
 }
 
 // GET/POST/PATCH /api/lectures/{id}/questions/ for the owning professor.

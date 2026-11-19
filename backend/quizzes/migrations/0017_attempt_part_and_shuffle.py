@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("quizzes", "0015_lecture_notice_question_generation"),
+        ("quizzes", "0016_lecture_created_at"),
     ]
 
     operations = [
