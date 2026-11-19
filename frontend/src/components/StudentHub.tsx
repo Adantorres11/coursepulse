@@ -320,6 +320,12 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
                         {cls.newQuizCount} new
                       </span>
                     )}
+                    {cls.classroomId !== undefined && (
+                      <ClassRankCard
+                        classroomId={cls.classroomId}
+                        onOpen={setLeaderboardClassId}
+                      />
+                    )}
                     <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#1B294B] group-hover:bg-[#233560] flex items-center justify-center text-[#38BDF8] group-hover:translate-x-0.5 transition-all">
                       <svg
                         className="w-4 h-4"
@@ -336,13 +342,6 @@ export function StudentHub({ onSelectQuiz }: StudentHubProps = {}) {
                     </div>
                   </div>
                                 </div>
-
-                {cls.classroomId !== undefined && (
-                  <ClassRankCard
-                    classroomId={cls.classroomId}
-                    onOpen={setLeaderboardClassId}
-                  />
-                )}
               </div>
             ))}
             </div>

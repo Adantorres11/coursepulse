@@ -6,50 +6,33 @@ interface ClassRankCardProps {
   onOpen: (classroomId: number) => void;
 }
 
-export function ClassRankCard({
-  classroomId,
-  onOpen,
-}: ClassRankCardProps) {
+export function ClassRankCard({ classroomId, onOpen }: ClassRankCardProps) {
   const [myRank, setMyRank] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [points, setPoints] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
-
     setMyRank(null);
-    setLoading(true);
-    setError("");
+    setPoints(null);
 
     const loadRank = async () => {
-      if (!sessionStorage.getItem("coursepulse_token")) {
-        setError("Log in to see your rank.");
-        setLoading(false);
-        return;
-      }
-
+      if (!sessionStorage.getItem("coursepulse_token")) return;
       const result = await getLeaderboard(classroomId, controller.signal);
-
-      if (!active) return;
-
-      if (result.error || !result.data) {
-        setError(result.error || "Unable to load your rank.");
-      } else {
-        const currentUser = result.data.find((entry) => entry.is_current_user);
-        setMyRank(currentUser?.rank ?? null);
-      }
-
-      setLoading(false);
+      if (!active || result.error || !result.data) return;
+      const currentUser = result.data.find((entry) => entry.is_current_user);
+      setMyRank(currentUser?.rank ?? null);
+      setPoints(currentUser?.points ?? null);
     };
 
     void loadRank();
-
     return () => {
       active = false;
       controller.abort();
     };
   }, [classroomId]);
+
+  if (myRank === null && points === null) return null;
 
   return (
     <button
@@ -58,29 +41,17 @@ export function ClassRankCard({
         event.stopPropagation();
         onOpen(classroomId);
       }}
-      className="w-full rounded-2xl border border-sky-400/40 bg-[#142342] p-4 text-left hover:border-sky-400 focus-visible:outline-2 focus-visible:outline-sky-400"
+      className="inline-flex items-center gap-2 rounded-lg px-1 py-1 text-sm hover:text-white"
+      aria-label={
+        myRank !== null
+          ? `Rank ${myRank}${points !== null ? `, ${points} points` : ""}. View leaderboard`
+          : "View leaderboard"
+      }
     >
-      <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-        Your rank
-      </span>
-      <span className="mt-2 block text-2xl font-bold text-white">
-        {loading
-          ? "Loading..."
-          : error
-            ? "Unavailable"
-            : myRank !== null
-              ? `#${myRank}`
-              : "Not ranked yet"}
-      </span>
-
-      {error && (
-        <span className="mt-1 block text-sm text-red-400">
-          {error}
-        </span>
+      {points !== null && (
+        <span className="font-semibold text-sky-300">{points.toLocaleString()} pts</span>
       )}
-      <span className="mt-2 block text-sm font-semibold text-sky-300">
-        View leaderboard &rarr;
-      </span>
+      {myRank !== null && <span className="font-bold text-white">#{myRank}</span>}
     </button>
   );
 }

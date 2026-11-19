@@ -45,14 +45,17 @@ Success: 200 OK.
   "answered_questions": [
     {"question_id": 11, "is_correct": true, "points_awarded": 100}
   ],
-  "total_points": 100
+  "total_points": 100,
+  "part": null,
+  "part_count": 1
 }
 Field rules
 - choices: exactly 4 strings.
 - The quiz does not include the correct answer. The correct answer comes from
   POST /api/lectures/{id}/answers/.
 - difficulty: "easy" (100 pts), "medium" (200 pts) or "hard" (300 pts).
-- Questions are returned in a fixed order.
+- Without a part query, questions are returned in position order, then id.
+  part is null. part_count is how many parts the lecture splits into.
 - answered_question_ids: the ids of the questions the logged-in student has
   answered in their open attempt. total_points: the points of that open attempt.
   The open attempt is the student's newest attempt for this lecture with no
@@ -64,6 +67,84 @@ Field rules
   a streak bonus). The Quiz Complete screen uses this for questions the
   student answered on an earlier visit. It is [] in the same cases as
   answered_question_ids. It does not include the correct choice.
+  A part quiz includes the same rows for that part's open attempt.
+Quiz parts
+A lecture is split into parts of about 12 to 13 questions. The split is even,
+so sizes differ by at most one and there is no tiny last part. 13 or fewer
+questions stay one part. 30 questions are 3 parts of 10. 14 questions are 2
+parts of 7. Parts are contiguous slices of the lecture's question order
+(position, then id). Every student in a part gets those same questions.
+
+GET /api/lectures/{id}/quiz/?part=2
+Returns one part for play. part is 1-based. A logged-in student gets a saved
+shuffle of question order and choice order. Repeating the call, including
+after a refresh, returns that same order until the attempt is finished. The
+next play of the same part is a new attempt and a new shuffle. Logged-out
+callers get the part in position order with the stored choice order. The
+response uses the same fields as the unscoped quiz, with part set to the
+requested part and questions limited to that part. The response still has no
+correct_index.
+
+Errors: 400 when part is not a whole number. 404 when the part is outside
+1..part_count, or the lecture is unavailable.
+POST /api/lectures/{id}/answers/ and
+POST /api/lectures/{id}/questions/{question_id}/start/
+accept the same part. On the answer body it is an optional integer field.
+On start it is the query ?part=. Omit part only for a one-part lecture. That
+play uses the stored choice order, and correct_index in the answer response
+is the stored index. Sending part shuffles. chosen_index is then the button
+index in the shuffled list from the quiz response. The server maps it through
+the saved choice order before grading. The stored answer keeps the original
+choice index, so reports that compare chosen_index to the question's
+correct_index stay valid. The answer response's correct_index is the button
+index in the shuffled list the student saw.
+
+A question that is not in the requested part is 404, the same as a question
+that is not in the lecture. A missing part on a multi-part lecture is 400
+{"detail": "This lecture is played in parts. Send part."}. A choice index
+outside 0-3 is still 400 on chosen_index. One student cannot read or add to
+another student's attempt: the server always uses the authenticated user.
+
+The first completed attempt of each part is the one that counts toward class
+points, the leaderboard, and the daily full-points cap. A replay's
+points_awarded and total_points are the score of that replay only. A new part
+starts a new attempt, so its correct-answer streak starts at 0. The day streak
+still advances on any answer. The best score shown for a part is the highest
+completed attempt, which can be a replay, and that display value does not
+change the leaderboard.
+
+An attempt saved before parts that already answered questions from more than
+one part keeps those points for the whole lecture. Later part attempts for
+that student and lecture do not add points again.
+
+GET /api/lectures/{id}/parts/{part}/review/
+The logged-in student's most recent completed attempt at that part. Requires
+a student token and enrollment.
+
+Success: 200 OK
+{
+  "lecture_id": 1,
+  "title": "Tuesday's Lecture: Agile and Scrum",
+  "part": 1,
+  "part_count": 3,
+  "question_count": 10,
+  "total_points": 400,
+  "correct_count": 4,
+  "questions": [
+    {
+      "id": 11,
+      "prompt": "Why does Scrum use fixed-length sprints?",
+      "your_answer": "Option A",
+      "correct_answer": "Option B",
+      "is_correct": false,
+      "points_awarded": 0
+    }
+  ]
+}
+your_answer is null when the student ran out of time. Questions are in the
+order of that attempt. 404 when the student has no completed attempt for the
+part, with {"detail": "No completed attempt for this part."}. 401 and 403
+match the answer endpoint.
 Errors: 404 with {"detail": "Not found."} for an unknown lecture id. The same
 404 is returned when the lecture is not published yet or has no questions.
 POST /api/lectures/{id}/answers/
@@ -87,7 +168,7 @@ Rules:
   The question must belong to that lecture.
 - question_id: integer. chosen_index: integer 0-3, or null when time
   ran out. Both fields are required. chosen_index is still required
-  when it is null.
+  when it is null. part is optional. See Quiz parts.
 - The server measures the time. It counts from the question's start call
   (POST /api/lectures/{id}/questions/{question_id}/start/) to the moment
   the answer arrives. The client does not send a time.
@@ -113,10 +194,12 @@ Rules:
   for hard. The 50-point streak bonus is never reduced. Only first-attempt
   answers count toward the cap, and only first-attempt answers are reduced
   by it. Replay answers never count toward the cap and are never reduced.
-- The first attempt at each lecture is the only attempt that counts toward
-  class totals. For a replay, points_awarded and total_points are the
+- The first completed attempt at each part is the only attempt that counts
+  toward class totals. For a replay, points_awarded and total_points are the
   score of that replay only. They do not change the leaderboard or the
-  class stats.
+  class total. The class page can still show the best score of a part,
+  including a replay. A one-part lecture behaves as one quiz, matching the
+  older first-attempt-per-lecture rule.
 - A wrong or timed-out answer sets the run of correct answers to 0.
 - A new attempt starts with a run of correct answers of 0, so a replay
   starts the bonus count again.
@@ -124,10 +207,12 @@ Rules:
 - correct_index is always returned, so the screen can show green and red
   feedback.
 - The server picks the attempt. It uses the student's open attempt for the
-  lecture, the one that the start call created or reused.
-- When every question in the lecture has an answer, the attempt is completed
-  (completed_at is set). The next start call, not the next answer, begins a
-  new attempt.
+  lecture and part, the one that the start call created or reused.
+- When every question in the part has an answer, the attempt is completed
+  (completed_at is set). For a one-part lecture that is every question in
+  the lecture. The next start call, not the next answer, begins a new
+  attempt. The lecture is marked complete for the class list when every
+  part has a completed attempt.
 - A second answer to the same question in the same attempt is rejected.
 Errors:
 - 400: Invalid body. Errors appear under the field name, as in
@@ -382,8 +467,9 @@ Rules:
 - Includes enrolled users with the student role.
 - Points are the sum of total_points from completed attempts across
   all lectures in this class. Incomplete attempts are excluded.
-- Only the student's first attempt at each lecture counts, once it is
-  completed. Replays add 0.
+- Only the student's first completed attempt at each part counts.
+  Replays add 0. A part is one slice of a lecture's questions. Every
+  student in a part is scored on the same questions.
 - Attempts at a lecture whose published_at is empty or still in the
   future add 0.
 - Attempts from other classes are excluded.
@@ -455,15 +541,14 @@ Rules:
 - An available quiz is a lecture in this class with published_at in
   the past and at least one question. Only available quizzes appear
   in lectures and count in quizzes_total.
-- A quiz is played when the student has an attempt for it with
-  completed_at set. Incomplete attempts do not count.
-- quizzes_played is the number of available quizzes the student has
-  played. Repeat attempts do not add to it.
+- A quiz in quizzes_played and quizzes_total is one part. A lecture of
+  13 or fewer questions is one part, so those counts match a lecture count.
+  A part is played when the student has a completed attempt for it.
+  Incomplete attempts do not count. Replays do not add to quizzes_played.
 - total_points is the sum of total_points from the student's first
-  attempt at each lecture in this class, once that attempt is completed.
-  Replays add 0. Attempts at a lecture whose published_at is empty or
-  still in the future add 0. It matches the student's points in the
-  leaderboard.
+  completed attempt of each part in this class. Replays add 0. Attempts
+  at a lecture whose published_at is empty or still in the future add 0.
+  It matches the student's points in the leaderboard.
 - rank uses competition ranking, the same as the leaderboard:
   1, 1, 3.
 - points_to_next_rank is the gap to the nearest student with strictly
@@ -471,16 +556,23 @@ Rules:
   students are tied at the top.
 - lectures are ordered newest first by published_at, the same as
   GET /api/lectures/.
-- up_next is the first unplayed lecture in that order, which is the
-  newest unplayed lecture. It has the same shape as a lectures item.
-  It is null when every available quiz is played.
-- best_score is the highest total_points among the student's completed
-  attempts for the lecture.
-- correct_count is the number of correct answers in that same attempt.
-  If two attempts tie on score, the attempt with the lowest attempt ID
-  is used.
+- up_next is the first lecture in that order that still has a part with
+  no completed attempt. It has the same shape as a lectures item. It is
+  null when every part of every available lecture is complete. For a
+  one-part lecture this is the newest lecture the student has not finished.
+- Each lectures item includes part_count and parts. A part has part
+  (1-based), question_count, completed, best_score, correct_count, and
+  in_progress. in_progress is true when the student has an open attempt
+  for that part. is_complete is true when every part is completed.
+  is_new is true when no part is completed.
+- best_score on a lecture is the sum of each part's best completed
+  attempt. For one part, that is the highest total_points among the
+  student's completed attempts for the lecture.
+- correct_count is the sum of correct answers on those same part
+  attempts. If two attempts for a part tie on score, the attempt with
+  the lowest attempt ID is used.
 - An unplayed lecture has best_score 0, correct_count 0, and is_new
-  true. A played lecture has is_new false.
+  true. A lecture with any completed part has is_new false.
 - A student with no completed attempts gets total_points 0,
   quizzes_played 0, and points_to_next_rank as defined above. The
   student shares the last rank with the other zero-point students.
@@ -578,7 +670,11 @@ Response: 200 OK
     }
   ]
 }
-- quizzes_played counts distinct lectures with completed attempts.
+- quizzes_played counts distinct lectures with a completed attempt.
+  A lecture with several parts still counts once. Replays do not add
+  another lecture. Question rows stay one list per lecture and are not
+  grouped by part. answer_count includes answers from completed attempts,
+  including replays. Answer.chosen_index remains the original choice index.
 - Question accuracy is calculated from completed attempts.
 - accuracy_percent is null when no answers exist.
 - Students without completed quizzes have zero quizzes played.

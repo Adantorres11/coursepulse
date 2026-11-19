@@ -16,6 +16,7 @@ import type {
   ProfessorLecture,
   ProfessorQuestion,
   ProfessorQuestionInput,
+  PartReview,
   PublishLectureResponse,
   Quiz,
   QuestionStart,
@@ -274,8 +275,9 @@ export async function getLectures(): Promise<ApiResult<Lecture[]>> {
  * Matches API contract: GET /api/lectures/{id}/quiz/
  * There is no sample-data fallback; errors and status codes pass through.
  */
-export async function getQuiz(id: string | number): Promise<ApiResult<Quiz>> {
-  return request<Quiz>(`/lectures/${encodeURIComponent(String(id).trim())}/quiz/`);
+export async function getQuiz(id: string | number, part?: number): Promise<ApiResult<Quiz>> {
+  const query = part !== undefined ? `?part=${encodeURIComponent(String(part))}` : "";
+  return request<Quiz>(`/lectures/${encodeURIComponent(String(id).trim())}/quiz/${query}`);
 }
 
 /**
@@ -305,15 +307,29 @@ export async function postAnswer(
  */
 export async function startQuestion(
   lectureId: string | number,
-  questionId: number
+  questionId: number,
+  part?: number
 ): Promise<ApiResult<QuestionStart>> {
   const token = sessionStorage.getItem("coursepulse_token");
+  const query = part !== undefined ? `?part=${encodeURIComponent(String(part))}` : "";
   return request<QuestionStart>(
-    `/lectures/${encodeURIComponent(String(lectureId).trim())}/questions/${questionId}/start/`,
+    `/lectures/${encodeURIComponent(String(lectureId).trim())}/questions/${questionId}/start/${query}`,
     {
       method: "POST",
       headers: token ? { Authorization: `Token ${token}` } : {},
     }
+  );
+}
+
+/** The logged-in student's most recent completed play of one part. */
+export async function getPartReview(
+  lectureId: string | number,
+  part: number
+): Promise<ApiResult<PartReview>> {
+  const token = sessionStorage.getItem("coursepulse_token");
+  return request(
+    `/lectures/${encodeURIComponent(String(lectureId).trim())}/parts/${encodeURIComponent(String(part))}/review/`,
+    { headers: token ? { Authorization: `Token ${token}` } : {} }
   );
 }
 

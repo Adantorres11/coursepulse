@@ -23,6 +23,8 @@ interface QuizGameProps {
   initialAnswers?: AnsweredQuestion[];
   initialScore?: number;
   classroomId?: number;
+  part?: number;
+  onReplay?: () => void;
 }
 
 interface FailedRequest {
@@ -76,6 +78,8 @@ export default function QuizGame({
   initialAnswers = [],
   initialScore = 0,
   classroomId,
+  part,
+  onReplay,
 }: QuizGameProps) {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
 
@@ -153,7 +157,7 @@ export default function QuizGame({
 
     let cancelled = false;
     setStartError(null);
-    startQuestion(lectureId, Number(activeQuestionId)).then((result) => {
+    startQuestion(lectureId, Number(activeQuestionId), part).then((result) => {
       if (cancelled) return;
       if (result.error || !result.data) {
         setStartError(result.error ?? "Could not start this question.");
@@ -165,7 +169,7 @@ export default function QuizGame({
     return () => {
       cancelled = true;
     };
-  }, [questionIndex, startAttempt, currentResult, lectureId, questions.length, activeQuestionId]);
+  }, [questionIndex, startAttempt, currentResult, lectureId, questions.length, activeQuestionId, part]);
 
   useEffect(() => {
     if (questionIndex !== -1) return;
@@ -293,6 +297,7 @@ export default function QuizGame({
     const body: AnswerRequest = {
       question_id: Number(questions[questionIndex].id),
       chosen_index: answerIndex,
+      ...(part !== undefined ? { part } : {}),
     };
     await submitAnswer(body, answerIndex, questionIndex);
   }
@@ -648,7 +653,7 @@ export default function QuizGame({
         <button
           type="button"
           className="flex items-center gap-2 rounded-lg bg-blue-300 px-3 py-2 text-left leading-none text-black"
-          onClick={() => restartQuiz()}
+          onClick={() => (onReplay ? onReplay() : restartQuiz())}
         >
           <span className="flex items-center justify-center font-bold">⟳</span>
           <span className="font-medium">Replay</span>

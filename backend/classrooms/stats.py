@@ -3,8 +3,8 @@ from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from quizzes.models import Answer, Attempt, DayStreak
+from quizzes.parts import part_sizes
 from quizzes.streaks import current_day_streak
-from quizzes.models import Answer, Attempt, DayStreak
 
 def class_standings(classroom):
     students = (
@@ -61,7 +61,6 @@ def build_class_stats(classroom, user):
         .filter(
             user=user,
             lecture__classroom=classroom,
-            completed_at__isnull=False,
         )
         .annotate(
             correct_count=Count(
@@ -72,23 +71,55 @@ def build_class_stats(classroom, user):
         .order_by("id")
     )
 
-    best_attempts = {}
+    # Best completed attempt of each part. Ties keep the lowest attempt id
+    # because attempts are ordered by id and a tie does not replace the best.
+    # Open attempts are the same query, so a resume flag does not add a round trip.
+    best_by_part = {}
+    open_parts = set()
     for attempt in attempts:
-        best = best_attempts.get(attempt.lecture_id)
+        key = (attempt.lecture_id, attempt.part_index)
+        if attempt.completed_at is None:
+            open_parts.add(key)
+            continue
+        best = best_by_part.get(key)
         if best is None or attempt.total_points > best.total_points:
-            best_attempts[attempt.lecture_id] = attempt
+            best_by_part[key] = attempt
 
     items = []
     for lecture in lectures:
-        best = best_attempts.get(lecture.id)
+        sizes = part_sizes(lecture.question_count)
+        parts = []
+        best_score = 0
+        correct_count = 0
+        completed_parts = 0
+        for index, size in enumerate(sizes):
+            best = best_by_part.get((lecture.id, index))
+            completed = best is not None
+            if completed:
+                completed_parts += 1
+                best_score += best.total_points
+                correct_count += best.correct_count
+            parts.append({
+                "part": index + 1,
+                "question_count": size,
+                "completed": completed,
+                "best_score": best.total_points if completed else 0,
+                "correct_count": best.correct_count if completed else 0,
+                "in_progress": (lecture.id, index) in open_parts,
+            })
         items.append({
             "id": lecture.id,
             "title": lecture.title,
             "published_at": lecture.published_at,
             "question_count": lecture.question_count,
-            "best_score": best.total_points if best else 0,
-            "correct_count": best.correct_count if best else 0,
-            "is_new": best is None,
+            "part_count": len(parts),
+            "parts": parts,
+            # Sum of each part's best attempt. One part keeps the old meaning:
+            # the highest completed score for the lecture.
+            "best_score": best_score,
+            "correct_count": correct_count,
+            "is_new": completed_parts == 0,
+            "is_complete": len(parts) > 0 and completed_parts == len(parts),
         })
 
     standings = class_standings(classroom)
@@ -113,8 +144,11 @@ def build_class_stats(classroom, user):
         "points_to_next_rank": (
             min(points_above) - mine["points"] if points_above else 0
         ),
-        "quizzes_played": sum(1 for item in items if not item["is_new"]),
-        "quizzes_total": len(items),
+        # A quiz here is one part. Replays do not add another played quiz.
+        "quizzes_played": sum(
+            1 for item in items for part in item["parts"] if part["completed"]
+        ),
+        "quizzes_total": sum(item["part_count"] for item in items),
         "day_streak": (
             current_day_streak(
                 day_streak.count, day_streak.last_day, timezone.localdate()
@@ -123,7 +157,7 @@ def build_class_stats(classroom, user):
         ),
         "answer_streak": newest_attempt.answer_streak if newest_attempt else 0,
         "up_next": next(
-            (item for item in items if item["is_new"]),
+            (item for item in items if not item["is_complete"]),
             None,
         ),
         "lectures": items,

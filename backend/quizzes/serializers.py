@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .grading import get_open_attempt
 from .models import Lecture, Question
+from .parts import part_sizes
 
 class LectureSerializer(serializers.ModelSerializer):
     classroom = serializers.CharField(
@@ -104,6 +105,8 @@ class QuizSerializer(serializers.ModelSerializer):
     answered_question_ids = serializers.SerializerMethodField()
     answered_questions = serializers.SerializerMethodField()
     total_points = serializers.SerializerMethodField()
+    part = serializers.SerializerMethodField()
+    part_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Lecture
@@ -114,7 +117,15 @@ class QuizSerializer(serializers.ModelSerializer):
             "answered_question_ids",
             "answered_questions",
             "total_points",
+            "part",
+            "part_count",
         ]
+
+    def get_part(self, lecture):
+        return None
+
+    def get_part_count(self, lecture):
+        return len(part_sizes(len(lecture.questions.all())))
 
     def _open_attempt(self, lecture):
         request = self.context.get("request")
@@ -157,3 +168,5 @@ class AnswerRequestSerializer(serializers.Serializer):
         max_value=3,
         allow_null=True,
     )
+    # 1-based part. Omit it to play a one-part lecture in the original order.
+    part = serializers.IntegerField(required=False, min_value=1)

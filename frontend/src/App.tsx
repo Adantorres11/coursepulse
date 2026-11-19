@@ -11,13 +11,14 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
 import { ProfessorClassDetail } from "./components/ProfessorClassDetail";
 import { LectureReview } from "./components/LectureReview";
+import { PartReviewPage } from "./components/PartReviewPage";
 
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
 
-  const isQuizPlay = location.pathname.startsWith("/quiz/");
+  const isQuizPlay = /^\/quiz\/[^/]+$/.test(location.pathname);
 
   const hasCustomHeader =
     location.pathname === "/" ||
@@ -183,6 +184,14 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRole="professor">
                 <LectureReview />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/quiz/:lectureId/review"
+            element={
+              <ProtectedRoute allowedRole="student">
+                <PartReviewPage />
               </ProtectedRoute>
             }
           />

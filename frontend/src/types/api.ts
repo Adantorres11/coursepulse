@@ -16,14 +16,26 @@ export interface Lecture {
   publishedAt?: string;
 }
 
+export interface LecturePartStat {
+  part: number;
+  question_count: number;
+  completed: boolean;
+  best_score: number;
+  correct_count: number;
+  in_progress: boolean;
+}
+
 export interface ClassLectureStat {
   id: number;
   title: string;
   published_at: string; // ISO date string
   question_count: number;
+  part_count?: number;
+  parts?: LecturePartStat[];
   best_score: number;
   correct_count: number;
   is_new: boolean;
+  is_complete?: boolean;
 }
 
 export interface ClassSummary {
@@ -74,6 +86,9 @@ export interface Quiz {
   // Points for questions answered in the open attempt, including an earlier visit.
   answered_questions?: AnsweredQuestion[];
   total_points?: number;
+  // Null on the unscoped quiz. Set when the quiz was loaded with ?part=.
+  part?: number | null;
+  part_count?: number;
 
   // Optional legacy alias for backwards compatibility
   lectureId?: number | string;
@@ -81,7 +96,29 @@ export interface Quiz {
 
 export interface AnswerRequest {
   question_id: number;
-  chosen_index: number | null; // 0-3, or null when time ran out
+  chosen_index: number | null; // 0-3 in the order the quiz returned, or null when time ran out
+  // 1-based part. Send it whenever the quiz was loaded with ?part=.
+  part?: number;
+}
+
+export interface PartReviewQuestion {
+  id: number;
+  prompt: string;
+  your_answer: string | null;
+  correct_answer: string;
+  is_correct: boolean;
+  points_awarded: number;
+}
+
+export interface PartReview {
+  lecture_id: number;
+  title: string;
+  part: number;
+  part_count: number;
+  question_count: number;
+  total_points: number;
+  correct_count: number;
+  questions: PartReviewQuestion[];
 }
 
 export interface QuestionStart {

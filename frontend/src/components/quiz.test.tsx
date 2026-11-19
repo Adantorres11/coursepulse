@@ -84,6 +84,43 @@ describe("QuizGame play", () => {
     expect((screen.getByRole("button", { name: /Alpha/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("sends the part with the start and the answer", async () => {
+    vi.mocked(postAnswer).mockResolvedValue({
+      data: {
+        is_correct: true,
+        points_awarded: 100,
+        total_points: 100,
+        correct_index: 0,
+      },
+      error: null,
+    });
+    render(<QuizGame questions={questions} lectureId="4" part={2} />);
+    await reachFirstQuestion();
+    expect(vi.mocked(startQuestion)).toHaveBeenCalledWith("4", 1, 2);
+    await choose(/Alpha/);
+    const body = vi.mocked(postAnswer).mock.calls[0][1];
+    expect(body.part).toBe(2);
+    expect(body.chosen_index).toBe(0);
+    expect(body.question_id).toBe(1);
+  });
+
+  it("asks the page to reload the quiz on replay", () => {
+    const onReplay = vi.fn();
+    render(
+      <QuizGame
+        questions={questions}
+        initialAnsweredIds={[1, 2]}
+        initialAnswers={[
+          { question_id: 1, is_correct: true, points_awarded: 100 },
+          { question_id: 2, is_correct: false, points_awarded: 0 },
+        ]}
+        onReplay={onReplay}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Replay/ }));
+    expect(onReplay).toHaveBeenCalledTimes(1);
+  });
+
   it("lists earlier answers vertically with the points they earned", () => {
     render(
       <QuizGame
